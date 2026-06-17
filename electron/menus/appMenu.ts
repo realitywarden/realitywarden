@@ -1,0 +1,68 @@
+import { BrowserWindow, Menu, shell } from 'electron';
+import path from 'node:path';
+
+type MenuAction =
+  | 'project:new'
+  | 'project:open'
+  | 'project:save'
+  | 'project:saveAs'
+  | 'export:labReport'
+  | 'export:deploymentPackage'
+  | 'run:preflight'
+  | 'run:virtualLab'
+  | 'run:stop'
+  | 'run:replay'
+  | 'view:toggleExplorer'
+  | 'view:toggleInspector'
+  | 'view:toggleConsole';
+
+function send(action: MenuAction) {
+  BrowserWindow.getFocusedWindow()?.webContents.send('menu:action', action);
+}
+
+export function createAppMenu(root: string) {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [
+        { label: 'New Project', accelerator: 'CmdOrCtrl+N', click: () => send('project:new') },
+        { label: 'Open Project', accelerator: 'CmdOrCtrl+O', click: () => send('project:open') },
+        { type: 'separator' },
+        { label: 'Save Project', accelerator: 'CmdOrCtrl+S', click: () => send('project:save') },
+        { label: 'Save Project As', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('project:saveAs') },
+        { type: 'separator' },
+        { label: 'Export Lab Report', click: () => send('export:labReport') },
+        { label: 'Export Deployment Package', click: () => send('export:deploymentPackage') },
+        { type: 'separator' },
+        { label: 'Exit', role: 'quit' }
+      ]
+    },
+    {
+      label: 'Run',
+      submenu: [
+        { label: 'Run Preflight', accelerator: 'F6', click: () => send('run:preflight') },
+        { label: 'Run Virtual Lab', accelerator: 'F5', click: () => send('run:virtualLab') },
+        { label: 'Stop', accelerator: 'Shift+F5', click: () => send('run:stop') },
+        { label: 'Replay', accelerator: 'CmdOrCtrl+R', click: () => send('run:replay') }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Toggle Project Explorer', click: () => send('view:toggleExplorer') },
+        { label: 'Toggle Inspector', click: () => send('view:toggleInspector') },
+        { label: 'Toggle Console', click: () => send('view:toggleConsole') },
+        { type: 'separator' },
+        { label: 'Reload', role: 'reload' },
+        { label: 'Toggle Developer Tools', role: 'toggleDevTools' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        { label: 'Documentation', click: () => shell.openPath(path.join(root, 'docs')) },
+        { label: 'About Open Reality Studio', click: () => shell.openExternal('https://openreality.studio') }
+      ]
+    }
+  ]));
+}

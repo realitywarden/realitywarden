@@ -1,0 +1,50 @@
+{
+  "name": "open-reality-interface",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "desktop": "electron electron/main.cjs",
+    "desktop:dev": "node scripts/build-electron.cjs && electron dist-electron/main.js",
+    "desktop:build": "npm run build && node scripts/build-electron.cjs",
+    "desktop:pack": "npm run desktop:build && node scripts/pack-electron.cjs",
+    "desktop:prod": "npm run desktop:build && electron dist-electron/main.js --prod",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test:conformance": "node lib/conformance/runConformance.js",
+    "test:simulation": "node lib/simulation/runSimulationTests.js",
+    "test:virtual-lab": "node lib/virtual-lab/runVirtualLabTests.js",
+    "test:desktop": "node lib/desktop/runDesktopTests.js",
+    "test:assets": "node lib/assets/runAssetTests.js",
+    "test:action-runtime": "node lib/action-runtime/runActionRuntimeTests.js",
+    "test:playback": "node lib/playback/runPlaybackTests.js",
+    "test:compiler": "node lib/compiler/runCompilerTests.js",
+    "test:autonomy": "node lib/autonomy-core/runAutonomyCoreTests.js",
+    "assets:real": "node scripts/convert-real-device-assets.mjs",
+    "verify": "npm run typecheck && npm run build && npm run test:conformance && npm run test:simulation && npm run test:virtual-lab && npm run test:desktop && npm run test:assets && npm run test:action-runtime && npm run test:playback && npm run test:compiler && npm run test:autonomy",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.17.10",
+    "@types/three": "^0.164.0",
+    "next": "^14.2.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.164.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/react": "^18.3.2",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "electron": "^31.7.7",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.3",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5"
+  }
+}
