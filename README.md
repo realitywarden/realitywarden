@@ -142,6 +142,7 @@ Future real-device work must remain behind:
 
 - [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md)
 - [docs/ROADMAP.md](./docs/ROADMAP.md)
+- [docs/DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md)
 - [docs/VIRTUAL_LAB.md](./docs/VIRTUAL_LAB.md)
 - [docs/DEVICE_ACTION_RUNTIME.md](./docs/DEVICE_ACTION_RUNTIME.md)
 - [docs/ADAPTER_SDK.md](./docs/ADAPTER_SDK.md)
