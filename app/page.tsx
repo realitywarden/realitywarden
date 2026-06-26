@@ -13,6 +13,9 @@ import type { AdapterCommand } from '@/lib/adapter/AdapterCommand';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import { AutonomyCore } from '@/lib/autonomy-core/AutonomyCore';
 import { localizeDeviceType, localizeDisplayName, t } from '@/lib/i18n';
+import { buildManifestFromProfile } from '@/lib/open-reality-runtime/deviceManifests';
+import { compileOpenRealityRuntime } from '@/lib/open-reality-runtime/runtimeKernel';
+import { buildWorldModelFromProfile } from '@/lib/open-reality-runtime/worldModel';
 import { PlaybackEngine } from '@/lib/action-runtime/PlaybackEngine';
 import type { PlaybackEvent } from '@/lib/action-runtime/PlaybackEngine';
 import { targetPosition } from '@/lib/action-runtime/TargetResolver';
@@ -33,6 +36,7 @@ interface WorkspaceDeviceRecord {
   profileId: string;
   deviceType: DeviceType;
   slot: number;
+  position?: [number, number, number];
   current_state?: Record<string, unknown>;
   last_run_result?: 'pass' | 'blocked' | 'failed';
   config: {
@@ -140,19 +144,33 @@ interface CommandTerminalStatus {
   message: string;
 }
 
+interface QuickStartPath {
+  id: string;
+  deviceType: DeviceType;
+  title: string;
+  prompt: string;
+  expected: string;
+  proof: string;
+  validates: string;
+}
+
 const deviceTypes: DeviceType[] = ['robot_arm', 'mobile_robot', 'smart_light', 'camera_sensor', 'conveyor_belt', 'plc_cabinet', 'lab_instrument', 'warehouse_rack', 'sensor_box'];
+const publicAlphaRunnableDeviceTypes: DeviceType[] = ['robot_arm', 'smart_light', 'camera_sensor'];
 const workspaceStorageKey = 'open-reality-studio:last-workspace';
+const firstRunGuideStorageKey = 'open-reality-studio:first-run-guide-dismissed';
 const workspaceSlots: [number, number, number][] = [
   [0, 0, 0],
-  [2.5, 0, 0],
-  [-2.5, 0, 0],
-  [0, 0, 2.5],
-  [0, 0, -2.5],
-  [2.5, 0, 2.5]
+  [4, 0, 0],
+  [-4, 0, 0],
+  [0, 0, 4],
+  [0, 0, -4],
+  [4, 0, 4],
+  [-4, 0, 4],
+  [4, 0, -4]
 ];
 
 const scenarioPromptsZh: Record<string, string> = {
-  'robot-arm-pick-place-safe': '\u6293\u53d6\u7ea2\u8272\u65b9\u5757\uff0c\u5e76\u628a\u5b83\u653e\u5230\u53f3\u4fa7\u5b89\u5168\u533a\u3002',
+  'robot-arm-pick-place-safe': '\u6293\u53d6\u7ea2\u8272\u65b9\u5757\uff0c\u5e76\u628a\u5b83\u653e\u5230\u540e\u4fa7\u5b89\u5168\u533a\u3002',
   'robot-arm-pick-place-unsafe': '\u5c1d\u8bd5\u5feb\u901f\u629b\u63b7\u7ea2\u8272\u65b9\u5757\u5230\u684c\u9762\u5916\u3002',
   'mobile-robot-navigation-safe': '\u5bfc\u822a\u5230 A \u901a\u9053\uff0c\u626b\u63cf\u533a\u57df\uff0c\u7136\u540e\u8fd4\u56de\u5145\u7535\u6869\u3002',
   'mobile-robot-navigation-unsafe': '\u5c1d\u8bd5\u5bfc\u822a\u8fdb\u5165\u9650\u5236\u533a\u3002',
@@ -165,6 +183,7 @@ const scenarioPromptsZh: Record<string, string> = {
 };
 
 const scenarioPromptsEn: Record<string, string> = {
+  'robot-arm-pick-place-safe': 'Move the red cube to the back safe zone.',
   'smart-light-control-safe': 'Turn on the light.',
   'camera-sensor-check-safe': 'Take a photo.'
 };
@@ -242,8 +261,8 @@ function localUnknownError(language: UiLanguage) {
 
 function startupLogs(language: UiLanguage) {
   return language === 'zh'
-    ? ['[INFO] Open Reality Studio ready.', '[INFO] 工作区已初始化。']
-    : ['[INFO] Open Reality Studio ready.', '[INFO] Workspace initialized.'];
+    ? ['[INFO] Open Reality Studio ready.', '[INFO] 工作区已初始化。', '[INFO] 默认路径已就绪：机械臂 -> 把红方块放到后侧安全区。']
+    : ['[INFO] Open Reality Studio ready.', '[INFO] Workspace initialized.', '[INFO] Default path ready: Robot Arm -> move the red cube to the back safe zone.'];
 }
 
 function exportLabReport(report: LabReport | null) {
@@ -383,6 +402,7 @@ function applyWorkspaceDeviceConfig(profile: typeof deviceProfiles[number], devi
 function createWorkspaceDevice(nextType: DeviceType, index: number, language: UiLanguage, asset?: DeviceAsset): WorkspaceDeviceRecord {
   const nextProfile = getFirstProfileForType(nextType);
   const meta = asset?.deviceMeta ?? nextProfile.deviceMeta;
+  const seedPosition = workspaceSlots[index % workspaceSlots.length] ?? workspaceSlots[0];
   return {
     id: `${asset?.manifest.asset_id ?? nextProfile.id}-${Date.now()}`,
     label: asset ? localizeDisplayName(language, asset.manifest.display_name) : `${localDeviceType(nextType, language)} ${index + 1}`,
@@ -390,6 +410,7 @@ function createWorkspaceDevice(nextType: DeviceType, index: number, language: Ui
     profileId: asset?.manifest.asset_id ?? nextProfile.id,
     deviceType: nextType,
     slot: index % workspaceSlots.length,
+    position: seedPosition,
     config: {
       enabled: true,
       adapter_target_id: meta.device_id,
@@ -410,7 +431,11 @@ function noticeMessage(language: UiLanguage, zh: string, en: string) {
 }
 
 function isRunnableDeviceV01(deviceType: DeviceType) {
-  return deviceType === 'robot_arm' || deviceType === 'smart_light' || deviceType === 'camera_sensor';
+  return publicAlphaRunnableDeviceTypes.includes(deviceType);
+}
+
+function publicAlphaSupportLabel(language: UiLanguage) {
+  return publicAlphaRunnableDeviceTypes.map((type) => localizeDeviceType(language, type)).join(' / ');
 }
 
 function comingSoonMessage(language: UiLanguage, deviceType: DeviceType) {
@@ -432,6 +457,45 @@ function localizedCommandStatusMessage(language: UiLanguage, kind: CommandTermin
   return t(language, 'command_failed');
 }
 
+function defaultReadyMessage(language: UiLanguage) {
+  return language === 'zh'
+    ? '默认路径已载入：机械臂 -> 把红方块放到后侧安全区。'
+    : 'Default path loaded: Robot Arm -> move the red cube to the back safe zone.';
+}
+
+function readyMessageForPrompt(language: UiLanguage, deviceType: DeviceType, prompt: string) {
+  const firstStarter = starterPromptsForDevice(deviceType, language)[0];
+  return prompt.trim() === firstStarter || deviceType === 'robot_arm' && prompt.trim() === getLocalizedPrompt(getScenarioForProfile('virtual-robot-arm', 'safe'), language).trim()
+    ? defaultReadyMessage(language)
+    : t(language, 'command_waiting');
+}
+
+function localWorkspaceRunResult(result: 'pass' | 'blocked' | 'failed' | undefined, language: UiLanguage) {
+  if (!result) return t(language, 'not_run');
+  if (result === 'pass') return language === 'zh' ? '\u901a\u8fc7' : 'PASS';
+  if (result === 'blocked') return language === 'zh' ? '\u5df2\u62e6\u622a' : 'BLOCKED';
+  return language === 'zh' ? '\u5931\u8d25' : 'FAILED';
+}
+
+function starterPromptsForDevice(deviceType: DeviceType, language: UiLanguage) {
+  if (deviceType === 'robot_arm') {
+    return language === 'zh'
+      ? ['把红方块放到后侧安全区', '把红方块放到左侧安全区', '把红方块扔出桌面']
+      : ['Move the red cube to the back safe zone', 'Move the red cube to the left safe zone', 'Throw the red cube off the table'];
+  }
+  if (deviceType === 'smart_light') {
+    return language === 'zh'
+      ? ['打开智能灯', '把灯改成蓝色', '把灯调暗']
+      : ['Turn on the light', 'Set the light to blue', 'Dim the light'];
+  }
+  if (deviceType === 'camera_sensor') {
+    return language === 'zh'
+      ? ['拍一张照片', '扫描当前区域', '读取摄像头状态']
+      : ['Take a photo', 'Scan current area', 'Read camera status'];
+  }
+  return [];
+}
+
 function previewOriginFromState(deviceState: Record<string, unknown> | undefined, fallback: [number, number, number]): [number, number, number] {
   const visual = deviceState?.visual_state as Record<string, unknown> | undefined;
   const grip = Array.isArray(visual?.gripper_position)
@@ -443,6 +507,40 @@ function previewOriginFromState(deviceState: Record<string, unknown> | undefined
         : null;
   if (!grip) return fallback;
   return [grip[0], 0, grip[2]];
+}
+
+function buildVisiblePreviewTask(profileId: string, deviceType: DeviceType, prompt: string, language: UiLanguage) {
+  if (deviceType !== 'robot_arm') return null;
+  const trimmed = prompt.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed.toLowerCase();
+  const mentionsObject =
+    normalized.includes('cube') ||
+    normalized.includes('block') ||
+    /方块|方塊/.test(trimmed);
+  const mentionsPlacement =
+    normalized.includes('safe zone') ||
+    normalized.includes('left') ||
+    normalized.includes('right') ||
+    normalized.includes('front') ||
+    normalized.includes('back') ||
+    normalized.includes('inspection') ||
+    /安全区|安全區|左侧|右侧|前侧|后侧|檢查區|检查区|放到|移动到|搬到/.test(trimmed);
+  const mentionsThrow =
+    normalized.includes('throw') ||
+    /扔|抛/.test(trimmed);
+
+  if (!mentionsObject || !mentionsPlacement || mentionsThrow) return null;
+
+  const previewCompile = tryCompilePromptToTaskDSL(trimmed, 'robot_arm', language);
+  if (!previewCompile.ok || !previewCompile.task) return null;
+
+  return {
+    profileId,
+    prompt: trimmed,
+    task: previewCompile.task
+  };
 }
 
 function BottomConsole({
@@ -490,7 +588,7 @@ function BottomConsole({
   const commands = labReport?.adapter_commands ?? liveAdapterCommands;
   const logs = labReport?.execution_timeline ?? [];
   return (
-    <div className="h-[180px] max-h-[20vh] border-t border-border-panel bg-[#15171A] text-text-primary">
+    <div className="h-[144px] max-h-[15vh] border-t border-border-panel bg-[#15171A] text-text-primary">
       <div className="flex h-6 items-end border-b border-border-panel bg-bg-panel px-2">
         {tabs.map((tab, index) => (
           <div key={tab} className={`flex h-full items-center border-b px-3 text-[11px] font-semibold ${index === 0 ? 'border-selected text-text-primary' : 'border-transparent text-text-secondary'}`}>
@@ -583,7 +681,14 @@ function AICommandTerminal({
   prompt,
   running,
   status,
+  runTargetLabel,
+  runTargetRunnable,
+  runTargetDeviceType,
+  starterPrompts,
+  quickStartPaths,
+  activeQuickStart,
   onPromptChange,
+  onQuickStart,
   onRun,
   onStop
 }: {
@@ -591,10 +696,18 @@ function AICommandTerminal({
   prompt: string;
   running: boolean;
   status: CommandTerminalStatus;
+  runTargetLabel: string;
+  runTargetRunnable: boolean;
+  runTargetDeviceType: DeviceType;
+  starterPrompts: string[];
+  quickStartPaths: QuickStartPath[];
+  activeQuickStart: QuickStartPath | null;
   onPromptChange: (prompt: string) => void;
+  onQuickStart: (path: QuickStartPath) => void;
   onRun: () => void;
   onStop: () => void;
-}) {
+  }) {
+    const supportSummary = publicAlphaSupportLabel(language);
   const labels = {
     label: t(language, 'ai_command'),
     placeholder: t(language, 'prompt_placeholder'),
@@ -624,57 +737,310 @@ function AICommandTerminal({
       : status.kind === 'proposed_plan' ? t(language, 'command_proposed')
       : status.kind === 'coming_soon' ? t(language, 'command_coming_soon')
       : t(language, 'command_failed');
+  const activeQuickStartIndex = activeQuickStart ? quickStartPaths.findIndex((path) => path.id === activeQuickStart.id) : -1;
+  const nextQuickStart = activeQuickStartIndex >= 0 && activeQuickStartIndex < quickStartPaths.length - 1
+    ? quickStartPaths[activeQuickStartIndex + 1]
+    : null;
+  const primaryStarter = starterPrompts[0] ?? '';
+  const guidedPlaceholder = primaryStarter
+    ? `${primaryStarter} ${language === 'zh' ? '·' : '·'} ${t(language, 'command_result_workspace_above')}`
+    : labels.placeholder;
+  const observationHint =
+    status.kind === 'running'
+      ? t(language, 'command_observe_running')
+      : status.kind === 'completed'
+        ? t(language, 'command_observe_completed')
+        : status.kind === 'blocked' || status.kind === 'failed'
+          ? t(language, 'command_observe_blocked')
+          : t(language, 'command_observe_ready');
 
   const submit = () => {
-    if (!running) onRun();
+    if (!running && runTargetRunnable) onRun();
   };
 
   return (
-    <section className="flex h-14 flex-none items-center gap-3 border-b border-[#23262B] border-t border-[#313338] bg-[#1E1F22] px-3">
-      <div className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{labels.label}</div>
-      <textarea
-        value={prompt}
-        onChange={(event) => onPromptChange(event.target.value)}
-        onKeyDown={(event) => {
-          if ((event.key === 'Enter' && event.ctrlKey) || (event.key === 'Enter' && !event.shiftKey)) {
-            event.preventDefault();
-            submit();
-          }
-        }}
-        spellCheck={false}
-        rows={1}
-        className="h-10 max-h-12 flex-1 resize-none rounded-[3px] border border-[#313338] bg-[#111214] px-3 py-2 font-mono text-[12px] leading-5 text-[#E6EAF0] outline-none placeholder:text-[#5F6670] focus:border-[#0284C7]"
-        placeholder={labels.placeholder}
-      />
-      <button
-        type="button"
-        disabled={running}
-        onClick={submit}
-        className="h-10 rounded-[3px] border border-[#075985] bg-[#0066CC] px-4 text-[12px] font-medium text-white hover:bg-[#0A74DA] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {running ? labels.running : labels.run}
-      </button>
-      <button
-        type="button"
-        onClick={onStop}
-        className="h-10 rounded-[3px] border border-[#5A2B2B] px-3 text-[12px] font-medium text-[#F87171] hover:bg-[#2A1111]"
-      >
-        {labels.stop}
-      </button>
-      <button
-        type="button"
-        disabled
-        className="h-10 rounded-[3px] border border-border-panel px-3 text-[12px] font-medium text-text-secondary opacity-40"
-      >
-        {labels.validate}
-      </button>
-      <div className="min-w-[220px] max-w-[360px] shrink-0">
-        <div className={`inline-flex h-6 items-center rounded-[3px] border px-2 text-[10px] font-bold uppercase tracking-wide ${badgeClass}`}>{badgeText}</div>
-        <div className="mt-0.5 truncate text-[10px] text-text-secondary" title={status.message}>{status.message}</div>
+    <section className="flex flex-none flex-col gap-1.5 border-b border-[#23262B] border-t border-[#313338] bg-[#1E1F22] px-3 py-1.5">
+      <div className="flex items-center gap-2.5">
+        <div className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{labels.label}</div>
+        <textarea
+          value={prompt}
+          onChange={(event) => onPromptChange(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.key === 'Enter' && event.ctrlKey) || (event.key === 'Enter' && !event.shiftKey)) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          spellCheck={false}
+          rows={1}
+          className="h-9 max-h-10 flex-1 resize-none rounded-[3px] border border-[#313338] bg-[#111214] px-3 py-2 font-mono text-[12px] leading-5 text-[#E6EAF0] outline-none placeholder:text-[#5F6670] focus:border-[#0284C7]"
+          placeholder={guidedPlaceholder}
+        />
+        <button
+          type="button"
+          disabled={running || !runTargetRunnable}
+          onClick={submit}
+          className="h-9 rounded-[3px] border border-[#075985] bg-[#0066CC] px-4 text-[12px] font-medium text-white hover:bg-[#0A74DA] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {running ? labels.running : labels.run}
+        </button>
+        <button
+          type="button"
+          onClick={onStop}
+          className="h-9 rounded-[3px] border border-[#5A2B2B] px-3 text-[12px] font-medium text-[#F87171] hover:bg-[#2A1111]"
+        >
+          {labels.stop}
+        </button>
+        <button
+          type="button"
+          disabled
+          className="h-9 rounded-[3px] border border-border-panel px-3 text-[12px] font-medium text-text-secondary opacity-40"
+        >
+          {labels.validate}
+        </button>
+        <div className="min-w-[170px] max-w-[280px] shrink-0">
+          <div className={`inline-flex h-6 items-center rounded-[3px] border px-2 text-[10px] font-bold uppercase tracking-wide ${badgeClass}`}>{badgeText}</div>
+          <div className="mt-0.5 truncate text-[10px] text-text-secondary" title={status.message}>{status.message}</div>
+            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-text-muted">
+              <span className="font-semibold text-text-secondary">{t(language, 'active_workspace_device')}:</span>
+              <span className="truncate text-text-primary" title={runTargetLabel}>{runTargetLabel}</span>
+            <span className={`rounded-[3px] border px-1.5 py-0.5 font-bold ${runTargetRunnable ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'}`}>
+              {runTargetRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
+            </span>
+            </div>
+            <div className="mt-0.5 text-[10px] text-[#9BD4FF]">{t(language, 'workspace_selection_run_same')}</div>
+            {!runTargetRunnable && (
+              <div className="mt-0.5 text-[10px] text-[#FACC15]">
+                {t(language, 'welcome_protocol_only')}
+              </div>
+            )}
+            {!runTargetRunnable && (
+              <div className="mt-0.5 text-[10px] text-[#FACC15]">
+                {t(language, 'select_runnable_target_hint')}
+              </div>
+            )}
+          </div>
+        </div>
+      {!runTargetRunnable && (
+        <div className="ml-20 rounded-[3px] border border-[#713F12] bg-[#2A2112] px-3 py-2">
+          <div className="text-[11px] font-semibold text-[#FACC15]">{t(language, 'asset_only_runtime_title')}</div>
+          <div className="mt-1 text-[10px] leading-4 text-[#E5C76B]">{t(language, 'asset_only_runtime_detail')}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-[#D6B457]">{t(language, 'jump_to_runnable_path')}</span>
+            {quickStartPaths.map((path) => (
+              <button
+                key={`jump-${path.id}`}
+                type="button"
+                onClick={() => onQuickStart(path)}
+                className="rounded-[3px] border border-[#85611B] bg-[#33260F] px-2 py-1 text-[10px] font-semibold text-[#F8D77A] hover:bg-[#3F3013]"
+              >
+                {localizeDeviceType(language, path.deviceType)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="ml-20 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#8A94A0]">
+        <span>{t(language, 'command_target_notice')}</span>
+        <span className="text-[#4B5563]">|</span>
+        <span>{t(language, 'command_safe_blocked_notice')}</span>
+        <span className="text-[#4B5563]">|</span>
+        <span>{t(language, 'simulation_only')}</span>
+      </div>
+      <div className="ml-20 flex min-h-5 items-center gap-2">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'starter_commands')}</div>
+        <div className="custom-scrollbar flex flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden whitespace-nowrap">
+          {primaryStarter && (
+            <span className="shrink-0 text-[10px] text-[#5F6670]">{t(language, 'command_try_first')}</span>
+          )}
+          {starterPrompts.length > 0 ? starterPrompts.map((starter) => (
+            <button
+              key={`${runTargetDeviceType}-${starter}`}
+              type="button"
+              onClick={() => onPromptChange(starter)}
+              className="shrink-0 rounded-[3px] border border-border-panel bg-[#232529] px-2 py-[3px] text-[11px] font-medium text-text-primary hover:bg-[#2B2D31]"
+            >
+              {starter}
+            </button>
+          )) : (
+            <div className="pt-1 text-[11px] text-text-muted">{t(language, 'no_starter_commands')}</div>
+          )}
+        </div>
+      </div>
+      {activeQuickStart && (
+        <div className="ml-20 rounded-[3px] border border-border-panel bg-[#181A1D] px-3 py-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'guided_evaluation')}</span>
+            <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-2 py-0.5 text-[10px] font-semibold text-[#38BDF8]">
+              {t(language, 'current_path')}: {activeQuickStart.title}
+            </span>
+            <span className={`rounded-[3px] border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeClass}`}>
+              {badgeText}
+            </span>
+            <span className="text-[10px] text-[#C7D2DA] truncate">
+              <span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_expected')}:</span> {activeQuickStart.expected}
+            </span>
+              {nextQuickStart && (
+              <button
+                type="button"
+                onClick={() => onQuickStart(nextQuickStart)}
+                className="rounded-[3px] border border-border-panel bg-[#232529] px-2 py-1 text-[10px] font-semibold text-text-primary hover:bg-[#2B2D31]"
+              >
+                {t(language, 'try_next')}
+              </button>
+            )}
+          </div>
+          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-[9px] leading-4 text-[#A7B0BA]">
+            <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_proof')}:</span> {activeQuickStart.proof}</span>
+            <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_validates')}:</span> {activeQuickStart.validates}</span>
+            {nextQuickStart && (
+              <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'next_path')}:</span> {nextQuickStart.title}</span>
+            )}
+          </div>
+          {!running && status.kind === 'ready' && (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-semibold text-[#9BD4FF]">{t(language, 'quick_start_next_step')}</span>
+              <button
+                type="button"
+                onClick={onRun}
+                className="rounded-[3px] border border-[#075985] bg-[#0284C7] px-2 py-1 text-[10px] font-semibold text-white hover:bg-[#0369A1]"
+              >
+                {t(language, 'quick_start_run_now')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function WorkspaceDeviceStrip({
+  language,
+  devices,
+  selectedWorkspaceDeviceId,
+  onSelectWorkspaceDevice
+}: {
+  language: UiLanguage;
+  devices: WorkspaceDeviceRecord[];
+  selectedWorkspaceDeviceId: string | null;
+  onSelectWorkspaceDevice: (deviceId: string) => void;
+}) {
+  if (devices.length <= 1) return null;
+  return (
+    <section className="flex flex-none items-center gap-2 border-b border-[#23262B] bg-[#17191C] px-3 py-1">
+      <div className="w-24 shrink-0">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'workspace_devices')}</div>
+        <div className="mt-0.5 text-[9px] leading-4 text-[#6B7280]">{t(language, 'workspace_activate_device')}</div>
+      </div>
+      <div className="custom-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden">
+        {devices.map((device) => {
+          const selected = device.id === selectedWorkspaceDeviceId;
+          const runnable = isRunnableDeviceV01(device.deviceType);
+          return (
+            <button
+              key={device.id}
+              type="button"
+              onClick={() => onSelectWorkspaceDevice(device.id)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-[3px] border px-2 py-1 text-left ${selected ? 'border-[#075985] bg-[#0B2233] text-[#D8EEFF]' : 'border-border-panel bg-[#232529] text-text-primary hover:bg-[#2B2D31]'}`}
+            >
+              <span className="text-[11px] font-semibold">{localizeDisplayName(language, device.label)}</span>
+              <span className="rounded-[3px] border border-border-panel px-1 py-0.5 text-[9px] font-bold text-text-secondary">
+                {localizeDeviceType(language, device.deviceType)}
+              </span>
+              <span className={`rounded-[3px] border px-1 py-0.5 text-[9px] font-bold ${runnable ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'}`}>
+                {runnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
+              </span>
+              {selected && (
+                <span className="rounded-[3px] border border-[#075985] bg-[#12324B] px-1 py-0.5 text-[9px] font-bold text-[#7DD3FC]">
+                  {t(language, 'active_workspace_device')}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="hidden max-w-[240px] shrink-0 text-right text-[9px] leading-4 text-[#6B7280] xl:block">
+        {t(language, 'workspace_run_rule')}
       </div>
     </section>
   );
 }
+
+function FirstRunGuide({
+  language,
+  quickStartPaths,
+  onQuickStart,
+  onDismiss
+}: {
+  language: UiLanguage;
+  quickStartPaths: QuickStartPath[];
+  onQuickStart: (path: QuickStartPath) => void;
+  onDismiss: () => void;
+}) {
+  const recommendedPath = quickStartPaths[0] ?? null;
+  const secondaryPaths = quickStartPaths.slice(1);
+  return (
+    <section className="border-b border-border-panel bg-[#16181B] px-3 py-1">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex flex-1 flex-wrap items-center gap-1.5">
+          <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7DD3FC]">
+            {t(language, 'simulation_only')}
+          </span>
+          <span className="text-[11px] font-semibold text-text-primary">{t(language, 'welcome_title')}</span>
+          <span className="text-[10px] text-text-secondary">{t(language, 'welcome_step_1')}</span>
+          <span className="rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted">{t(language, 'welcome_step_2')}</span>
+          <span className="rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted">{t(language, 'welcome_step_3')}</span>
+          <span className="ml-1 text-[9px] font-semibold uppercase tracking-wide text-[#86868B]">{t(language, 'welcome_supported_now')}</span>
+          {publicAlphaRunnableDeviceTypes.map((type) => (
+            <span key={type} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] text-[#38BDF8]">
+              {localizeDeviceType(language, type)}
+            </span>
+          ))}
+          {secondaryPaths.map((path) => (
+            <button
+              key={`guide-${path.id}`}
+              type="button"
+              onClick={() => onQuickStart(path)}
+              className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] text-[#8ECBF5] hover:bg-[#0F2E45]"
+            >
+              {path.title}
+            </button>
+          ))}
+        </div>
+        {recommendedPath && (
+          <button
+            type="button"
+            onClick={() => onQuickStart(recommendedPath)}
+            className="shrink-0 rounded-[3px] border border-[#075985] bg-[#0284C7] px-2 py-1 text-[10px] font-semibold text-white hover:bg-[#0369A1]"
+            title={recommendedPath.prompt}
+          >
+            {t(language, 'quick_start_try_now')}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="shrink-0 rounded-[3px] border border-border-panel bg-[#232529] px-2.5 py-1 text-[10px] font-semibold text-text-secondary hover:bg-[#2B2D31]"
+        >
+          {t(language, 'dismiss')}
+        </button>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#9AA3AF]">
+        <span>{t(language, 'first_run_step_supported')}</span>
+        <span className="text-[#4B5563]">|</span>
+        <span>{t(language, 'first_run_step_command')}</span>
+        <span className="text-[#4B5563]">|</span>
+        <span>{t(language, 'first_run_step_target')}</span>
+        <span className="text-[#4B5563]">|</span>
+        <span>{t(language, 'first_run_step_safe')}</span>
+        <span className="text-[#4B5563]">|</span>
+        <span>{t(language, 'first_run_step_sim_only')}</span>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const workspaceFileInputRef = useRef<HTMLInputElement | null>(null);
   const [language, setLanguage] = useState<UiLanguage>('zh');
@@ -725,8 +1091,9 @@ export default function Home() {
   const [operatorNotice, setOperatorNotice] = useState<OperatorNotice | null>(null);
   const [commandStatus, setCommandStatus] = useState<CommandTerminalStatus>({
     kind: 'ready',
-    message: t('zh', 'command_waiting')
+    message: defaultReadyMessage('zh')
   });
+  const [showFirstRunGuide, setShowFirstRunGuide] = useState(false);
   const playbackTimersRef = useRef<number[]>([]);
   const liveRunTokenRef = useRef(0);
   const liveRunActiveRef = useRef(false);
@@ -749,6 +1116,50 @@ export default function Home() {
     const baseProfile = asset ? profileFromAsset(asset) : selectedWorkspaceProfile;
     return applyWorkspaceDeviceConfig(baseProfile, selectedWorkspaceDevice);
   }, [availableAssets, selectedProfile, selectedWorkspaceDevice, selectedWorkspaceProfile]);
+  const currentRunTargetLabel = useMemo(() => {
+    if (selectedWorkspaceAsset) return localizeDisplayName(language, selectedWorkspaceAsset.manifest.display_name);
+    if (selectedWorkspaceDevice) return localizeDisplayName(language, selectedWorkspaceDevice.label);
+    return localizeDeviceType(language, effectiveSelectedProfile.deviceMeta.device_type);
+  }, [effectiveSelectedProfile.deviceMeta.device_type, language, selectedWorkspaceAsset, selectedWorkspaceDevice]);
+  const currentRunTargetWorkspaceDeviceId = useMemo(
+    () => selectedWorkspaceDeviceId ?? workspaceDevices[0]?.id ?? null,
+    [selectedWorkspaceDeviceId, workspaceDevices]
+  );
+  const currentRunTargetRunnable = useMemo(
+    () => isRunnableDeviceV01(effectiveSelectedProfile.deviceMeta.device_type),
+    [effectiveSelectedProfile.deviceMeta.device_type]
+  );
+  const currentRunStarterPrompts = useMemo(
+    () => starterPromptsForDevice(effectiveSelectedProfile.deviceMeta.device_type, language),
+    [effectiveSelectedProfile.deviceMeta.device_type, language]
+  );
+  const quickStartPaths = useMemo<QuickStartPath[]>(() => (
+    language === 'zh'
+      ? [
+          { id: 'qs-robot-back', deviceType: 'robot_arm', title: '机械臂安全搬运', prompt: '把红方块放到后侧安全区', expected: '机械臂完成抓取搬运，日志和回放同步更新。', proof: '查看中间工作区动作、底部 Playback / Logs，以及右侧 Lab Report。', validates: '验证 AI 指令到安全门控、适配器命令、可回放机械臂执行的完整闭环。' },
+          { id: 'qs-light-blue', deviceType: 'smart_light', title: '智能灯颜色控制', prompt: '把灯改成蓝色', expected: '灯具亮起并切换为蓝色，命令状态显示智能灯运行。', proof: '查看工作区灯光颜色变化、当前运行目标，以及 Adapter Commands / Logs。', validates: '验证低风险设备可复用同一套运行时、适配器命令和审计链路。' },
+          { id: 'qs-camera-photo', deviceType: 'camera_sensor', title: '摄像头采集', prompt: '拍一张照片', expected: '摄像头出现采集反馈，日志记录 capture / read 路径。', proof: '查看工作区采集反馈、底部 Logs，以及右侧时间线 / Lab Report。', validates: '验证读操作设备也能走同一条 AI 指令、时间线与实验报告链路。' }
+        ]
+      : [
+          { id: 'qs-robot-back', deviceType: 'robot_arm', title: 'Robot Arm Safe Transfer', prompt: 'Move the red cube to the back safe zone', expected: 'The arm completes pick-and-place, and playback plus logs update.', proof: 'Check the center workspace motion, bottom Playback / Logs, and the Lab Report on the right.', validates: 'Validates the full AI command to safety gate to adapter command to replayable robot execution path.' },
+          { id: 'qs-light-blue', deviceType: 'smart_light', title: 'Smart Light Color Control', prompt: 'Set the light to blue', expected: 'The light turns on or changes to blue, and run status targets Smart Light.', proof: 'Check the workspace light change, current run target, and Adapter Commands / Logs.', validates: 'Validates that a low-risk device can reuse the same runtime, adapter command, and audit chain.' },
+          { id: 'qs-camera-photo', deviceType: 'camera_sensor', title: 'Camera Capture', prompt: 'Take a photo', expected: 'The camera shows capture feedback and logs a low-risk capture path.', proof: 'Check the workspace capture feedback, bottom Logs, and the timeline / Lab Report.', validates: 'Validates that read-oriented devices can use the same AI command, timeline, and lab report flow.' }
+        ]
+  ), [language]);
+  const activeQuickStart = useMemo(
+    () => quickStartPaths.find((path) => path.deviceType === effectiveSelectedProfile.deviceMeta.device_type && path.prompt === prompt.trim()) ?? null,
+    [effectiveSelectedProfile.deviceMeta.device_type, prompt, quickStartPaths]
+  );
+
+  useEffect(() => {
+    if (running || replayPlaying) return;
+    setRunPreviewTask(buildVisiblePreviewTask(
+      effectiveSelectedProfile.id,
+      effectiveSelectedProfile.deviceMeta.device_type,
+      prompt,
+      language
+    ));
+  }, [effectiveSelectedProfile.id, effectiveSelectedProfile.deviceMeta.device_type, language, prompt, replayPlaying, running]);
 
   const showNotice = useCallback((severity: OperatorNotice['severity'], message: string) => {
     setOperatorNotice({ id: Date.now(), severity, message });
@@ -826,16 +1237,26 @@ export default function Home() {
   const selectProfileAndScenario = useCallback((profileId: string, nextLanguage = language) => {
     const nextProfile = deviceProfiles.find((profile) => profile.id === profileId) ?? deviceProfiles[0];
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
+    const nextPrompt = isRunnableDeviceV01(nextProfile.deviceMeta.device_type)
+      ? getLocalizedPrompt(nextScenario, nextLanguage)
+      : comingSoonPrompt(nextLanguage, nextProfile.deviceMeta.device_type);
     setSelectedProfileId(nextProfile.id);
     setDeviceType(nextProfile.deviceMeta.device_type);
     setScenarioId(nextScenario.id);
-    setPrompt(isRunnableDeviceV01(nextProfile.deviceMeta.device_type)
-      ? getLocalizedPrompt(nextScenario, nextLanguage)
-      : comingSoonPrompt(nextLanguage, nextProfile.deviceMeta.device_type));
+    setPrompt(nextPrompt);
+    setCommandStatus({
+      kind: isRunnableDeviceV01(nextProfile.deviceMeta.device_type) ? 'ready' : 'coming_soon',
+      message: isRunnableDeviceV01(nextProfile.deviceMeta.device_type)
+        ? readyMessageForPrompt(nextLanguage, nextProfile.deviceMeta.device_type, nextPrompt)
+        : comingSoonMessage(nextLanguage, nextProfile.deviceMeta.device_type)
+    });
     setLabReport(null);
     setWorkspaceValidation(null);
     setSelectedSnapshot(null);
     setCurrentActionFrame(null);
+    setLivePlaybackEvents([]);
+    setLiveAdapterCommands([]);
+    setReplayIndex(0);
     setConsoleLogs(startupLogs(nextLanguage));
   }, [language]);
 
@@ -907,7 +1328,7 @@ export default function Home() {
     setOperatorNotice(null);
     setCommandStatus({
       kind: nextRunnable ? 'ready' : 'coming_soon',
-      message: nextRunnable ? t(workspace.language, 'command_waiting') : comingSoonMessage(workspace.language, nextProfile.deviceMeta.device_type)
+      message: nextRunnable ? readyMessageForPrompt(workspace.language, nextProfile.deviceMeta.device_type, workspace.prompt) : comingSoonMessage(workspace.language, nextProfile.deviceMeta.device_type)
     });
     setLivePlaybackEvents([]);
     setLiveAdapterCommands([]);
@@ -940,10 +1361,28 @@ export default function Home() {
   }, [applyWorkspaceFile]);
 
   useEffect(() => {
+    const isDefaultUntitledWorkspace =
+      !projectFilePath &&
+      workspaceDevices.length === 1 &&
+      workspaceDevices[0]?.deviceType === 'robot_arm';
+    const dismissed = window.localStorage.getItem(firstRunGuideStorageKey) === '1';
+    setShowFirstRunGuide(!dismissed && isDefaultUntitledWorkspace && !labReport);
+  }, [labReport, projectFilePath, workspaceDevices]);
+
+  useEffect(() => {
     const workspace = buildWorkspaceFile();
     window.localStorage.setItem(workspaceStorageKey, JSON.stringify(workspace));
     setAutosavedAt(workspace.saved_at);
   }, [buildWorkspaceFile]);
+
+  const dismissFirstRunGuide = useCallback(() => {
+    window.localStorage.setItem(firstRunGuideStorageKey, '1');
+    setShowFirstRunGuide(false);
+  }, []);
+
+  const reopenFirstRunGuide = useCallback(() => {
+    setShowFirstRunGuide(true);
+  }, []);
 
   const handleWorkspaceSelect = useCallback((deviceId: string) => {
     const workspaceDevice = workspaceDevices.find((device) => device.id === deviceId);
@@ -958,6 +1397,7 @@ export default function Home() {
     const nextDevice = createWorkspaceDevice(nextType, workspaceDevices.length, language);
     setWorkspaceDevices((devices) => [...devices, nextDevice]);
     setSelectedWorkspaceDeviceId(nextDevice.id);
+    setShowFirstRunGuide(false);
     selectProfileAndScenario(nextProfile.id);
     setConsoleLogs((logs) => [`[INFO] Added ${nextDevice.label} to workspace.`, ...logs]);
     showNotice('info', noticeMessage(language, `\u5df2\u6dfb\u52a0\u8bbe\u5907\uff1a${nextDevice.label}`, `Device added: ${nextDevice.label}`));
@@ -967,20 +1407,31 @@ export default function Home() {
     const asset = availableAssets.find((item) => item.manifest.asset_id === assetId);
     if (!asset) return;
     const nextDevice = createWorkspaceDevice(asset.manifest.device_type, workspaceDevices.length, language, asset);
-    setWorkspaceDevices((devices) => [...devices, nextDevice]);
-    setSelectedWorkspaceDeviceId(nextDevice.id);
     const baseProfile = getFirstProfileForType(asset.manifest.device_type);
     const baseScenario = getScenarioForProfile(baseProfile.id, 'safe');
+    const nextPrompt = isRunnableDeviceV01(asset.manifest.device_type)
+      ? getLocalizedPrompt(baseScenario, language)
+      : comingSoonPrompt(language, asset.manifest.device_type);
+    setWorkspaceDevices((devices) => [...devices, nextDevice]);
+    setSelectedWorkspaceDeviceId(nextDevice.id);
+    setShowFirstRunGuide(false);
     setDeviceType(asset.manifest.device_type);
     setSelectedProfileId(baseProfile.id);
     setScenarioId(baseScenario.id);
-    setPrompt(isRunnableDeviceV01(asset.manifest.device_type)
-      ? getLocalizedPrompt(baseScenario, language)
-      : comingSoonPrompt(language, asset.manifest.device_type));
+    setPrompt(nextPrompt);
+    setCommandStatus({
+      kind: isRunnableDeviceV01(asset.manifest.device_type) ? 'ready' : 'coming_soon',
+      message: isRunnableDeviceV01(asset.manifest.device_type)
+        ? readyMessageForPrompt(language, asset.manifest.device_type, nextPrompt)
+        : comingSoonMessage(language, asset.manifest.device_type)
+    });
     setLabReport(null);
     setWorkspaceValidation(null);
     setSelectedSnapshot(null);
     setCurrentActionFrame(null);
+    setLivePlaybackEvents([]);
+    setLiveAdapterCommands([]);
+    setReplayIndex(0);
     setConsoleLogs((logs) => [`[INFO] Added ${nextDevice.label} to workspace.`, ...logs]);
     showNotice('info', noticeMessage(language, `\u5df2\u6dfb\u52a0\u8d44\u4ea7\uff1a${nextDevice.label}`, `Asset added: ${nextDevice.label}`));
   }, [availableAssets, language, showNotice, workspaceDevices.length]);
@@ -1017,6 +1468,7 @@ export default function Home() {
       id: `${source.id}-copy-${Date.now()}`,
       label: `${source.label} Copy`,
       slot: workspaceDevices.length % workspaceSlots.length,
+      position: workspaceSlots[workspaceDevices.length % workspaceSlots.length] ?? workspaceSlots[0],
       config: { ...source.config, adapter_target_id: `${source.config.adapter_target_id}-copy` }
     };
     setWorkspaceDevices((devices) => [...devices, clone]);
@@ -1045,7 +1497,9 @@ export default function Home() {
       ...current,
       message: current.kind === 'blocked' || current.kind === 'ask_human' || current.kind === 'proposed_plan' || current.kind === 'coming_soon'
         ? current.message
-        : localizedCommandStatusMessage(nextLanguage, current.kind)
+        : current.kind === 'ready'
+          ? readyMessageForPrompt(nextLanguage, selectedProfile.deviceMeta.device_type, isRunnableDeviceV01(selectedProfile.deviceMeta.device_type) ? getLocalizedPrompt(selectedScenario, nextLanguage) : comingSoonPrompt(nextLanguage, selectedProfile.deviceMeta.device_type))
+          : localizedCommandStatusMessage(nextLanguage, current.kind)
     }));
     setPrompt(
       isRunnableDeviceV01(selectedProfile.deviceMeta.device_type)
@@ -1084,7 +1538,7 @@ export default function Home() {
     setPrompt(isRunnableDeviceV01(nextType) ? getLocalizedPrompt(nextScenario, language) : comingSoonPrompt(language, nextType));
     setCommandStatus({
       kind: isRunnableDeviceV01(nextType) ? 'ready' : 'coming_soon',
-      message: isRunnableDeviceV01(nextType) ? t(language, 'command_waiting') : comingSoonMessage(language, nextType)
+      message: isRunnableDeviceV01(nextType) ? readyMessageForPrompt(language, nextType, getLocalizedPrompt(nextScenario, language)) : comingSoonMessage(language, nextType)
     });
     setLabReport(null);
     setWorkspaceValidation(null);
@@ -1108,7 +1562,7 @@ export default function Home() {
     setPrompt(isRunnableDeviceV01(nextProfile.deviceMeta.device_type) ? getLocalizedPrompt(nextScenario, language) : comingSoonPrompt(language, nextProfile.deviceMeta.device_type));
     setCommandStatus({
       kind: isRunnableDeviceV01(nextProfile.deviceMeta.device_type) ? 'ready' : 'coming_soon',
-      message: isRunnableDeviceV01(nextProfile.deviceMeta.device_type) ? t(language, 'command_waiting') : comingSoonMessage(language, nextProfile.deviceMeta.device_type)
+      message: isRunnableDeviceV01(nextProfile.deviceMeta.device_type) ? readyMessageForPrompt(language, nextProfile.deviceMeta.device_type, getLocalizedPrompt(nextScenario, language)) : comingSoonMessage(language, nextProfile.deviceMeta.device_type)
     });
     setLabReport(null);
     setWorkspaceValidation(null);
@@ -1139,6 +1593,32 @@ export default function Home() {
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
   }, [language, selectedProfile.deviceMeta.device_type, selectedScenario]);
+
+  const handleQuickStart = useCallback((path: QuickStartPath) => {
+    consoleLogSessionRef.current += 1;
+    const nextProfile = getFirstProfileForType(path.deviceType);
+    const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
+    setOperatorNotice(null);
+    window.localStorage.setItem(firstRunGuideStorageKey, '1');
+    setShowFirstRunGuide(false);
+    syncWorkspaceSelectionForType(path.deviceType, nextProfile.id);
+    setDeviceType(path.deviceType);
+    setSelectedProfileId(nextProfile.id);
+    setScenarioId(nextScenario.id);
+    setPrompt(path.prompt);
+    setCommandStatus({
+      kind: 'ready',
+      message: readyMessageForPrompt(language, path.deviceType, path.prompt)
+    });
+    setLabReport(null);
+    setWorkspaceValidation(null);
+    setSelectedSnapshot(null);
+    setCurrentActionFrame(null);
+    setLivePlaybackEvents([]);
+    setLiveAdapterCommands([]);
+    setReplayIndex(0);
+    setConsoleLogs(startupLogs(language));
+  }, [language, syncWorkspaceSelectionForType]);
 
   const runScenario = useCallback(async () => {
     if (liveRunActiveRef.current) {
@@ -1188,11 +1668,18 @@ export default function Home() {
         : getScenarioForProfile(runProfile.id, selectedScenario.mode)
     );
     const runPrompt = prompt.trim() || getLocalizedPrompt(runScenarioDefinition, language);
-    const runnableInV01 = isRunnableDeviceV01(runProfile.deviceMeta.device_type);
     const usesAutonomyCore = runProfile.deviceMeta.device_type === 'robot_arm';
-    const lowRiskCompileResult = !usesAutonomyCore
-      ? tryCompilePromptToTaskDSL(runPrompt, runProfile.deviceMeta.device_type, language)
-      : null;
+    const runtimeKernelResult = compileOpenRealityRuntime({
+      userPrompt: runPrompt,
+      targetDeviceId: runProfile.deviceMeta.device_id,
+      manifest: buildManifestFromProfile(runProfile),
+      worldModel: buildWorldModelFromProfile(runProfile, {
+        targetDeviceId: runProfile.deviceMeta.device_id,
+        selected: Boolean(targetWorkspaceDeviceId),
+        status: targetWorkspaceDeviceId ? 'selected' : 'idle'
+      }),
+      locale: language
+    });
     const runTargetLabel = targetWorkspaceAsset
       ? localizeDisplayName(language, targetWorkspaceAsset.manifest.display_name)
       : localizeDeviceType(language, runProfile.deviceMeta.device_type);
@@ -1205,8 +1692,8 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     replaceLogs(baseRunLogs);
-    if (!runnableInV01) {
-      const message = comingSoonMessage(language, runProfile.deviceMeta.device_type);
+    if (runtimeKernelResult.status === 'not_runnable') {
+      const message = runtimeKernelResult.userFacingMessage || comingSoonMessage(language, runProfile.deviceMeta.device_type);
       setCommandStatus({ kind: 'coming_soon', message });
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
@@ -1217,19 +1704,59 @@ export default function Home() {
       liveRunActiveRef.current = false;
       return;
     }
-    if (!usesAutonomyCore) {
-      if (!lowRiskCompileResult?.ok || !lowRiskCompileResult.task) {
-        const message = lowRiskCompileResult?.message ?? noticeMessage(language, '未理解该设备指令。', 'Could not understand that device command.');
-        setCommandStatus({ kind: 'failed', message });
-        replaceLogs([
-          `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
-          `[WARN] Unsupported prompt for ${runProfile.deviceMeta.device_type}: ${runPrompt}`,
-          ...baseRunLogs
-        ]);
-        showNotice('warning', message);
-        liveRunActiveRef.current = false;
-        return;
+    if (runtimeKernelResult.status === 'unsupported') {
+      const message = runtimeKernelResult.userFacingMessage || noticeMessage(language, '当前设备不支持该任务。', 'The selected device does not support this task.');
+      setCommandStatus({ kind: 'failed', message });
+      replaceLogs([
+        `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
+        `[WARN] Unsupported task for ${runProfile.deviceMeta.device_type}: ${runPrompt}`,
+        ...baseRunLogs
+      ]);
+      showNotice('warning', message);
+      liveRunActiveRef.current = false;
+      return;
+    }
+    if (runtimeKernelResult.status === 'ambiguous') {
+      const message = runtimeKernelResult.userFacingMessage || noticeMessage(language, '任务不明确，请补充目标物体或区域。', 'The task is ambiguous. Clarify the object or target zone.');
+      setCommandStatus({ kind: 'ask_human', message });
+      replaceLogs([
+        `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
+        `[WARN] Ambiguous task for ${runProfile.deviceMeta.device_type}: ${runPrompt}`,
+        ...baseRunLogs
+      ]);
+      showNotice('warning', message);
+      liveRunActiveRef.current = false;
+      return;
+    }
+    if (runtimeKernelResult.status === 'ask_human') {
+      const message = runtimeKernelResult.userFacingMessage || noticeMessage(language, '该任务需要人工确认。', 'Human approval is required before continuing.');
+      if (runtimeKernelResult.taskDsl) {
+        setRunPreviewTask({ profileId: runProfile.id, prompt: runPrompt, task: runtimeKernelResult.taskDsl });
       }
+      setCommandStatus({ kind: 'ask_human', message });
+      replaceLogs([
+        `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
+        `[WARN] Runtime Kernel requires human approval: ${runtimeKernelResult.reason}`,
+        ...baseRunLogs
+      ]);
+      showNotice('warning', message);
+      liveRunActiveRef.current = false;
+      return;
+    }
+    if (runtimeKernelResult.status === 'blocked') {
+      const message = runtimeKernelResult.userFacingMessage || noticeMessage(language, '该任务已被安全治理器拦截。', 'The requested task was blocked by the Safety Governor.');
+      setCommandStatus({ kind: 'blocked', message });
+      replaceLogs([
+        `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
+        `[ERROR] Runtime Kernel blocked task: ${runtimeKernelResult.reason}`,
+        ...baseRunLogs
+      ]);
+      showNotice('error', message);
+      liveRunActiveRef.current = false;
+      return;
+    }
+    if (runtimeKernelResult.taskDsl) {
+      setRunPreviewTask({ profileId: runProfile.id, prompt: runPrompt, task: runtimeKernelResult.taskDsl });
     }
     setCommandStatus({
       kind: 'running',
@@ -1293,13 +1820,11 @@ export default function Home() {
           return;
         }
         setRunPreviewTask({ profileId: runProfile.id, prompt: runPrompt, task: autonomyResult.task_dsl });
-      } else {
-        setRunPreviewTask(null);
       }
       let lastFrameTimeline = 0;
       let liveFrameCount = 0;
 
-      const lowRiskTaskDsl = !usesAutonomyCore && lowRiskCompileResult?.ok ? lowRiskCompileResult.task : null;
+      const lowRiskTaskDsl = !usesAutonomyCore ? runtimeKernelResult.taskDsl ?? null : null;
 
       // Autonomy regression anchor: new LiveScenarioRunner().run(runProfile, runScenarioDefinition, runPrompt, autonomyResult?.task_dsl)
       for await (const event of new LiveScenarioRunner().run(runProfile, runScenarioDefinition, runPrompt, autonomyResult?.task_dsl ?? lowRiskTaskDsl ?? undefined)) {
@@ -1495,7 +2020,7 @@ export default function Home() {
     setSelectedWorkspaceDeviceId(nextDefaultDevice.id);
     setConsoleLogs(startupLogs(language));
     setOperatorNotice(null);
-    setCommandStatus({ kind: 'ready', message: t(language, 'command_waiting') });
+    setCommandStatus({ kind: 'ready', message: defaultReadyMessage(language) });
     setWorkspaceValidation(null);
     setLabReport(null);
     setSelectedSnapshot(null);
@@ -1725,7 +2250,7 @@ export default function Home() {
       assetId: device.assetId,
       deviceType: device.deviceType,
       state: activeState,
-      position: workspaceSlots[device.slot] ?? workspaceSlots[0],
+      position: device.position ?? workspaceSlots[device.slot] ?? workspaceSlots[0],
       modelAsset: profileForDevice.deviceMeta.model_asset
     };
   });
@@ -1752,8 +2277,8 @@ export default function Home() {
 
   return (
     <div className="industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary">
-      <div className="flex h-10 w-full select-none items-center border-b border-border-panel bg-bg-panel">
-        <div className="flex h-full w-[292px] shrink-0 items-center gap-2 border-r border-border-panel px-3 text-[11px] font-semibold text-text-primary">
+      <div className="flex h-9 w-full select-none items-center border-b border-border-panel bg-bg-panel">
+        <div className="flex h-full w-[264px] shrink-0 items-center gap-2 border-r border-border-panel px-3 text-[11px] font-semibold text-text-primary">
           <div className="min-w-0">
             <div className="text-[9px] font-bold uppercase tracking-wide text-text-muted-strong">{t(language, 'app_project')}</div>
             <div className="max-w-[160px] truncate text-[12px] font-semibold text-text-primary">{projectName}</div>
@@ -1786,9 +2311,12 @@ export default function Home() {
           <button type="button" title={t(language, 'app_restore')} onClick={restoreLastWorkspace} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31]">
             {t(language, 'app_restore')}
           </button>
+          <button type="button" title={t(language, 'app_quick_start')} onClick={reopenFirstRunGuide} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[12px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
+            {t(language, 'app_quick_start')}
+          </button>
           </div>
           <div className="flex h-full shrink-0 items-center gap-1.5 border-l border-border-panel px-3">
-          <button type="button" onClick={() => void runScenario()} disabled={running} className="h-7 rounded-[3px] border border-[#075985] bg-[#0284C7] px-3 text-[12px] font-bold text-white hover:bg-[#0369A1] disabled:opacity-40">
+          <button type="button" title={!currentRunTargetRunnable ? t(language, 'select_runnable_target_hint') : undefined} onClick={() => void runScenario()} disabled={running || !currentRunTargetRunnable} className="h-7 rounded-[3px] border border-[#075985] bg-[#0284C7] px-3 text-[12px] font-bold text-white hover:bg-[#0369A1] disabled:cursor-not-allowed disabled:opacity-40">
             {t(language, 'app_run')}
           </button>
           <span className={`h-7 rounded-[3px] border px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide ${labReport?.result === 'blocked' ? 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]' : replayPlaying ? 'border-[#92400E] bg-[#2A2112] text-[#F59E0B]' : labReport?.result === 'pass' ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-border-panel bg-[#232529] text-text-secondary'}`}>
@@ -1834,6 +2362,9 @@ export default function Home() {
           scenarios={scenarioOptions}
           selectedScenarioId={selectedScenario.id}
           deviceAssets={availableAssets}
+          selectedDeviceRunnable={isRunnableDeviceV01(deviceType)}
+          selectedWorkspaceDeviceLabel={selectedWorkspaceDevice ? localizeDisplayName(language, selectedWorkspaceDevice.label) : null}
+          selectedWorkspaceAssetId={selectedWorkspaceAsset?.manifest.asset_id ?? null}
           onLanguageChange={handleLanguageChange}
           onDeviceTypeChange={handleDeviceTypeChange}
           onProfileChange={handleProfileChange}
@@ -1841,6 +2372,14 @@ export default function Home() {
           onAddAsset={handleAddAsset}
         />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {showFirstRunGuide && (
+            <FirstRunGuide
+              language={language}
+              quickStartPaths={quickStartPaths}
+              onQuickStart={handleQuickStart}
+              onDismiss={dismissFirstRunGuide}
+            />
+          )}
           <VirtualDeviceStage
             language={language}
             profile={effectiveSelectedProfile}
@@ -1850,8 +2389,17 @@ export default function Home() {
             scenarioPreview={scenarioPreview}
             workspaceDevices={semanticWorkspaceDevices}
             selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
+            runTargetWorkspaceDeviceId={currentRunTargetWorkspaceDeviceId}
+            running={running}
             onDropDevice={handleDropDevice}
             onDropAsset={handleAddAsset}
+            onSelectWorkspaceDevice={handleWorkspaceSelect}
+            onMoveWorkspaceDevice={(deviceId, position) => updateWorkspaceDevice(deviceId, { position })}
+          />
+          <WorkspaceDeviceStrip
+            language={language}
+            devices={workspaceDevices}
+            selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
             onSelectWorkspaceDevice={handleWorkspaceSelect}
           />
           <AICommandTerminal
@@ -1859,7 +2407,14 @@ export default function Home() {
             prompt={prompt}
             running={running}
             status={commandStatus}
+            runTargetLabel={currentRunTargetLabel}
+            runTargetRunnable={currentRunTargetRunnable}
+            runTargetDeviceType={effectiveSelectedProfile.deviceMeta.device_type}
+            starterPrompts={currentRunStarterPrompts}
+            quickStartPaths={quickStartPaths}
+            activeQuickStart={activeQuickStart}
             onPromptChange={setPrompt}
+            onQuickStart={handleQuickStart}
             onRun={runScenario}
             onStop={stopRun}
           />
@@ -1889,6 +2444,7 @@ export default function Home() {
           selectedProfile={selectedWorkspaceDevice ? effectiveSelectedProfile : selectedWorkspaceProfile}
           selectedWorkspaceDevice={selectedWorkspaceDevice}
           selectedAsset={selectedWorkspaceDevice?.assetId ? availableAssets.find((asset) => asset.manifest.asset_id === selectedWorkspaceDevice.assetId) ?? null : null}
+          currentRunTargetLabel={currentRunTargetLabel}
           isRunnable={isRunnableDeviceV01(effectiveSelectedProfile.deviceMeta.device_type)}
           workspaceDeviceCount={workspaceDevices.length}
           workspaceValidation={workspaceValidation}

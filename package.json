@@ -1,15 +1,20 @@
 {
   "name": "open-reality-interface",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
+  "description": "Early desktop runtime prototype for physical AI simulation.",
+  "author": "ZqiEE",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev",
-    "desktop": "electron electron/main.cjs",
+    "desktop": "node scripts/start-electron.cjs",
+    "desktop:start": "node scripts/start-electron.cjs",
     "desktop:dev": "node scripts/build-electron.cjs && electron dist-electron/main.js",
     "desktop:build": "npm run build && node scripts/build-electron.cjs",
     "desktop:pack": "npm run desktop:build && node scripts/pack-electron.cjs",
     "desktop:prod": "npm run desktop:build && electron dist-electron/main.js --prod",
-    "build": "next build",
+    "desktop:smoke": "npm run desktop:build && electron dist-electron/main.js --prod --smoke-test",
+    "build": "node scripts/run-next-build.cjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:conformance": "node lib/conformance/runConformance.js",
@@ -17,13 +22,56 @@
     "test:virtual-lab": "node lib/virtual-lab/runVirtualLabTests.js",
     "test:desktop": "node lib/desktop/runDesktopTests.js",
     "test:assets": "node lib/assets/runAssetTests.js",
+    "test:release": "node lib/release/runReleaseTests.js",
+    "test:protocol": "node lib/protocol/runProtocolTests.js",
+    "protocol:export": "node scripts/export-protocol-catalog.cjs",
+    "protocol:consume-example": "npm run protocol:export && node scripts/build-protocol-consumer-example.cjs",
+    "protocol:adapter-intake-example": "npm run protocol:consume-example && node scripts/build-adapter-intake-example.cjs",
+    "protocol:adapter-sdk-example": "npm run protocol:adapter-intake-example && node scripts/build-adapter-sdk-example.cjs",
     "test:action-runtime": "node lib/action-runtime/runActionRuntimeTests.js",
     "test:playback": "node lib/playback/runPlaybackTests.js",
     "test:compiler": "node lib/compiler/runCompilerTests.js",
     "test:autonomy": "node lib/autonomy-core/runAutonomyCoreTests.js",
+    "test:open-reality-runtime": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-open-reality-runtime-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node ' + tmp + '/tests/open-reality-runtime/runtimeKernel.test.js', { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\"",
     "assets:real": "node scripts/convert-real-device-assets.mjs",
-    "verify": "npm run typecheck && npm run build && npm run test:conformance && npm run test:simulation && npm run test:virtual-lab && npm run test:desktop && npm run test:assets && npm run test:action-runtime && npm run test:playback && npm run test:compiler && npm run test:autonomy",
+    "verify": "npm run typecheck && npm run build && npm run test:conformance && npm run test:simulation && npm run test:virtual-lab && npm run test:desktop && npm run test:assets && npm run test:release && npm run test:protocol && npm run test:action-runtime && npm run test:playback && npm run test:compiler && npm run test:autonomy && npm run test:open-reality-runtime",
     "lint": "next lint"
+  },
+  "build": {
+    "appId": "studio.openreality.desktop",
+    "productName": "Open Reality Studio",
+    "icon": "assets/branding/open-reality-studio.ico",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron/**/*",
+      ".next-build/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
+    "win": {
+      "icon": "assets/branding/open-reality-studio.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Open-Reality-Studio-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    }
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",
@@ -41,6 +89,7 @@
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
     "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.3",
     "postcss": "^8.4.38",
