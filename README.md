@@ -22,6 +22,23 @@ Everything else is still scaffolded or **Coming Soon**.
 
 Same protocol for simulation and future real devices.
 
+## Open Reality Protocol v0.1
+
+The stable v0.2 contract layer now lives under lib/open-reality-protocol.
+
+It reuses the Runtime Kernel contracts and makes the public protocol boundary explicit:
+
+- DeviceManifest
+- CapabilityContract
+- WorldModel
+- Goal
+- Plan
+- SafetyEnvelope
+- TaskDSL
+- AdapterBoundary
+
+See [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md).
+
 Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4
 
 ## What This Alpha Does
@@ -141,6 +158,7 @@ Future real-device work must remain behind:
 ## Docs
 
 - [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md)
+- [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md)
 - [docs/ROADMAP.md](./docs/ROADMAP.md)
 - [docs/DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md)
 - [docs/VIRTUAL_LAB.md](./docs/VIRTUAL_LAB.md)
