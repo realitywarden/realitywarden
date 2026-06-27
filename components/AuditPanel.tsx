@@ -16,6 +16,7 @@ interface AuditPanelProps {
   selectedProfile: DeviceProfile;
   selectedWorkspaceDevice: WorkspaceDeviceRecord | null;
   selectedAsset: DeviceAsset | null;
+  currentRunTargetLabel: string;
   isRunnable: boolean;
   workspaceDeviceCount: number;
   workspaceValidation: WorkspaceValidationResult | null;
@@ -37,6 +38,7 @@ interface WorkspaceDeviceRecord {
   assetId?: string;
   deviceType: DeviceType;
   slot: number;
+  position?: [number, number, number];
   current_state?: Record<string, unknown>;
   last_run_result?: 'pass' | 'blocked' | 'failed';
   config: {
@@ -79,6 +81,11 @@ const text = {
     safetyPolicy: '\u5b89\u5168\u7b56\u7565',
     deploymentConfig: '\u90e8\u7f72\u914d\u7f6e',
     deviceName: '\u8bbe\u5907\u540d\u79f0',
+    layoutPosition: '\u5e03\u5c40\u4f4d\u7f6e',
+    layoutHint: '\u53ef\u5728\u5de5\u4f5c\u533a\u76f4\u63a5\u62d6\u52a8\uff0c\u4e5f\u53ef\u5728\u8fd9\u91cc\u7cbe\u786e\u5fae\u8c03 X / Z \u5750\u6807\u3002',
+    posX: 'X \u5750\u6807',
+    posY: 'Y \u5750\u6807',
+    posZ: 'Z \u5750\u6807',
     adapterTargetId: '\u9002\u914d\u5668\u76ee\u6807 ID',
     enabled: '\u542f\u7528\u8bbe\u5907',
     maxSpeed: '\u6700\u5927\u901f\u5ea6',
@@ -187,6 +194,11 @@ const text = {
     safetyPolicy: 'Safety Policy',
     deploymentConfig: 'Deployment Config',
     deviceName: 'Device Name',
+    layoutPosition: 'Layout Position',
+    layoutHint: 'Drag the device in the workspace, or fine-tune X / Z coordinates here.',
+    posX: 'Position X',
+    posY: 'Position Y',
+    posZ: 'Position Z',
     adapterTargetId: 'Adapter Target ID',
     enabled: 'Device Enabled',
     maxSpeed: 'Max Speed',
@@ -681,6 +693,7 @@ function DeviceInspector({
   workspaceValidation,
   selectedWorkspaceDevice,
   selectedAsset,
+  currentRunTargetLabel,
   onWorkspaceDeviceChange,
   onWorkspaceDeviceRemove,
   onWorkspaceDeviceDuplicate,
@@ -693,6 +706,7 @@ function DeviceInspector({
   workspaceValidation: WorkspaceValidationResult | null;
   selectedWorkspaceDevice: WorkspaceDeviceRecord | null;
   selectedAsset: DeviceAsset | null;
+  currentRunTargetLabel: string;
   onWorkspaceDeviceChange: (deviceId: string, patch: Partial<WorkspaceDeviceRecord>) => void;
   onWorkspaceDeviceRemove: (deviceId: string) => void;
   onWorkspaceDeviceDuplicate: (deviceId: string) => void;
@@ -705,6 +719,20 @@ function DeviceInspector({
   const isRealModel = modelAsset?.source === 'open_source_robot_model' || modelAsset?.source === 'real_device_cad';
   const runtimeState = selectedWorkspaceDevice?.current_state ?? meta.runtime_state;
   const runtimeEntries = Object.entries(runtimeState).slice(0, 6);
+  const currentPosition = selectedWorkspaceDevice?.position ?? [0, 0, 0];
+
+  const updateLayoutPosition = (axis: 0 | 1 | 2, rawValue: string) => {
+    if (!selectedWorkspaceDevice) return;
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) return;
+    const nextPosition: [number, number, number] = [...currentPosition] as [number, number, number];
+    nextPosition[axis] = axis === 0
+      ? Math.min(workspace.x_max, Math.max(workspace.x_min, parsed))
+      : axis === 1
+        ? Math.min(workspace.y_max, Math.max(workspace.y_min, parsed))
+        : Math.min(workspace.z_max, Math.max(workspace.z_min, parsed));
+    onWorkspaceDeviceChange(selectedWorkspaceDevice.id, { position: nextPosition });
+  };
 
   return (
     <section className="border-b border-border-panel bg-bg-panel p-4">
@@ -725,10 +753,12 @@ function DeviceInspector({
         <InspectorGroup title={ti(language, 'inspector_overview')} defaultOpen>
           <KeyValueGrid rows={[
             [ti(language, 'device'), localizeDisplayName(language, selectedWorkspaceDevice?.label ?? localProfileName(profile, language))],
+            [ti(language, 'current_run_target'), currentRunTargetLabel],
             [ti(language, 'device_type'), meta.device_type],
             [ti(language, 'device_profile'), meta.profile_id],
             [ti(language, 'model'), meta.model],
             [ti(language, 'run_status'), isRunnable ? ti(language, 'runnable') : ti(language, 'not_runnable')],
+            [t.layoutPosition, `X ${currentPosition[0].toFixed(1)} / Z ${currentPosition[2].toFixed(1)}`],
             [ti(language, 'asset'), selectedAsset?.manifest.asset_id ?? 'virtual-profile']
           ]} />
         </InspectorGroup>
@@ -840,6 +870,48 @@ function DeviceInspector({
                 className="h-7 border border-[#E5E5EA] bg-white px-2 text-xs font-semibold normal-case tracking-normal text-[#1D1D1F] outline-none focus:border-[#0066CC] focus:ring-1 focus:ring-[#0066CC]"
               />
             </label>
+            <div className="grid gap-1">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.layoutPosition}</div>
+              <div className="text-[11px] leading-5 text-[#6B7280]">{t.layoutHint}</div>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+                  {t.posX}
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={workspace.x_min}
+                    max={workspace.x_max}
+                    value={currentPosition[0]}
+                    onChange={(event) => updateLayoutPosition(0, event.target.value)}
+                    className="h-7 border border-[#E5E5EA] bg-white px-2 font-mono text-xs normal-case tracking-normal text-[#1D1D1F] outline-none focus:border-[#0066CC] focus:ring-1 focus:ring-[#0066CC]"
+                  />
+                </label>
+                <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+                  {t.posY}
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={workspace.y_min}
+                    max={workspace.y_max}
+                    value={currentPosition[1]}
+                    onChange={(event) => updateLayoutPosition(1, event.target.value)}
+                    className="h-7 border border-[#E5E5EA] bg-white px-2 font-mono text-xs normal-case tracking-normal text-[#1D1D1F] outline-none focus:border-[#0066CC] focus:ring-1 focus:ring-[#0066CC]"
+                  />
+                </label>
+                <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+                  {t.posZ}
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={workspace.z_min}
+                    max={workspace.z_max}
+                    value={currentPosition[2]}
+                    onChange={(event) => updateLayoutPosition(2, event.target.value)}
+                    className="h-7 border border-[#E5E5EA] bg-white px-2 font-mono text-xs normal-case tracking-normal text-[#1D1D1F] outline-none focus:border-[#0066CC] focus:ring-1 focus:ring-[#0066CC]"
+                  />
+                </label>
+              </div>
+            </div>
             <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
               {t.adapterTargetId}
               <input
@@ -948,6 +1020,7 @@ export function AuditPanel({
   selectedProfile,
   selectedWorkspaceDevice,
   selectedAsset,
+  currentRunTargetLabel,
   isRunnable,
   workspaceDeviceCount,
   workspaceValidation,
@@ -971,7 +1044,7 @@ export function AuditPanel({
   }, [labReport?.lab_run_id, labReport?.state_snapshots, onSnapshotSelect]);
 
   return (
-    <aside className="custom-scrollbar flex h-full w-[336px] shrink-0 flex-col overflow-y-auto border-l border-border-panel bg-bg-panel">
+    <aside className="custom-scrollbar flex h-full w-[304px] shrink-0 flex-col overflow-y-auto border-l border-border-panel bg-bg-panel">
       <DeviceInspector
         language={language}
         profile={selectedProfile}
@@ -980,6 +1053,7 @@ export function AuditPanel({
         workspaceValidation={workspaceValidation}
         selectedWorkspaceDevice={selectedWorkspaceDevice}
         selectedAsset={selectedAsset}
+        currentRunTargetLabel={currentRunTargetLabel}
         onWorkspaceDeviceChange={onWorkspaceDeviceChange}
         onWorkspaceDeviceRemove={onWorkspaceDeviceRemove}
         onWorkspaceDeviceDuplicate={onWorkspaceDeviceDuplicate}

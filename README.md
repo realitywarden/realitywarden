@@ -22,20 +22,32 @@ Everything else is still scaffolded or **Coming Soon**.
 
 Same protocol for simulation and future real devices.
 
+If you are evaluating the product for the first time, start with [docs/EVALUATION_GUIDE.md](./docs/EVALUATION_GUIDE.md).
+
+If you want the Windows install-and-try path, use [docs/WINDOWS_TRIAL_GUIDE.md](./docs/WINDOWS_TRIAL_GUIDE.md).
+
+First-run workflow for Public Alpha:
+
+1. Stay on `robot_arm`, `smart_light`, or `camera_sensor`.
+2. Add or select the workspace device you want to run.
+3. Enter the task in **AI Command** below the workspace.
+4. Watch the workspace for motion or blocked state, then confirm details in the inspector and bottom console.
+5. Remember: this Public Alpha is **simulation-only**. Real device execution is not enabled.
+
 ## Open Reality Protocol v0.1
 
-The stable v0.2 contract layer now lives under lib/open-reality-protocol.
+The stable `v0.2` contract layer now lives under `lib/open-reality-protocol`.
 
 It reuses the Runtime Kernel contracts and makes the public protocol boundary explicit:
 
-- DeviceManifest
-- CapabilityContract
-- WorldModel
-- Goal
-- Plan
-- SafetyEnvelope
-- TaskDSL
-- AdapterBoundary
+- `DeviceManifest`
+- `CapabilityContract`
+- `WorldModel`
+- `Goal`
+- `Plan`
+- `SafetyEnvelope`
+- `TaskDSL`
+- `AdapterBoundary`
 
 See [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md).
 
@@ -49,6 +61,7 @@ Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/down
 - Runs Safety Runtime before simulated execution
 - Produces adapter commands, execution timeline, and Lab Report
 - Supports project/workspace state inside the desktop workbench
+- Can be packaged into a Windows desktop installer from the repository source tree
 
 ## What This Alpha Does Not Do
 
@@ -89,11 +102,43 @@ Run web development mode:
 npm run dev
 ```
 
-Run the desktop shell:
+Run the desktop shell in development mode:
 
 ```bash
 npm run desktop:dev
 ```
+
+Run the production shell from source after a production build:
+
+```bash
+npm run desktop:prod
+```
+
+Run a non-interactive desktop production smoke check:
+
+```bash
+npm run desktop:smoke
+```
+
+Create a Windows desktop installer:
+
+```bash
+npm run desktop:pack
+```
+
+The installer is written to:
+
+```text
+release/Open-Reality-Studio-<version>-Setup.exe
+```
+
+For the current Public Alpha build, the packaged installer path is:
+
+```text
+release/Open-Reality-Studio-0.1.1-Setup.exe
+```
+
+`npm run desktop:start` is a convenience script for local development. For repeatable evaluation, use `desktop:dev` or `desktop:prod` explicitly.
 
 Build the app:
 
@@ -111,6 +156,12 @@ Run verification:
 
 ```bash
 npm run verify
+```
+
+Run protocol validation:
+
+```bash
+npm run test:protocol
 ```
 
 ## Execution Model
@@ -157,8 +208,11 @@ Future real-device work must remain behind:
 
 ## Docs
 
+- [docs/EVALUATION_GUIDE.md](./docs/EVALUATION_GUIDE.md)
+- [docs/WINDOWS_TRIAL_GUIDE.md](./docs/WINDOWS_TRIAL_GUIDE.md)
 - [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md)
 - [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md)
+- [docs/PROTOCOL.md](./docs/PROTOCOL.md)
 - [docs/ROADMAP.md](./docs/ROADMAP.md)
 - [docs/DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md)
 - [docs/VIRTUAL_LAB.md](./docs/VIRTUAL_LAB.md)
