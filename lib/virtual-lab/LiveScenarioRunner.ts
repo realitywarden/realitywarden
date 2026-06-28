@@ -3,6 +3,8 @@ import type { AdapterCommand } from '@/lib/adapter/AdapterCommand';
 import { buildRobotArmActionPlan } from '@/lib/action-runtime/buildRobotArmActionPlan';
 import { DeviceActionRuntime } from '@/lib/action-runtime/DeviceActionRuntime';
 import { summarizeActionPlan } from '@/lib/action-runtime/ActionPlan';
+import type { OpenRealityRuntimeResult } from '@/lib/open-reality-runtime/types';
+import { buildExecutionLabReport } from '@/lib/reporting/buildLabReport';
 import type { ActionPlan } from '@/lib/action-runtime/ActionPlan';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import { compilePromptToTaskDSL } from '@/lib/compiler/mockTaskCompiler';
@@ -91,7 +93,13 @@ function planForCommand(
 }
 
 export class LiveScenarioRunner {
-  async *run(profile: DeviceProfile, scenario: DeviceScenario, promptOverride?: string, taskDslOverride?: TaskDSL): AsyncGenerator<LiveScenarioEvent> {
+  async *run(
+    profile: DeviceProfile,
+    scenario: DeviceScenario,
+    promptOverride?: string,
+    taskDslOverride?: TaskDSL,
+    runtimeResult?: OpenRealityRuntimeResult | null
+  ): AsyncGenerator<LiveScenarioEvent> {
     const prompt = promptOverride?.trim() || scenario.prompt;
     const instance = new VirtualDeviceInstance(`${profile.id}-${Date.now()}`, profile.deviceMeta, profile.geometry, scenario.initial_state);
     const deviceStateBefore = instance.getState();
@@ -230,21 +238,21 @@ export class LiveScenarioRunner {
     }
 
     const deviceStateAfter = result === 'blocked' ? deviceStateBefore : instance.getState();
-    const report: LabReport = {
-      lab_run_id: `lab-${Date.now()}`,
-      device_profile: profile.id,
-      scenario: scenario.id,
+    const report: LabReport = buildExecutionLabReport({
+      profile,
+      scenarioId: scenario.id,
       prompt,
-      task_dsl: taskDsl,
-      safety_report: safetyReport,
-      adapter_commands: adapterCommands,
-      action_plans: actionPlans.map(summarizeActionPlan),
-      device_state_before: deviceStateBefore,
-      device_state_after: deviceStateAfter,
-      execution_timeline: [...events, timeline('report', `Lab run finished with result=${result}.`, events.length + 1)],
-      state_snapshots: stateSnapshots,
-      result
-    };
+      taskDsl,
+      safetyReport,
+      adapterCommands,
+      actionPlans: actionPlans.map(summarizeActionPlan),
+      deviceStateBefore,
+      deviceStateAfter,
+      executionTimeline: [...events, timeline('report', `Lab run finished with result=${result}.`, events.length + 1)],
+      stateSnapshots,
+      result,
+      runtimeResult
+    });
 
     yield {
       kind: 'report',

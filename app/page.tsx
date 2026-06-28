@@ -18,6 +18,7 @@ import { buildManifestFromProfile } from '@/lib/open-reality-runtime/deviceManif
 import { compileOpenRealityRuntime } from '@/lib/open-reality-runtime/runtimeKernel';
 import type { OpenRealityRuntimeResult } from '@/lib/open-reality-runtime/types';
 import { buildWorldModelFromProfile } from '@/lib/open-reality-runtime/worldModel';
+import { buildAutonomyStopLabReport, buildRuntimeDecisionLabReport } from '@/lib/reporting/buildLabReport';
 import { PlaybackEngine } from '@/lib/action-runtime/PlaybackEngine';
 import type { PlaybackEvent } from '@/lib/action-runtime/PlaybackEngine';
 import { targetPosition } from '@/lib/action-runtime/TargetResolver';
@@ -1709,6 +1710,14 @@ export default function Home() {
       targetDeviceType: runProfile.deviceMeta.device_type
     });
     const baseRunLogs = startupLogs(language);
+    const publishRuntimeDecisionReport = (decision: OpenRealityRuntimeResult) => {
+      setLabReport(buildRuntimeDecisionLabReport({
+        profile: runProfile,
+        scenarioId: runScenarioDefinition.id,
+        prompt: runPrompt,
+        runtimeResult: decision
+      }));
+    };
     setLabReport(null);
     setWorkspaceValidation(null);
     setSelectedSnapshot(null);
@@ -1719,6 +1728,7 @@ export default function Home() {
     replaceLogs(baseRunLogs);
     if (runtimeKernelResult.status === 'not_runnable') {
       const message = runtimeKernelResult.userFacingMessage || comingSoonMessage(language, runProfile.deviceMeta.device_type);
+      publishRuntimeDecisionReport(runtimeKernelResult);
       setCommandStatus({ kind: 'coming_soon', message });
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
@@ -1731,6 +1741,7 @@ export default function Home() {
     }
     if (runtimeKernelResult.status === 'unsupported') {
       const message = runtimeKernelResult.userFacingMessage || noticeMessage(language, '当前设备不支持该任务。', 'The selected device does not support this task.');
+      publishRuntimeDecisionReport(runtimeKernelResult);
       setCommandStatus({ kind: 'failed', message });
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
@@ -1743,6 +1754,7 @@ export default function Home() {
     }
     if (runtimeKernelResult.status === 'ambiguous') {
       const message = runtimeKernelResult.userFacingMessage || noticeMessage(language, '任务不明确，请补充目标物体或区域。', 'The task is ambiguous. Clarify the object or target zone.');
+      publishRuntimeDecisionReport(runtimeKernelResult);
       setCommandStatus({ kind: 'ask_human', message });
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
@@ -1758,6 +1770,7 @@ export default function Home() {
       if (runtimeKernelResult.taskDsl) {
         setRunPreviewTask({ profileId: runProfile.id, prompt: runPrompt, task: runtimeKernelResult.taskDsl });
       }
+      publishRuntimeDecisionReport(runtimeKernelResult);
       setCommandStatus({ kind: 'ask_human', message });
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
@@ -1770,6 +1783,7 @@ export default function Home() {
     }
     if (runtimeKernelResult.status === 'blocked') {
       const message = runtimeKernelResult.userFacingMessage || noticeMessage(language, '该任务已被安全治理器拦截。', 'The requested task was blocked by the Safety Governor.');
+      publishRuntimeDecisionReport(runtimeKernelResult);
       setCommandStatus({ kind: 'blocked', message });
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
@@ -1819,6 +1833,18 @@ export default function Home() {
         ]);
         if (autonomyResult.status !== 'execute' || !autonomyResult.task_dsl) {
           const reason = autonomyResult.risk_result.reasons.join('; ') || autonomyResult.status;
+          setLabReport(buildAutonomyStopLabReport({
+            profile: runProfile,
+            scenarioId: runScenarioDefinition.id,
+            prompt: runPrompt,
+            runtimeResult: runtimeKernelResult,
+            autonomyStatus: autonomyResult.status === 'block'
+              ? 'block'
+              : autonomyResult.status === 'ask_human'
+                ? 'ask_human'
+                : 'proposed_plan',
+            reason
+          }));
           setCommandStatus({
             kind: autonomyResult.status === 'block'
               ? 'blocked'
@@ -1852,7 +1878,13 @@ export default function Home() {
       const lowRiskTaskDsl = !usesAutonomyCore ? runtimeKernelResult.taskDsl ?? null : null;
 
       // Autonomy regression anchor: new LiveScenarioRunner().run(runProfile, runScenarioDefinition, runPrompt, autonomyResult?.task_dsl)
-      for await (const event of new LiveScenarioRunner().run(runProfile, runScenarioDefinition, runPrompt, autonomyResult?.task_dsl ?? lowRiskTaskDsl ?? undefined)) {
+      for await (const event of new LiveScenarioRunner().run(
+        runProfile,
+        runScenarioDefinition,
+        runPrompt,
+        autonomyResult?.task_dsl ?? lowRiskTaskDsl ?? undefined,
+        runtimeKernelResult
+      )) {
         if (liveRunTokenRef.current !== runToken) break;
 
         if (event.kind === 'compile') {

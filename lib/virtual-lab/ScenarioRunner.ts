@@ -1,6 +1,7 @@
 import { compilePromptToTaskDSL } from '@/lib/compiler/mockTaskCompiler';
 import { DeviceActionRuntime } from '@/lib/action-runtime/DeviceActionRuntime';
 import { summarizeActionPlan } from '@/lib/action-runtime/ActionPlan';
+import { buildExecutionLabReport } from '@/lib/reporting/buildLabReport';
 import type { ActionPlan } from '@/lib/action-runtime/ActionPlan';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import { runSafetyRuntime } from '@/lib/safety/SafetyRuntime';
@@ -140,20 +141,19 @@ export class ScenarioRunner {
     const deviceStateAfter = result === 'blocked' ? deviceStateBefore : await adapter.getState();
     await adapter.disconnect();
 
-    return {
-      lab_run_id: `lab-${Date.now()}`,
-      device_profile: profile.id,
-      scenario: scenario.id,
+    return buildExecutionLabReport({
+      profile,
+      scenarioId: scenario.id,
       prompt,
-      task_dsl: taskDsl,
-      safety_report: safetyReport,
-      adapter_commands: adapterCommands,
-      action_plans: actionPlans.map(summarizeActionPlan),
-      device_state_before: deviceStateBefore,
-      device_state_after: deviceStateAfter,
-      execution_timeline: [...events, timeline('report', `Lab run finished with result=${result}.`, events.length + 1)],
-      state_snapshots: stateSnapshots,
+      taskDsl,
+      safetyReport,
+      adapterCommands,
+      actionPlans: actionPlans.map(summarizeActionPlan),
+      deviceStateBefore,
+      deviceStateAfter,
+      executionTimeline: [...events, timeline('report', `Lab run finished with result=${result}.`, events.length + 1)],
+      stateSnapshots,
       result
-    };
+    });
   }
 }

@@ -1,5 +1,6 @@
 import type { AdapterCommand } from '@/lib/adapter/AdapterCommand';
 import type { ActionPlanSummary } from '@/lib/action-runtime/ActionPlan';
+import type { Goal, RuntimeDecisionStatus, SafetyDecision } from '@/lib/open-reality-runtime/types';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import type { SafetyReport } from '@/types/safety';
 import type { TaskDSL } from '@/types/taskDsl';
@@ -16,6 +17,23 @@ export interface LabReport {
   device_profile: string;
   scenario: string;
   prompt: string;
+  status: RuntimeDecisionStatus | 'proposed_plan';
+  created_at: string;
+  target_device: {
+    device_id: string;
+    device_type: string;
+    profile_id: string;
+    display_name: string;
+  };
+  goal: Goal | null;
+  capabilities: {
+    required: string[];
+    missing: string[];
+  };
+  safety_decision: SafetyDecision;
+  execution_mode: 'simulation_only' | 'read_only' | 'ask_human' | 'blocked';
+  reason: string;
+  user_facing_message: string;
   task_dsl: TaskDSL;
   safety_report: SafetyReport;
   adapter_commands: AdapterCommand[];
