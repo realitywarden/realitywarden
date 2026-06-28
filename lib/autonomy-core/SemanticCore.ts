@@ -18,13 +18,13 @@ export class SemanticCore {
       ? 'outside table'
       : hasAny(normalized, ['glass cup area', 'near glass cup', 'glass cup', '\u73bb\u7483\u676f\u65c1', '\u73bb\u7483\u676f\u9644\u8fd1'])
         ? 'glass cup area'
-        : hasAny(normalized, ['back area', 'back side', 'rear area', 'rear side', '\u540e\u65b9', '\u540e\u4fa7', '\u540e\u9762'])
+        : hasAny(normalized, ['back safe zone', 'back zone', 'back area', 'back side', 'rear safe zone', 'rear zone', 'rear area', 'rear side', '\u540e\u65b9', '\u540e\u4fa7', '\u540e\u9762'])
           ? 'back area'
-          : hasAny(normalized, ['front area', 'front side', '\u524d\u65b9', '\u524d\u4fa7', '\u524d\u9762'])
+          : hasAny(normalized, ['front safe zone', 'front zone', 'front area', 'front side', '\u524d\u65b9', '\u524d\u4fa7', '\u524d\u9762'])
             ? 'front area'
-            : hasAny(normalized, ['left area', 'left side', '\u5de6\u4fa7', '\u5de6\u8fb9'])
+            : hasAny(normalized, ['left safe zone', 'left zone', 'left area', 'left side', '\u5de6\u4fa7', '\u5de6\u8fb9'])
               ? 'left area'
-              : hasAny(normalized, ['right area', 'right side', '\u53f3\u4fa7', '\u53f3\u8fb9'])
+              : hasAny(normalized, ['right safe zone', 'right zone', 'right area', 'right side', '\u53f3\u4fa7', '\u53f3\u8fb9'])
                 ? 'right area'
                 : null;
     const goal = hasAny(normalized, ['throw', '\u6254', '\u629b', '\u4e22'])
