@@ -68,6 +68,8 @@ Current built-in assets are simulation-only, read-only, or Coming Soon. Real dev
 
 Local third-party Reality Asset JSON files can be validated and imported into the in-memory catalog, but they still cannot enable real device execution.
 
+For asset authors, see [docs/REALITY_ASSET_DEVELOPER_KIT.md](./docs/REALITY_ASSET_DEVELOPER_KIT.md).
+
 Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4
 
 ## What This Alpha Does
