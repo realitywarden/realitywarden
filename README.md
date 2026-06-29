@@ -51,6 +51,21 @@ It reuses the Runtime Kernel contracts and makes the public protocol boundary ex
 
 See [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md).
 
+## Reality Asset Packages
+
+Open Reality now includes a local Reality Asset model under `lib/reality-assets`.
+
+Devices are represented as inspectable Reality Asset Packages:
+
+- Device Manifest
+- Capability Contract
+- World Model assumptions
+- Adapter Boundary
+- Example Prompts
+- Validation Rules
+
+Current built-in assets are simulation-only, read-only, or Coming Soon. Real device execution remains disabled.
+
 Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4
 
 ## What This Alpha Does

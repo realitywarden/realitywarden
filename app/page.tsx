@@ -6,6 +6,7 @@ import { AutonomyDecisionPanel } from '@/components/AutonomyDecisionPanel';
 import { AssetImportWizard } from '@/components/AssetImportWizard';
 import { LabConfigurator } from '@/components/LabConfigurator';
 import type { UiLanguage } from '@/components/LabConfigurator';
+import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
 import { VirtualDeviceStage } from '@/components/VirtualDeviceStage';
 import type { SemanticWorkspaceDevice } from '@/components/SemanticDeviceStage';
 import { builtInDeviceAssets } from '@/lib/assets/DeviceAssetRegistry';
@@ -18,6 +19,7 @@ import { buildManifestFromProfile } from '@/lib/open-reality-runtime/deviceManif
 import { compileOpenRealityRuntime } from '@/lib/open-reality-runtime/runtimeKernel';
 import type { OpenRealityRuntimeResult } from '@/lib/open-reality-runtime/types';
 import { buildWorldModelFromProfile } from '@/lib/open-reality-runtime/worldModel';
+import { getBuiltinRealityAssets } from '@/lib/reality-assets';
 import { buildAutonomyStopLabReport, buildRuntimeDecisionLabReport } from '@/lib/reporting/buildLabReport';
 import { PlaybackEngine } from '@/lib/action-runtime/PlaybackEngine';
 import type { PlaybackEvent } from '@/lib/action-runtime/PlaybackEngine';
@@ -159,6 +161,7 @@ interface QuickStartPath {
 
 const deviceTypes: DeviceType[] = ['robot_arm', 'mobile_robot', 'smart_light', 'camera_sensor', 'conveyor_belt', 'plc_cabinet', 'lab_instrument', 'warehouse_rack', 'sensor_box'];
 const publicAlphaRunnableDeviceTypes: DeviceType[] = ['robot_arm', 'smart_light', 'camera_sensor'];
+const builtinRealityAssets = getBuiltinRealityAssets();
 const workspaceStorageKey = 'open-reality-studio:last-workspace';
 const firstRunGuideStorageKey = 'open-reality-studio:first-run-guide-dismissed';
 const workspaceSlots: [number, number, number][] = [
@@ -2489,6 +2492,11 @@ export default function Home() {
                 targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
                 targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
                 decision={runtimeDecision}
+              />
+              <RealityAssetCatalog
+                language={language}
+                assets={builtinRealityAssets}
+                selectedAssetId={`openreality.${selectedWorkspaceDevice?.deviceType ?? effectiveSelectedProfile.deviceMeta.device_type}`}
               />
               <BottomConsole
                 language={language}
