@@ -1,4 +1,4 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-npm run desktop
+npm run desktop:start
