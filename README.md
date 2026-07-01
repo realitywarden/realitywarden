@@ -1,97 +1,24 @@
 # Open Reality Studio Desktop
 
-Open Reality Studio Desktop is an early desktop prototype for simulation-first AI device development.
+Open Reality Studio is a simulation-first desktop runtime for Physical AI workflows.
 
-It is a local virtual lab for building, simulating, testing, debugging, and validating AI-controlled device workflows before touching real hardware.
+AI should not touch the physical world directly. Open Reality lets AI understand goals, check device capabilities, simulate actions, and block unsafe commands before anything reaches reality.
 
 No hardware required.
 
-## Public Alpha Status
-
-This repository is currently a **simulation-only Public Alpha**.
-
-Current public alpha support is intentionally narrow:
-
-- `robot_arm`
-- `smart_light`
-- `camera_sensor`
-
-These three device paths are the only ones treated as runnable in the main desktop Run flow.
-
-Everything else is still scaffolded or **Coming Soon**.
-
 Same protocol for simulation and future real devices.
 
-If you are evaluating the product for the first time, start with [docs/EVALUATION_GUIDE.md](./docs/EVALUATION_GUIDE.md).
-
-If you want the Windows install-and-try path, use [docs/WINDOWS_TRIAL_GUIDE.md](./docs/WINDOWS_TRIAL_GUIDE.md).
-
-First-run workflow for Public Alpha:
-
-1. Stay on `robot_arm`, `smart_light`, or `camera_sensor`.
-2. Add or select the workspace device you want to run.
-3. Enter the task in **AI Command** below the workspace.
-4. Watch the workspace for motion or blocked state, then confirm details in the inspector and bottom console.
-5. Remember: this Public Alpha is **simulation-only**. Real device execution is not enabled.
-
-## Open Reality Protocol v0.1
-
-The stable `v0.2` contract layer now lives under `lib/open-reality-protocol`.
-
-It reuses the Runtime Kernel contracts and makes the public protocol boundary explicit:
-
-- `DeviceManifest`
-- `CapabilityContract`
-- `WorldModel`
-- `Goal`
-- `Plan`
-- `SafetyEnvelope`
-- `TaskDSL`
-- `AdapterBoundary`
-
-See [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md).
-
-## Reality Asset Packages
-
-Open Reality now includes a local Reality Asset model under `lib/reality-assets`.
-
-Devices are represented as inspectable Reality Asset Packages:
-
-- Device Manifest
-- Capability Contract
-- World Model assumptions
-- Adapter Boundary
-- Example Prompts
-- Validation Rules
-
-Current built-in assets are simulation-only, read-only, or Coming Soon. Real device execution remains disabled.
-
-Local third-party Reality Asset JSON files can be validated and imported into the in-memory catalog, but they still cannot enable real device execution.
-
-For asset authors, see [docs/REALITY_ASSET_DEVELOPER_KIT.md](./docs/REALITY_ASSET_DEVELOPER_KIT.md).
+Status: **Public Alpha** · **Simulation-first** · **No real device execution yet** · **Runtime Kernel** · **Reality Asset Platform** · **Developer Kit**
 
 Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4
 
-## What This Alpha Does
+## What You Can See Now
 
-- Runs a desktop virtual lab UI
-- Compiles prompts into safe simulated execution flows
-- Shows command-driven virtual-device playback
-- Runs Safety Runtime before simulated execution
-- Produces adapter commands, execution timeline, and Lab Report
-- Supports project/workspace state inside the desktop workbench
-- Can be packaged into a Windows desktop installer from the repository source tree
+- Safe command executes in simulation.
+- Unsafe command gets blocked before execution.
+- Unsupported or Coming Soon devices do not silently fall back to another device.
 
-## What This Alpha Does Not Do
-
-- No real device execution
-- No production hardware control
-- No certified industrial safety guarantee
-- No cloud runtime
-- No marketplace
-- No LocalRuntime / EdgeRuntime for real hardware yet
-
-## Supported Public Alpha Device Paths
+Runnable simulation paths are intentionally narrow:
 
 | Device Type | Main Run | Notes |
 | --- | --- | --- |
@@ -106,6 +33,12 @@ Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/down
 | `sensor_box` | No | Coming Soon |
 
 See [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md) for the exact support matrix.
+
+## Why This Matters
+
+AI agents are moving from chat boxes into the physical world. Direct control is dangerous: devices need manifests, capability contracts, safety governors, simulation, and audit logs before commands can reach real hardware.
+
+Open Reality is building that runtime layer. The current alpha is local, desktop-first, and simulation-only.
 
 ## Quick Start
 
@@ -126,6 +59,105 @@ Run the desktop shell in development mode:
 ```bash
 npm run desktop:dev
 ```
+
+Build and verify:
+
+```bash
+npm run typecheck
+npm run build
+npm run verify
+```
+
+First-run workflow:
+
+1. Stay on `robot_arm`, `smart_light`, or `camera_sensor`.
+2. Add or select the workspace device you want to run.
+3. Enter a task in **AI Command** below the workspace.
+4. Watch the simulation, blocked state, inspector, and bottom console.
+5. Remember: real device execution is not enabled.
+
+For a structured trial, see [docs/EVALUATION_GUIDE.md](./docs/EVALUATION_GUIDE.md) and [docs/WINDOWS_TRIAL_GUIDE.md](./docs/WINDOWS_TRIAL_GUIDE.md).
+
+## Reality Asset Developer Kit
+
+Reality Assets describe devices as inspectable packages:
+
+- Device Manifest
+- Capability Contract
+- World Model assumptions
+- Adapter Boundary
+- Example Prompts
+- Validation Rules
+
+Validate a local asset package:
+
+```bash
+npm run validate:reality-asset -- examples/reality-assets/templates/basic-device.asset.json
+```
+
+Start here:
+
+- [Reality Asset Developer Kit](./docs/REALITY_ASSET_DEVELOPER_KIT.md)
+- [Reality Asset Submission Guide](./docs/REALITY_ASSET_SUBMISSION.md)
+
+## Contribute
+
+- Star the repo if the Physical AI runtime direction is useful.
+- Try the demo and report where the workflow is unclear.
+- Submit a Reality Asset idea.
+- Open a device support request.
+- Build a third-party simulation-only Reality Asset Package.
+
+Use the GitHub issue templates for bugs, Reality Asset ideas, and device support requests.
+
+## Public Alpha Boundaries
+
+This repository is currently a **simulation-only Public Alpha**.
+
+- No real device execution.
+- No production hardware control.
+- No certified industrial safety guarantee.
+- Not all device families are runnable.
+- Coming Soon devices must not silently fall back to another device.
+- Future real device adapters must remain behind explicit safety and adapter boundaries.
+
+## Open Reality Protocol v0.1
+
+The stable `v0.2` contract layer now lives under `lib/open-reality-protocol`.
+
+It reuses the Runtime Kernel contracts and makes the public protocol boundary explicit:
+
+- `DeviceManifest`
+- `CapabilityContract`
+- `WorldModel`
+- `Goal`
+- `Plan`
+- `SafetyEnvelope`
+- `TaskDSL`
+- `AdapterBoundary`
+
+See [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md).
+
+## What This Alpha Does
+
+- Runs a desktop virtual lab UI
+- Compiles prompts into safe simulated execution flows
+- Shows command-driven virtual-device playback
+- Runs Safety Runtime before simulated execution
+- Produces adapter commands, execution timeline, and Lab Report
+- Supports project/workspace state inside the desktop workbench
+- Can be packaged into a Windows desktop installer from the repository source tree
+
+## What This Alpha Does Not Do
+
+- No real device execution
+- No production hardware control
+- No certified industrial safety guarantee
+- No cloud runtime
+- No marketplace
+- No LocalRuntime / EdgeRuntime for real hardware yet
+
+## Additional Commands
 
 Run the production shell from source after a production build:
 

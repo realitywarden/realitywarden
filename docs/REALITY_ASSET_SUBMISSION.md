@@ -1,0 +1,143 @@
+# Reality Asset Submission Guide
+
+Open Reality accepts Reality Asset submissions that help describe devices for simulation-first Physical AI workflows.
+
+This guide is for contributors who want to propose or submit a Reality Asset Package. It does not enable real device execution.
+
+## What Can Be Submitted
+
+Accepted submission types:
+
+- Simulation-only device asset.
+- Read-only sensor asset.
+- Coming Soon device proposal.
+- Low-risk actuator proposal with `realAdapterEnabled: false`.
+
+Good submissions explain what the device is, what it can do, which capabilities are supported, which prompts are safe, and which prompts must be unsupported or blocked.
+
+## What Cannot Be Submitted
+
+Do not submit assets that require or imply:
+
+- `realAdapterEnabled: true`.
+- High-risk hardware execution.
+- Weapons or weaponized behavior.
+- Drones with real flight enabled.
+- PLC write control enabled.
+- Heating, cutting, destructive, or hazardous equipment execution.
+- Assets that bypass `SafetyGovernor`.
+- Assets that silently fall back to another device.
+- Unauthorized vendor logos, trademarks, CAD files, or proprietary models.
+
+## Required Files
+
+A minimal Reality Asset Package should include:
+
+- `asset.manifest.json`
+- device manifest fields
+- capability contract fields
+- world model assumptions
+- adapter boundary fields
+- example prompts
+- validation metadata
+
+Use the template in:
+
+```text
+examples/reality-assets/templates/basic-device.asset.json
+```
+
+Validate locally:
+
+```bash
+npm run validate:reality-asset -- examples/reality-assets/templates/basic-device.asset.json
+```
+
+## Required Fields
+
+Every submitted asset must clearly state:
+
+- `assetId`
+- `displayName`
+- `deviceType`
+- support level
+- capability contract
+- adapter mode
+- `realAdapterEnabled: false`
+- example safe prompts
+- example unsupported prompts
+- example unsafe prompts where applicable
+- license/source notes
+
+If the asset cannot be validated locally, it is not ready for review.
+
+## Safety Checklist
+
+Before opening a PR or issue, confirm:
+
+- The asset is simulation-only, read-only, or Coming Soon.
+- No real device command is enabled.
+- No hidden fallback maps the asset to another runnable device.
+- Unsupported prompts fail clearly.
+- Unsafe prompts are blocked or rejected.
+- The adapter boundary is explicit.
+- The asset does not claim production readiness.
+- The asset does not include unauthorized brand material.
+
+## Review Rubric
+
+Maintainers will review:
+
+- Manifest completeness.
+- Capability contract clarity.
+- Adapter boundary safety.
+- Example prompt quality.
+- Unsupported and unsafe prompt coverage.
+- No real execution.
+- No silent fallback.
+- License/source clarity.
+
+## Rejection Reasons
+
+A submission may be rejected if it:
+
+- Enables or requests real hardware execution.
+- Marks a high-risk device as runnable.
+- Omits capability or adapter boundaries.
+- Uses unsafe fallback behavior.
+- Includes unauthorized vendor material.
+- Claims certified safety or production readiness.
+- Cannot pass local validation.
+
+## Example PR Description
+
+```md
+## Reality Asset
+
+Device type:
+Support level:
+Adapter mode:
+realAdapterEnabled: false
+
+## What works in simulation
+
+- ...
+
+## What is unsupported
+
+- ...
+
+## Unsafe prompts covered
+
+- ...
+
+## Validation
+
+- [ ] npm run validate:reality-asset -- path/to/asset.json
+- [ ] I understand Open Reality is simulation-first.
+- [ ] I am not enabling real device execution.
+```
+
+## Real Device Boundary
+
+Open Reality Studio Public Alpha is simulation-only. Reality Asset submissions cannot enable live hardware control. Future real device adapters must go through explicit adapter, safety, dry-run, and human-approval boundaries before they can be considered.
