@@ -12,7 +12,7 @@ No hardware required.
 
 Same protocol for simulation and future real devices.
 
-**Demo video:** [Robot Arm Golden Path](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
+**Demo video:** [Watch the Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 
 ## What it does now
 
