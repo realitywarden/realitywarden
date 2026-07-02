@@ -165,6 +165,26 @@ Start here:
 - [Reality Asset Developer Kit](./docs/REALITY_ASSET_DEVELOPER_KIT.md)
 - [Reality Asset Submission Guide](./docs/REALITY_ASSET_SUBMISSION.md)
 
+## Submit a Reality Asset
+
+Open Reality Studio now accepts community Reality Asset drafts.
+
+Describe a robot, drone, lab device, smart device, or physical AI system as a Reality Asset.
+
+Community assets are:
+
+- simulation-only by default
+- unverified by default
+- descriptive only
+- not real adapter code
+- not real hardware execution
+
+Start with:
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [SECURITY.md](./SECURITY.md)
+- [Community Reality Asset Drafts](./examples/community-assets/README.md)
+
 ## Contribute
 
 - Star the repo if the Physical AI runtime direction is useful.
