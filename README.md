@@ -1,22 +1,28 @@
-# Open Reality Studio Desktop
+# Open Reality Studio
 
-Open Reality Studio is a simulation-first desktop runtime for Physical AI workflows.
+## AI should not touch reality directly.
 
-AI should not touch the physical world directly. Open Reality lets AI understand goals, check device capabilities, simulate actions, and block unsafe commands before anything reaches reality.
+Open Reality Studio is the safety and accountability layer between AI agents and real-world devices.
+
+AI is moving from code into robots, drones, labs, factories, smart devices, and physical systems. Open Reality checks goals, device capabilities, world state, simulation results, safety decisions, and audit evidence before AI is allowed to act.
+
+**Status:** Public Alpha · Simulation-first · Real device execution disabled by default
 
 No hardware required.
 
 Same protocol for simulation and future real devices.
 
-Status: **Public Alpha** · **Simulation-first** · **No real device execution yet** · **Runtime Kernel** · **Reality Asset Platform** · **Developer Kit**
+**Demo video:** [Robot Arm Golden Path](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 
-Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4
+## What it does now
 
-## What You Can See Now
-
-- Safe command executes in simulation.
-- Unsafe command gets blocked before execution.
-- Unsupported or Coming Soon devices do not silently fall back to another device.
+- **Simulation-first Public Alpha** for local Physical AI workflows.
+- **Runtime Kernel** for goal parsing, capability checks, planning, and safety decisions.
+- **Reality Assets** for describing device capabilities, safety boundaries, adapter modes, and example prompts.
+- **Asset import and validation** for inspecting third-party device packages before they enter the workspace.
+- **Safety Governor** blocks unsafe, unsupported, ambiguous, or not-runnable requests before simulation dispatch.
+- **Audit-ready logs** record what was requested, what was checked, what was allowed or blocked, and why.
+- **Real device execution disabled by default**. No production hardware control is exposed in this alpha.
 
 Runnable simulation paths are intentionally narrow:
 
@@ -34,27 +40,43 @@ Runnable simulation paths are intentionally narrow:
 
 See [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md) for the exact support matrix.
 
-## Why This Matters
+## Why this matters
 
-AI agents are moving from chat boxes into the physical world. Direct control is dangerous: devices need manifests, capability contracts, safety governors, simulation, and audit logs before commands can reach real hardware.
+AI agents are leaving chat boxes and starting to reach for physical systems. Direct control is dangerous.
 
-Open Reality is building that runtime layer. The current alpha is local, desktop-first, and simulation-only.
+Robots, drones, labs, factories, smart devices, and physical infrastructure need a runtime boundary that checks:
 
-## Quick Start
+- what the AI is trying to do
+- whether the target device can actually do it
+- whether the world state makes the action safe
+- whether simulation says the action is valid
+- whether the decision is reviewable later
 
-Install dependencies:
+Open Reality Studio is the local desktop prototype for that boundary. It is not a hardware controller yet. It is a simulation-first safety and accountability layer.
+
+## Try it
+
+Clone and install:
 
 ```bash
+git clone https://github.com/ZqiEE/open-reality-studio.git
+cd open-reality-studio
 npm install
 ```
 
-Run web development mode:
+Run web mode:
 
 ```bash
 npm run dev
 ```
 
-Run the desktop shell in development mode:
+Open:
+
+```text
+http://localhost:3000
+```
+
+Run desktop mode:
 
 ```bash
 npm run desktop:dev
@@ -68,7 +90,50 @@ npm run build
 npm run verify
 ```
 
-First-run workflow:
+## Demo prompts
+
+Copy one of these into **AI Command**:
+
+```text
+Move the red cube to the back safe zone
+```
+
+```text
+Throw the red cube off the table
+```
+
+```text
+Set the light to blue
+```
+
+Expected behavior:
+
+- safe robot-arm requests simulate the action
+- unsafe robot-arm requests are blocked before execution
+- low-risk light and camera requests run as limited simulation paths
+- Coming Soon devices do not silently fall back to another device
+
+## Current boundary
+
+This repository is currently a **simulation-first Public Alpha**.
+
+- No production hardware control.
+- No real device execution by default.
+- No certified industrial safety guarantee.
+- Not all device families are runnable.
+- Coming Soon devices must not silently fall back to another device.
+- Future real device adapters must remain behind explicit safety and adapter boundaries.
+
+## Who this is for
+
+- AI builders designing agent-to-device workflows
+- robotics developers testing command and safety flows
+- labs validating procedures before touching equipment
+- hardware teams packaging device capabilities as Reality Assets
+- deployment operators checking simulation and audit outputs
+- safety reviewers who need to understand why a request was allowed or blocked
+
+## First-run workflow
 
 1. Stay on `robot_arm`, `smart_light`, or `camera_sensor`.
 2. Add or select the workspace device you want to run.
