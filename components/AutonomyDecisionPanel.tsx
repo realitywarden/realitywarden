@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { OpenRealityRuntimeResult } from '@/lib/open-reality-runtime/types';
+import type { OpenRealityRuntimeResult, RuntimeDecisionStatus } from '@/lib/open-reality-runtime/types';
 import { localizeCapability, localizeDeviceType } from '@/lib/i18n';
 import type { UiLanguage } from './LabConfigurator';
 
@@ -11,49 +11,34 @@ interface AutonomyDecisionPanelProps {
   decision: OpenRealityRuntimeResult | null;
 }
 
-const text = {
+type PipelineState = 'pending' | 'processing' | 'pass' | 'blocked' | 'warning';
+
+interface PipelineStep {
+  id: string;
+  label: string;
+  detail: string;
+  state: PipelineState;
+  evidence?: string;
+}
+
+const copy = {
   zh: {
-    title: '运行时决策',
-    empty: '点击运行后，这里会显示 Runtime Kernel 如何理解你的任务，以及为什么执行、拦截或拒绝。',
-    latest: '最新一次 Run 尝试',
-    userPrompt: '用户指令',
-    targetDevice: '目标设备',
-    runtimeStatus: '运行时状态',
-    goal: '目标',
-    requiredCapabilities: '所需能力',
-    missingCapabilities: '缺失能力',
-    safetyDecision: '安全决策',
-    executionMode: '执行模式',
-    reason: '原因',
-    message: '用户提示',
-    none: '无',
-    compiled: '已编译',
-    blocked: '已拦截',
-    unsupported: '不支持',
-    ambiguous: '不明确',
-    notRunnable: '不可运行',
-    askHuman: '需要人工确认',
-    simulationOnly: '仅仿真',
-    readOnly: '只读',
-    approvalRequired: '需要人工确认后继续',
-    blockedMode: '已阻止',
-    compiledRule: '只有 compiled 才会继续进入仿真执行链路。',
-    askHumanRule: 'ask_human 当前只提示人工确认，不执行设备动作。'
-  },
-  en: {
-    title: 'Autonomy Decision',
-    empty: 'After you click Run, this panel shows how the Runtime Kernel understood the task and why it executed, blocked, or rejected it.',
-    latest: 'Latest Run Attempt',
+    title: 'Runtime Governor',
+    subtitle: 'AI 指令拦截与仿真授权流水线',
+    boundary: 'AIRGAPPED · SIMULATION ONLY',
+    idle: '等待 AI Command。运行后这里会显示系统理解了什么、检查了什么、为什么允许或拦截。',
+    latest: '当前拦截记录',
     userPrompt: 'User Prompt',
     targetDevice: 'Target Device',
     runtimeStatus: 'Runtime Status',
+    executionMode: 'Execution Mode',
     goal: 'Goal',
     requiredCapabilities: 'Required Capabilities',
     missingCapabilities: 'Missing Capabilities',
-    safetyDecision: 'Safety Decision',
-    executionMode: 'Execution Mode',
     reason: 'Reason',
-    message: 'User-facing Message',
+    message: 'User Message',
+    payload: 'TaskDSL Preview',
+    emptyPayload: '非 compiled 状态不会生成可执行 TaskDSL。',
     none: 'None',
     compiled: 'Compiled',
     blocked: 'Blocked',
@@ -65,13 +50,72 @@ const text = {
     readOnly: 'Read Only',
     approvalRequired: 'Human Approval Required',
     blockedMode: 'Blocked',
-    compiledRule: 'Only compiled decisions continue into the simulation flow.',
-    askHumanRule: 'ask_human only asks for confirmation in v0.2; it does not execute the device.'
+    steps: {
+      intent: 'Intent Parsed',
+      capability: 'Capabilities Verified',
+      world: 'World State Checked',
+      simulation: 'Simulation Boundary',
+      safety: 'Safety Governor',
+      decision: 'Runtime Decision'
+    },
+    details: {
+      intent: '自然语言被转换为目标和风险提示。',
+      capability: '目标设备能力与任务需求对齐。',
+      world: '检查工作区、对象和安全区域。',
+      simulation: '确认当前只允许仿真或只读执行。',
+      safety: '安全治理器决定允许、阻止或要求人工确认。',
+      decision: '只有 compiled 才进入仿真执行链路。'
+    }
+  },
+  en: {
+    title: 'Runtime Governor',
+    subtitle: 'AI command interception and simulation authorization',
+    boundary: 'AIRGAPPED · SIMULATION ONLY',
+    idle: 'Waiting for AI Command. After Run, this panel shows what the system understood, what it checked, and why it allowed or blocked the request.',
+    latest: 'Current Interception Record',
+    userPrompt: 'User Prompt',
+    targetDevice: 'Target Device',
+    runtimeStatus: 'Runtime Status',
+    executionMode: 'Execution Mode',
+    goal: 'Goal',
+    requiredCapabilities: 'Required Capabilities',
+    missingCapabilities: 'Missing Capabilities',
+    reason: 'Reason',
+    message: 'User Message',
+    payload: 'TaskDSL Preview',
+    emptyPayload: 'Non-compiled decisions do not generate executable TaskDSL.',
+    none: 'None',
+    compiled: 'Compiled',
+    blocked: 'Blocked',
+    unsupported: 'Unsupported',
+    ambiguous: 'Ambiguous',
+    notRunnable: 'Not Runnable',
+    askHuman: 'Ask Human',
+    simulationOnly: 'Simulation Only',
+    readOnly: 'Read Only',
+    approvalRequired: 'Human Approval Required',
+    blockedMode: 'Blocked',
+    steps: {
+      intent: 'Intent Parsed',
+      capability: 'Capabilities Verified',
+      world: 'World State Checked',
+      simulation: 'Simulation Boundary',
+      safety: 'Safety Governor',
+      decision: 'Runtime Decision'
+    },
+    details: {
+      intent: 'Natural language is converted into a goal and risk hint.',
+      capability: 'Target device capabilities are checked against the task.',
+      world: 'Workspace, objects, and safety zones are evaluated.',
+      simulation: 'The request is constrained to simulation or read-only execution.',
+      safety: 'The Safety Governor allows, blocks, or asks for human approval.',
+      decision: 'Only compiled decisions continue into the simulation flow.'
+    }
   }
 } as const;
 
-function localStatus(language: UiLanguage, status: OpenRealityRuntimeResult['status']) {
-  const t = text[language];
+function localStatus(language: UiLanguage, status: RuntimeDecisionStatus) {
+  const t = copy[language];
   if (status === 'compiled') return t.compiled;
   if (status === 'blocked') return t.blocked;
   if (status === 'unsupported') return t.unsupported;
@@ -80,50 +124,8 @@ function localStatus(language: UiLanguage, status: OpenRealityRuntimeResult['sta
   return t.askHuman;
 }
 
-function localGoal(language: UiLanguage, goal: string) {
-  const zh: Record<string, string> = {
-    pick_and_place: '抓取并放置',
-    precision_place: '精确放置',
-    insert_object: '插入目标',
-    align_object: '对齐目标',
-    assemble_object: '组装目标',
-    capture_image: '采集图像',
-    scan_area: '扫描区域',
-    read_state: '读取状态',
-    inspect: '检查',
-    turn_on: '打开',
-    turn_off: '关闭',
-    set_color: '设置颜色',
-    set_brightness: '设置亮度',
-    set_speed: '设置速度',
-    set_temperature: '设置温度',
-    set_value: '设置值',
-    convey_item: '输送物料',
-    sort_item: '分拣物料',
-    route_item: '路由物料',
-    measure: '测量',
-    dispense: '分配',
-    heat: '加热',
-    cool: '冷却',
-    test: '测试',
-    return_home: '回到原点',
-    stop: '停止',
-    emergency_stop: '急停',
-    throw_object: '抛掷物体',
-    smash_object: '破坏物体',
-    move_outside_workspace: '移出工作区',
-    destructive_action: '破坏性动作',
-    unsafe_speed: '危险速度',
-    ambiguous_action: '不明确动作',
-    unsupported_goal: '不支持目标'
-  };
-
-  if (language === 'zh') return zh[goal] ?? goal;
-  return goal.replaceAll('_', ' ');
-}
-
 function localExecutionMode(language: UiLanguage, decision: OpenRealityRuntimeResult) {
-  const t = text[language];
+  const t = copy[language];
   if (decision.taskDsl?.humanApprovalRequired) return t.approvalRequired;
   if (decision.taskDsl?.executionMode === 'read_only') return t.readOnly;
   if (decision.taskDsl?.executionMode === 'simulation_only') return t.simulationOnly;
@@ -133,18 +135,85 @@ function localExecutionMode(language: UiLanguage, decision: OpenRealityRuntimeRe
   return t.blockedMode;
 }
 
-function badgeClass(status: OpenRealityRuntimeResult['status']) {
-  if (status === 'compiled') return 'border-[#064E3B] bg-[#10251D] text-[#34D399]';
+function statusClass(status: RuntimeDecisionStatus | null) {
+  if (status === 'compiled') return 'border-[#14532D] bg-[#10251D] text-[#86EFAC]';
   if (status === 'blocked') return 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]';
-  if (status === 'ask_human') return 'border-[#713F12] bg-[#2A2112] text-[#FACC15]';
-  return 'border-[#713F12] bg-[#2A2112] text-[#FACC15]';
+  if (status === 'ask_human' || status === 'ambiguous' || status === 'unsupported' || status === 'not_runnable') {
+    return 'border-[#713F12] bg-[#2A2112] text-[#FACC15]';
+  }
+  return 'border-[#313338] bg-[#181A1D] text-[#9AA3AF]';
+}
+
+function stepClass(state: PipelineState) {
+  if (state === 'pass') return 'border-[#14532D] bg-[#10251D] text-[#86EFAC]';
+  if (state === 'blocked') return 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]';
+  if (state === 'warning') return 'border-[#713F12] bg-[#2A2112] text-[#FACC15]';
+  if (state === 'processing') return 'border-[#075985] bg-[#0B2233] text-[#7DD3FC]';
+  return 'border-[#313338] bg-[#111214] text-[#6B7280]';
+}
+
+function stepMark(state: PipelineState) {
+  if (state === 'pass') return 'PASS';
+  if (state === 'blocked') return 'STOP';
+  if (state === 'warning') return 'HOLD';
+  if (state === 'processing') return 'RUN';
+  return 'WAIT';
+}
+
+function buildPipeline(language: UiLanguage, decision: OpenRealityRuntimeResult | null): PipelineStep[] {
+  const t = copy[language];
+  const base: PipelineStep[] = [
+    { id: 'intent', label: t.steps.intent, detail: t.details.intent, state: decision ? 'pass' : 'pending' },
+    { id: 'capability', label: t.steps.capability, detail: t.details.capability, state: decision ? 'pass' : 'pending' },
+    { id: 'world', label: t.steps.world, detail: t.details.world, state: decision ? 'pass' : 'pending' },
+    { id: 'simulation', label: t.steps.simulation, detail: t.details.simulation, state: decision ? 'pass' : 'pending' },
+    { id: 'safety', label: t.steps.safety, detail: t.details.safety, state: decision ? 'pass' : 'pending' },
+    { id: 'decision', label: t.steps.decision, detail: t.details.decision, state: decision ? 'processing' : 'pending' }
+  ];
+
+  if (!decision) return base;
+
+  if (decision.status === 'compiled') {
+    return base.map((step) => ({
+      ...step,
+      state: 'pass',
+      evidence: step.id === 'decision' ? decision.reason : undefined
+    }));
+  }
+
+  if (decision.status === 'blocked') {
+    return base.map((step) => {
+      if (step.id === 'safety' || step.id === 'decision') return { ...step, state: 'blocked', evidence: decision.reason };
+      return { ...step, state: 'pass' };
+    });
+  }
+
+  if (decision.status === 'unsupported' || decision.status === 'not_runnable') {
+    return base.map((step) => {
+      if (step.id === 'capability' || step.id === 'decision') return { ...step, state: 'blocked', evidence: decision.reason };
+      if (step.id === 'intent') return { ...step, state: 'pass' };
+      return { ...step, state: 'pending' };
+    });
+  }
+
+  if (decision.status === 'ambiguous') {
+    return base.map((step) => {
+      if (step.id === 'intent' || step.id === 'decision') return { ...step, state: 'warning', evidence: decision.reason };
+      return { ...step, state: 'pending' };
+    });
+  }
+
+  return base.map((step) => {
+    if (step.id === 'safety' || step.id === 'decision') return { ...step, state: 'warning', evidence: decision.reason };
+    return { ...step, state: 'pass' };
+  });
 }
 
 function kv(label: string, value: ReactNode) {
   return (
-    <div className="grid grid-cols-[108px_1fr] gap-x-3 gap-y-1 border-t border-white/5 py-2 first:border-t-0 first:pt-0">
+    <div className="grid grid-cols-[112px_1fr] gap-x-3 border-t border-white/5 py-2 first:border-t-0">
       <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{label}</div>
-      <div className="min-w-0 text-[11px] leading-5 text-[#E6EAF0]">{value}</div>
+      <div className="min-w-0 text-[11px] leading-5 text-[#DBDEE1]">{value}</div>
     </div>
   );
 }
@@ -156,52 +225,60 @@ export function AutonomyDecisionPanel({
   targetDeviceType,
   decision
 }: AutonomyDecisionPanelProps) {
-  const t = text[language];
+  const t = copy[language];
+  const pipeline = buildPipeline(language, decision);
+  const payloadPreview = decision?.taskDsl
+    ? JSON.stringify({
+        targetDeviceId: decision.taskDsl.targetDeviceId,
+        goalType: decision.taskDsl.goalType,
+        executionMode: decision.taskDsl.executionMode,
+        humanApprovalRequired: Boolean(decision.taskDsl.humanApprovalRequired),
+        steps: decision.taskDsl.steps.map((step) => ({
+          action: step.action,
+          target: step.target,
+          capabilityId: step.capabilityId
+        }))
+      }, null, 2)
+    : null;
 
   return (
-    <section className="ors-panel max-h-[260px] overflow-hidden px-3 py-2">
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.title}</div>
-          <div className="text-[10px] text-[#6B7280]">{t.latest}</div>
-        </div>
-        {decision && (
-          <span className={`rounded-[3px] border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${badgeClass(decision.status)}`}>
-            {localStatus(language, decision.status)}
+    <section className="flex h-full min-h-0 flex-col border-b border-border-panel bg-[#101114]">
+      <div className="border-b border-border-panel bg-[#15171A] px-3 py-2">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#7DD3FC]">{t.title}</div>
+            <div className="mt-0.5 text-[11px] leading-4 text-[#9AA3AF]">{t.subtitle}</div>
+          </div>
+          <span className="shrink-0 rounded-[3px] border border-[#713F12] bg-[#2A2112] px-2 py-1 font-mono text-[9px] font-bold tracking-wide text-[#FACC15]">
+            {t.boundary}
           </span>
-        )}
+        </div>
       </div>
 
-      {!decision ? (
-        <div className="rounded-[3px] border border-dashed border-[#313338] bg-[#101114]/90 px-3 py-2 text-[11px] leading-5 text-[#9AA3AF]">
-          {t.empty}
-        </div>
-      ) : (
-        <div className="custom-scrollbar max-h-[194px] overflow-y-auto rounded-[3px] border border-[#313338] bg-[#101114]/90 px-3 py-1.5">
-          {kv(t.userPrompt, <span className="font-mono">{prompt || '-'}</span>)}
-          {kv(t.targetDevice, (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">{targetDeviceLabel}</span>
-              <span className="rounded-[3px] border border-[#313338] bg-[#181A1D] px-1.5 py-0.5 text-[10px] text-[#9AA3AF]">
-                {localizeDeviceType(language, targetDeviceType)}
+      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-2">
+        {!decision ? (
+          <div className="mb-2 rounded-[3px] border border-dashed border-[#313338] bg-[#0B0C0E] px-3 py-2 text-[11px] leading-5 text-[#9AA3AF]">
+            {t.idle}
+          </div>
+        ) : (
+          <div className="mb-2 rounded-[3px] border border-[#313338] bg-[#0B0C0E] px-3 py-1">
+            {kv(t.userPrompt, <span className="font-mono text-[#E6EAF0]">{prompt || '-'}</span>)}
+            {kv(t.targetDevice, (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">{targetDeviceLabel}</span>
+                <span className="rounded-[3px] border border-[#313338] bg-[#181A1D] px-1.5 py-0.5 text-[10px] text-[#9AA3AF]">
+                  {localizeDeviceType(language, targetDeviceType)}
+                </span>
+              </div>
+            ))}
+            {kv(t.runtimeStatus, (
+              <span className={`inline-flex rounded-[3px] border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusClass(decision.status)}`}>
+                {localStatus(language, decision.status)}
               </span>
-            </div>
-          ))}
-          {kv(t.runtimeStatus, (
-            <span className={`inline-flex rounded-[3px] border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeClass(decision.status)}`}>
-              {localStatus(language, decision.status)}
-            </span>
-          ))}
-          {kv(t.goal, (
-            <div className="flex flex-wrap items-center gap-2">
-              <span>{localGoal(language, decision.goal.goalType)}</span>
-              <span className="rounded-[3px] border border-[#313338] bg-[#181A1D] px-1.5 py-0.5 font-mono text-[10px] text-[#9AA3AF]">
-                {decision.goal.goalType}
-              </span>
-            </div>
-          ))}
-          {kv(t.requiredCapabilities, (
-            decision.plan.requiredCapabilities.length > 0 ? (
+            ))}
+            {kv(t.goal, <span className="font-mono">{decision.goal.goalType}</span>)}
+            {kv(t.executionMode, localExecutionMode(language, decision))}
+            {kv(t.requiredCapabilities, decision.plan.requiredCapabilities.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {decision.plan.requiredCapabilities.map((capability) => (
                   <span key={capability} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[10px] text-[#9BD4FF]">
@@ -209,10 +286,8 @@ export function AutonomyDecisionPanel({
                   </span>
                 ))}
               </div>
-            ) : <span className="text-[#6B7280]">{t.none}</span>
-          ))}
-          {kv(t.missingCapabilities, (
-            decision.plan.missingCapabilities.length > 0 ? (
+            ) : <span className="text-[#6B7280]">{t.none}</span>)}
+            {kv(t.missingCapabilities, decision.plan.missingCapabilities.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {decision.plan.missingCapabilities.map((capability) => (
                   <span key={capability} className="rounded-[3px] border border-[#7F1D1D] bg-[#2B1116] px-1.5 py-0.5 text-[10px] text-[#FCA5A5]">
@@ -220,23 +295,44 @@ export function AutonomyDecisionPanel({
                   </span>
                 ))}
               </div>
-            ) : <span className="text-[#6B7280]">{t.none}</span>
-          ))}
-          {kv(t.safetyDecision, (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">{decision.safetyDecision.status}</span>
-              <span className="text-[#6B7280]">{decision.safetyDecision.reason}</span>
+            ) : <span className="text-[#6B7280]">{t.none}</span>)}
+            {kv(t.reason, <span className="font-mono text-[#9AA3AF]">{decision.reason}</span>)}
+            {kv(t.message, decision.userFacingMessage)}
+          </div>
+        )}
+
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.latest}</div>
+        <div className="grid gap-1.5">
+          {pipeline.map((step, index) => (
+            <div key={step.id} className={`rounded-[3px] border px-2.5 py-2 ${stepClass(step.state)}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-[#86868B]">{String(index + 1).padStart(2, '0')}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide">{step.label}</span>
+                  </div>
+                  <div className="mt-1 text-[10px] leading-4 text-[#9AA3AF]">{step.detail}</div>
+                  {step.evidence && (
+                    <div className="mt-1 border-l border-current/30 pl-2 font-mono text-[10px] leading-4 text-current">
+                      {step.evidence}
+                    </div>
+                  )}
+                </div>
+                <span className="shrink-0 font-mono text-[9px] font-bold">{stepMark(step.state)}</span>
+              </div>
             </div>
           ))}
-          {kv(t.executionMode, localExecutionMode(language, decision))}
-          {kv(t.reason, <span className="font-mono text-[#9AA3AF]">{decision.reason}</span>)}
-          {kv(t.message, decision.userFacingMessage)}
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/5 pt-2 text-[10px] leading-4 text-[#8A94A0]">
-            <span>{t.compiledRule}</span>
-            <span>{t.askHumanRule}</span>
-          </div>
         </div>
-      )}
+
+        <details className="mt-2 rounded-[3px] border border-[#313338] bg-[#0B0C0E]">
+          <summary className="cursor-pointer px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+            {t.payload}
+          </summary>
+          <pre className="custom-scrollbar max-h-40 overflow-auto border-t border-[#313338] p-2 font-mono text-[10px] leading-4 text-[#9AA3AF]">
+            {payloadPreview ?? t.emptyPayload}
+          </pre>
+        </details>
+      </div>
     </section>
   );
 }

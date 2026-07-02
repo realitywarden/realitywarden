@@ -782,23 +782,28 @@ function AICommandTerminal({
   };
 
   return (
-    <section className="ors-panel flex flex-none flex-col gap-1.5 px-3 py-2">
+    <section className="flex flex-none flex-col gap-1.5 border-t border-[#313338] border-b border-[#23262B] bg-[#15171A] px-3 py-2 shadow-[0_-12px_24px_rgba(0,0,0,0.22)]">
       <div className="flex items-center gap-2.5">
         <div className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{labels.label}</div>
-        <textarea
-          value={prompt}
-          onChange={(event) => onPromptChange(event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.key === 'Enter' && event.ctrlKey) || (event.key === 'Enter' && !event.shiftKey)) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-          spellCheck={false}
-          rows={1}
-          className="h-9 max-h-10 flex-1 resize-none rounded-[3px] border border-[#313338] bg-[#111214] px-3 py-2 font-mono text-[12px] leading-5 text-[#E6EAF0] outline-none placeholder:text-[#5F6670] focus:border-[#0284C7]"
-          placeholder={guidedPlaceholder}
-        />
+        <div className="flex h-9 min-w-0 flex-1 items-center rounded-[3px] border border-[#313338] bg-[#0B0C0E] focus-within:border-[#0284C7]">
+          <div className="shrink-0 border-r border-[#313338] px-2 font-mono text-[11px] font-bold text-[#7DD3FC]">
+            USER &gt;
+          </div>
+          <textarea
+            value={prompt}
+            onChange={(event) => onPromptChange(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' && event.ctrlKey) || (event.key === 'Enter' && !event.shiftKey)) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            spellCheck={false}
+            rows={1}
+            className="h-8 max-h-9 flex-1 resize-none border-0 bg-transparent px-3 py-1.5 font-mono text-[12px] leading-5 text-[#E6EAF0] outline-none placeholder:text-[#5F6670]"
+            placeholder={guidedPlaceholder}
+          />
+        </div>
         <button
           type="button"
           disabled={running || !runTargetRunnable}
@@ -1249,7 +1254,7 @@ export default function Home() {
   const [importedAssets, setImportedAssets] = useState<DeviceAsset[]>([]);
   const [assetImportOpen, setAssetImportOpen] = useState(false);
   const [selectedWorkspaceDeviceId, setSelectedWorkspaceDeviceId] = useState<string | null>(defaultWorkspaceDevice.id);
-  const [consoleLogs, setConsoleLogs] = useState<string[]>(startupLogs('zh'));
+  const [consoleLogs, setConsoleLogs] = useState<string[]>(startupLogs('en'));
   const [validationRunning, setValidationRunning] = useState(false);
   const [running, setRunning] = useState(false);
   const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
@@ -1259,7 +1264,7 @@ export default function Home() {
   const [operatorNotice, setOperatorNotice] = useState<OperatorNotice | null>(null);
   const [commandStatus, setCommandStatus] = useState<CommandTerminalStatus>({
     kind: 'ready',
-    message: defaultReadyMessage('zh')
+    message: defaultReadyMessage('en')
   });
   const [runtimeDecision, setRuntimeDecision] = useState<OpenRealityRuntimeResult | null>(null);
   const [runtimeDecisionContext, setRuntimeDecisionContext] = useState<{ prompt: string; targetDeviceLabel: string; targetDeviceType: DeviceType } | null>(null);
@@ -2631,17 +2636,6 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                <div className="pointer-events-none absolute right-3 top-3 z-30 w-[360px] max-w-[calc(100%-24px)]">
-                  <div className="pointer-events-auto">
-                    <AutonomyDecisionPanel
-                      language={language}
-                      prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
-                      targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
-                      targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
-                      decision={runtimeDecision}
-                    />
-                  </div>
-                </div>
                 <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 mx-auto w-[min(980px,calc(100%-32px))]">
                   <div className="pointer-events-auto">
                     <AICommandTerminal
@@ -2701,25 +2695,38 @@ export default function Home() {
             </>
           )}
         </div>
-        <AuditPanel
-          language={language}
-          selectedProfile={selectedWorkspaceDevice ? effectiveSelectedProfile : selectedWorkspaceProfile}
-          selectedWorkspaceDevice={selectedWorkspaceDevice}
-          selectedAsset={selectedWorkspaceDevice?.assetId ? availableAssets.find((asset) => asset.manifest.asset_id === selectedWorkspaceDevice.assetId) ?? null : null}
-          currentRunTargetLabel={currentRunTargetLabel}
-          isRunnable={isRunnableDeviceV01(effectiveSelectedProfile.deviceMeta.device_type)}
-          workspaceDeviceCount={workspaceDevices.length}
-          workspaceValidation={workspaceValidation}
-          onWorkspaceDeviceChange={updateWorkspaceDevice}
-          onWorkspaceDeviceRemove={removeWorkspaceDevice}
-          onWorkspaceDeviceDuplicate={duplicateWorkspaceDevice}
-          onSelectedAssetExport={exportSelectedAssetConfig}
-          labReport={labReport}
-          safetyReport={labReport?.safety_report ?? null}
-          selectedSnapshot={selectedSnapshot}
-          onSnapshotSelect={selectSnapshot}
-          onExportLabReport={() => void exportCurrentLabReport()}
-        />
+        <aside className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border-panel bg-bg-panel">
+          <div className="h-[42%] min-h-[300px] shrink-0 overflow-hidden">
+            <AutonomyDecisionPanel
+              language={language}
+              prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
+              targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
+              targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
+              decision={runtimeDecision}
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <AuditPanel
+              language={language}
+              selectedProfile={selectedWorkspaceDevice ? effectiveSelectedProfile : selectedWorkspaceProfile}
+              selectedWorkspaceDevice={selectedWorkspaceDevice}
+              selectedAsset={selectedWorkspaceDevice?.assetId ? availableAssets.find((asset) => asset.manifest.asset_id === selectedWorkspaceDevice.assetId) ?? null : null}
+              currentRunTargetLabel={currentRunTargetLabel}
+              isRunnable={isRunnableDeviceV01(effectiveSelectedProfile.deviceMeta.device_type)}
+              workspaceDeviceCount={workspaceDevices.length}
+              workspaceValidation={workspaceValidation}
+              onWorkspaceDeviceChange={updateWorkspaceDevice}
+              onWorkspaceDeviceRemove={removeWorkspaceDevice}
+              onWorkspaceDeviceDuplicate={duplicateWorkspaceDevice}
+              onSelectedAssetExport={exportSelectedAssetConfig}
+              labReport={labReport}
+              safetyReport={labReport?.safety_report ?? null}
+              selectedSnapshot={selectedSnapshot}
+              onSnapshotSelect={selectSnapshot}
+              onExportLabReport={() => void exportCurrentLabReport()}
+            />
+          </div>
+        </aside>
       </div>
       {assetImportOpen && (
         <AssetImportWizard

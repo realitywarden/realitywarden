@@ -96,6 +96,11 @@ export function VirtualDeviceStage({
       }}
     >
       <div className="relative min-h-0 flex-1">
+        <div className="pointer-events-none absolute inset-2 z-20 border border-[#FACC15]/10">
+          <div className="absolute left-2 top-2 rounded-[3px] border border-[#FACC15]/20 bg-black/30 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#FACC15]/75 backdrop-blur-sm">
+            Airgapped · Simulation Only
+          </div>
+        </div>
         <SemanticDeviceStage
           deviceType={profile.deviceMeta.device_type}
           state={replayState}

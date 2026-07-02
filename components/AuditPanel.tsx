@@ -1044,7 +1044,7 @@ export function AuditPanel({
   }, [labReport?.lab_run_id, labReport?.state_snapshots, onSnapshotSelect]);
 
   return (
-    <aside className="custom-scrollbar flex h-full w-[304px] shrink-0 flex-col overflow-y-auto border-l border-border-panel bg-bg-panel">
+    <aside className="custom-scrollbar flex h-full w-full shrink-0 flex-col overflow-y-auto bg-bg-panel">
       <DeviceInspector
         language={language}
         profile={selectedProfile}
