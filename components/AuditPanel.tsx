@@ -1038,11 +1038,6 @@ export function AuditPanel({
   const hasRun = Boolean(labReport);
   const blocked = safetyReport?.status === 'blocked';
 
-  useEffect(() => {
-    const snapshots = labReport?.state_snapshots ?? [];
-    onSnapshotSelect(snapshots.length > 0 ? snapshots[snapshots.length - 1] : null);
-  }, [labReport?.lab_run_id, labReport?.state_snapshots, onSnapshotSelect]);
-
   return (
     <aside className="custom-scrollbar flex h-full w-full shrink-0 flex-col overflow-y-auto bg-bg-panel">
       <DeviceInspector

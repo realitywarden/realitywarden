@@ -1241,6 +1241,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState(getLocalizedPrompt(selectedScenario, language));
   const [labReport, setLabReport] = useState<LabReport | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<TimelineStateSnapshot | null>(null);
+  const [snapshotManuallySelected, setSnapshotManuallySelected] = useState(false);
   const [currentActionFrame, setCurrentActionFrame] = useState<ActionFrame | null>(null);
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [replaySpeed, setReplaySpeed] = useState(1);
@@ -1326,6 +1327,8 @@ export default function Home() {
     () => quickStartPaths.find((path) => path.deviceType === effectiveSelectedProfile.deviceMeta.device_type && path.prompt === prompt.trim()) ?? null,
     [effectiveSelectedProfile.deviceMeta.device_type, prompt, quickStartPaths]
   );
+  const stageReplaySnapshot = snapshotManuallySelected ? selectedSnapshot : null;
+  const stageActionFrame = currentActionFrame ?? stageReplaySnapshot?.action_frame ?? null;
 
   const clearRuntimeDecision = useCallback(() => {
     setRuntimeDecision(null);
@@ -1371,6 +1374,7 @@ export default function Home() {
 
   const selectSnapshot = useCallback((snapshot: TimelineStateSnapshot | null) => {
     clearPlaybackTimers();
+    setSnapshotManuallySelected(Boolean(snapshot));
     setSelectedSnapshot(snapshot);
     setCurrentActionFrame(snapshot?.action_frame ?? null);
   }, [clearPlaybackTimers]);
@@ -1379,6 +1383,7 @@ export default function Home() {
     if (!event || !report) return;
     setReplayIndex(index);
     setCurrentActionFrame(event.frame);
+    setSnapshotManuallySelected(false);
     const snapshot = report.state_snapshots?.find((item) => item.command_id === event.command_id) ?? null;
     if (snapshot) setSelectedSnapshot(snapshot);
   }, []);
@@ -1391,6 +1396,7 @@ export default function Home() {
     if (events.length === 0) return;
     setRunning(true);
     setReplayPlaying(true);
+    setSnapshotManuallySelected(false);
     setSelectedSnapshot(report.state_snapshots?.[0] ?? null);
     const baseDuration = Math.max(1, events[events.length - 1].timeline_ms - events[startIndex].timeline_ms);
     const slowScale = slow ? Math.max(1, 1500 / baseDuration) : 1;
@@ -1812,6 +1818,7 @@ export default function Home() {
     liveRunTokenRef.current = runToken;
     const consoleSessionId = consoleLogSessionRef.current + 1;
     consoleLogSessionRef.current = consoleSessionId;
+    setSnapshotManuallySelected(false);
     const replaceLogs = (nextLogs: string[]) => {
       if (consoleLogSessionRef.current !== consoleSessionId) return;
       setConsoleLogs(nextLogs);
@@ -2418,6 +2425,7 @@ export default function Home() {
     if (!labReport) return;
     if (playbackEvents.length === 0) {
       const blockedSnapshot = labReport.state_snapshots?.find((snapshot) => snapshot.stage === 'blocked') ?? labReport.state_snapshots?.[0] ?? null;
+      setSnapshotManuallySelected(false);
       setSelectedSnapshot(blockedSnapshot);
       setCurrentActionFrame(null);
       showNotice('warning', noticeMessage(language, '\u6ca1\u6709\u53ef\u64ad\u653e\u52a8\u4f5c\u5e27\uff1a\u547d\u4ee4\u53ef\u80fd\u5df2\u88ab\u5b89\u5168\u8fd0\u884c\u65f6\u62e6\u622a\u3002', 'No playable action frames. Commands may have been blocked by Safety Runtime.'));
@@ -2599,8 +2607,8 @@ export default function Home() {
               language={language}
               profile={effectiveSelectedProfile}
               report={labReport}
-              replaySnapshot={selectedSnapshot}
-              currentActionFrame={currentActionFrame ?? selectedSnapshot?.action_frame}
+              replaySnapshot={stageReplaySnapshot}
+              currentActionFrame={stageActionFrame}
               scenarioPreview={scenarioPreview}
               workspaceDevices={semanticWorkspaceDevices}
               selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
