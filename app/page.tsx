@@ -1971,7 +1971,6 @@ export default function Home() {
       kind: 'running',
       message: `${t(language, 'command_running')} ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`
     });
-    setWorkspaceExpanded(true);
     setRunning(true);
     setReplayPlaying(true);
     try {
