@@ -1542,15 +1542,6 @@ export default function Home() {
   }, [applyWorkspaceFile]);
 
   useEffect(() => {
-    const isDefaultUntitledWorkspace =
-      !projectFilePath &&
-      workspaceDevices.length === 1 &&
-      workspaceDevices[0]?.deviceType === 'robot_arm';
-    const dismissed = window.localStorage.getItem(firstRunGuideStorageKey) === '1';
-    setShowFirstRunGuide(!dismissed && isDefaultUntitledWorkspace && !labReport);
-  }, [labReport, projectFilePath, workspaceDevices]);
-
-  useEffect(() => {
     const workspace = buildWorkspaceFile();
     window.localStorage.setItem(workspaceStorageKey, JSON.stringify(workspace));
     setAutosavedAt(workspace.saved_at);
