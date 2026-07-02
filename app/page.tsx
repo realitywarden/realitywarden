@@ -1002,63 +1002,208 @@ function FirstRunGuide({
   onDismiss: () => void;
 }) {
   const recommendedPath = quickStartPaths[0] ?? null;
-  const secondaryPaths = quickStartPaths.slice(1);
+  const copy = language === 'zh'
+    ? {
+        headline: 'AI 不应该直接触碰现实。',
+        subtitle: 'Open Reality Studio 是 AI Agent 与真实世界设备之间的安全与责任层。',
+        eyebrow: 'Simulation-first Public Alpha',
+        boundary: '当前不会执行真实设备命令',
+        trySimulation: '试运行仿真',
+        exploreAssets: '查看 Reality Assets',
+        gateLeft: 'AI 意图',
+        gateCenter: 'Safety Gate',
+        gateRight: '受控物理动作',
+        chips: ['Simulation-first', 'Safety-Governed', 'Accountable Physical AI'],
+        pipelineTitle: 'Runtime Decision Pipeline',
+        pipelineSubtitle: '自然语言命令先经过目标、能力、世界状态、仿真与安全检查。',
+        prompt: '“Move the red cube to the safe zone.”',
+        decisionSafe: 'SAFE TO SIMULATE',
+        decisionBlocked: 'BLOCKED - real execution disabled by default',
+        assetTitle: 'Abstracting hardware into safe boundaries.',
+        assetSubtitle: 'Reality Assets 在任何 AI 动作运行前描述设备能力、安全边界、适配器模式和示例指令。',
+        auditTitle: 'Every decision should be reviewable.',
+        auditSubtitle: '记录用户请求、检查内容、允许或拦截原因，以及后续发生了什么。',
+        ecosystemTitle: 'Built for controlled Physical AI deployment.',
+        ecosystemSubtitle: 'AI 编程让代码更便宜，但现实部署、维护、安全审查和责任追踪仍然需要人。',
+        advancedTitle: 'Developer / Advanced',
+        advancedSubtitle: '导入、验证、目录和开发者工具被收进高级区域，不污染首屏主路径。',
+        dismiss: '进入工作台'
+      }
+    : {
+        headline: 'AI should not touch reality directly.',
+        subtitle: 'Open Reality Studio is the safety and accountability layer between AI agents and real-world devices.',
+        eyebrow: 'Simulation-first Public Alpha',
+        boundary: 'Real device execution is not enabled yet',
+        trySimulation: 'Try Simulation',
+        exploreAssets: 'Explore Reality Assets',
+        gateLeft: 'AI Intent',
+        gateCenter: 'Safety Gate',
+        gateRight: 'Controlled Physical Action',
+        chips: ['Simulation-first', 'Safety-Governed', 'Accountable Physical AI'],
+        pipelineTitle: 'Runtime Decision Pipeline',
+        pipelineSubtitle: 'A natural-language command is checked against goals, capabilities, world state, simulation, and safety.',
+        prompt: '“Move the red cube to the safe zone.”',
+        decisionSafe: 'SAFE TO SIMULATE',
+        decisionBlocked: 'BLOCKED - real execution disabled by default',
+        assetTitle: 'Abstracting hardware into safe boundaries.',
+        assetSubtitle: 'Reality Assets describe device capabilities, safety notes, adapter boundaries, and example prompts before any AI action can run.',
+        auditTitle: 'Every decision should be reviewable.',
+        auditSubtitle: 'Open Reality records what was requested, what was checked, why it was allowed or blocked, and what happened next.',
+        ecosystemTitle: 'Built for controlled Physical AI deployment.',
+        ecosystemSubtitle: 'AI programming makes code cheaper. Real-world deployment, maintenance, safety review, and accountability still need people.',
+        advancedTitle: 'Developer / Advanced',
+        advancedSubtitle: 'Import, validation, catalog, and developer-kit entry points stay available without polluting the first-run path.',
+        dismiss: 'Enter Workbench'
+      };
+  const pipeline = ['Goal Parsing', 'Device Capability Check', 'World State Validation', 'Simulation-first Check', 'Safety Governor', 'Runtime Decision'];
+  const assetCards = [
+    ['Robot Arm', 'pick / place', 'Simulation Only'],
+    ['Smart Light', 'power / color', 'Simulation Only'],
+    ['Camera Sensor', 'capture / read', 'Read Only'],
+    ['Imported Asset', 'validate / inspect', 'Real disabled']
+  ];
+  const roles = ['Asset Authors', 'Adapter Engineers', 'Deployment Operators', 'Maintenance Providers', 'Safety Reviewers'];
   return (
-    <section className="ors-panel px-3 py-2">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex flex-1 flex-wrap items-center gap-1.5">
-          <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7DD3FC]">
-            {t(language, 'simulation_only')}
-          </span>
-          <span className="text-[11px] font-semibold text-text-primary">{t(language, 'welcome_title')}</span>
-          <span className="hidden text-[10px] text-text-secondary xl:inline">{t(language, 'welcome_step_1')}</span>
-          <span className="hidden rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted 2xl:inline">{t(language, 'welcome_step_2')}</span>
-          <span className="hidden rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted 2xl:inline">{t(language, 'welcome_step_3')}</span>
-          <span className="ml-1 text-[9px] font-semibold uppercase tracking-wide text-[#86868B]">{t(language, 'welcome_supported_now')}</span>
-          {publicAlphaRunnableDeviceTypes.map((type) => (
-            <span key={type} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] text-[#38BDF8]">
-              {localizeDeviceType(language, type)}
-            </span>
-          ))}
-          {secondaryPaths.map((path) => (
-            <button
-              key={`guide-${path.id}`}
-              type="button"
-              onClick={() => onQuickStart(path)}
-              className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] text-[#8ECBF5] hover:bg-[#0F2E45]"
-            >
-              {path.title}
+    <section className="custom-scrollbar max-h-full overflow-y-auto border border-[#27272A] bg-black/92 p-6 text-white backdrop-blur-xl">
+      <div className="grid gap-8 xl:grid-cols-[1.1fr_.9fr]">
+        <div>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <span className="border border-[#3F3F46] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#D4D4D8]">{copy.eyebrow}</span>
+            <span className="border border-[#3F3F46] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#A1A1AA]">{copy.boundary}</span>
+          </div>
+          <h1 className="max-w-3xl text-[52px] font-semibold leading-[0.98] tracking-[-0.04em] text-white">{copy.headline}</h1>
+          <p className="mt-5 max-w-2xl text-[16px] leading-7 text-[#A1A1AA]">{copy.subtitle}</p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            {recommendedPath && (
+              <button type="button" onClick={() => onQuickStart(recommendedPath)} className="h-10 border border-white bg-white px-5 text-[13px] font-semibold text-black hover:bg-[#E4E4E7]">
+                {copy.trySimulation}
+                <span className="sr-only">{t(language, 'quick_start_try_now')}</span>
+              </button>
+            )}
+            <button type="button" onClick={onDismiss} className="h-10 border border-[#3F3F46] bg-[#0A0A0A] px-5 text-[13px] font-semibold text-[#E4E4E7] hover:bg-[#18181B]">
+              {copy.exploreAssets}
             </button>
-          ))}
+          </div>
+          <div className="mt-6 flex flex-wrap gap-2">
+            {copy.chips.map((chip) => (
+              <span key={chip} className="border border-[#27272A] bg-[#09090B] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A1A1AA]">{chip}</span>
+            ))}
+          </div>
+          <div className="mt-6 grid gap-2 md:grid-cols-3">
+            {quickStartPaths.map((path) => (
+              <button
+                key={`guide-${path.id}`}
+                type="button"
+                onClick={() => onQuickStart(path)}
+                className="border border-[#27272A] bg-[#050505] p-3 text-left hover:border-[#52525B] hover:bg-[#0A0A0A]"
+                title={path.prompt}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#71717A]">{localizeDeviceType(language, path.deviceType)}</div>
+                <div className="mt-1 text-[12px] font-semibold text-white">{path.title}</div>
+                <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-[#A1A1AA]">{path.expected}</div>
+              </button>
+            ))}
+          </div>
         </div>
-        {recommendedPath && (
-          <button
-            type="button"
-            onClick={() => onQuickStart(recommendedPath)}
-            className="shrink-0 rounded-[3px] border border-[#075985] bg-[#0284C7] px-2 py-1 text-[10px] font-semibold text-white hover:bg-[#0369A1]"
-            title={recommendedPath.prompt}
-          >
-            {t(language, 'quick_start_try_now')}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="shrink-0 rounded-[3px] border border-border-panel bg-[#232529] px-2.5 py-1 text-[10px] font-semibold text-text-secondary hover:bg-[#2B2D31]"
-        >
-          {t(language, 'dismiss')}
-        </button>
+        <div className="border border-[#27272A] bg-[#050505] p-5">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            <div className="space-y-2">
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.gateLeft}</div>
+              <div className="grid grid-cols-4 gap-2">
+                {Array.from({ length: 16 }).map((_, index) => (
+                  <span key={index} className="h-2 w-2 rounded-full bg-white/20" />
+                ))}
+              </div>
+            </div>
+            <div className="flex h-48 w-16 flex-col items-center justify-center border-x border-white/20">
+              <div className="h-full w-px bg-gradient-to-b from-transparent via-white to-transparent" />
+              <div className="my-3 whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.16em] text-white [writing-mode:vertical-rl]">{copy.gateCenter}</div>
+              <div className="h-full w-px bg-gradient-to-b from-transparent via-white to-transparent" />
+            </div>
+            <div>
+              <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.gateRight}</div>
+              <div className="relative h-40 border border-[#3F3F46] bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:22px_22px]">
+                <div className="absolute bottom-7 left-8 h-12 w-24 border border-white/70" />
+                <div className="absolute bottom-7 right-8 h-20 w-8 border border-white/45" />
+                <div className="absolute bottom-20 left-16 h-3 w-3 bg-white" />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] uppercase tracking-[0.12em] text-[#A1A1AA]">
+            <span>Intent</span><span>Checked</span><span>Simulated</span>
+          </div>
+        </div>
       </div>
-      <div className="mt-1.5 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#9AA3AF] 2xl:flex">
-        <span>{t(language, 'first_run_step_supported')}</span>
-        <span className="text-[#4B5563]">|</span>
-        <span>{t(language, 'first_run_step_command')}</span>
-        <span className="text-[#4B5563]">|</span>
-        <span>{t(language, 'first_run_step_target')}</span>
-        <span className="text-[#4B5563]">|</span>
-        <span>{t(language, 'first_run_step_safe')}</span>
-        <span className="text-[#4B5563]">|</span>
-        <span>{t(language, 'first_run_step_sim_only')}</span>
+
+      <div className="mt-8 grid gap-4 xl:grid-cols-[1fr_.9fr]">
+        <div className="border border-[#27272A] bg-[#050505] p-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.pipelineTitle}</div>
+          <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.pipelineSubtitle}</p>
+          <div className="mt-4 border border-[#27272A] bg-black px-3 py-2 font-mono text-[12px] text-[#E4E4E7]">{copy.prompt}</div>
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            {pipeline.map((step, index) => (
+              <div key={step} className="border border-[#27272A] bg-[#09090B] p-3">
+                <div className="text-[10px] font-mono text-[#71717A]">0{index + 1}</div>
+                <div className="mt-1 text-[12px] font-semibold text-[#E4E4E7]">{step}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            <div className="border border-[#3F3F46] bg-[#0A0A0A] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white">{copy.decisionSafe}</div>
+            <div className="border border-[#4C1D1D] bg-[#1A0D0D] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#FCA5A5]">{copy.decisionBlocked}</div>
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="border border-[#27272A] bg-[#050505] p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">Reality Assets</div>
+            <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">{copy.assetTitle}</h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.assetSubtitle}</p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {assetCards.map(([name, capability, status]) => (
+                <div key={name} className="border border-[#27272A] bg-[#09090B] p-3">
+                  <div className="text-[12px] font-semibold">{name}</div>
+                  <div className="mt-1 font-mono text-[10px] text-[#A1A1AA]">{capability}</div>
+                  <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#D4D4D8]">{status}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border border-[#27272A] bg-[#050505] p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">Developer / Advanced</div>
+            <h2 className="mt-2 text-[20px] font-semibold tracking-[-0.03em]">{copy.advancedTitle}</h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.advancedSubtitle}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <div className="border border-[#27272A] bg-[#050505] p-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">Accountability</div>
+          <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">{copy.auditTitle}</h2>
+          <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.auditSubtitle}</p>
+          <div className="mt-4 grid grid-cols-[58px_1fr_90px_90px] border border-[#27272A] font-mono text-[10px]">
+            {['Time', 'Prompt', 'Decision', 'Reason'].map((head) => <div key={head} className="border-b border-[#27272A] px-2 py-2 text-[#71717A]">{head}</div>)}
+            <div className="px-2 py-2 text-[#A1A1AA]">00:14</div>
+            <div className="truncate px-2 py-2 text-[#E4E4E7]">Enable real adapter</div>
+            <div className="px-2 py-2 text-[#FCA5A5]">BLOCKED</div>
+            <div className="truncate px-2 py-2 text-[#A1A1AA]">real disabled</div>
+          </div>
+        </div>
+        <div className="border border-[#27272A] bg-[#050505] p-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">Controlled Ecosystem</div>
+          <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">{copy.ecosystemTitle}</h2>
+          <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.ecosystemSubtitle}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {roles.map((role) => <span key={role} className="border border-[#27272A] bg-[#09090B] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4D4D8]">{role}</span>)}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <button type="button" onClick={onDismiss} className="h-9 border border-[#3F3F46] bg-[#0A0A0A] px-4 text-[12px] font-semibold text-[#E4E4E7] hover:bg-[#18181B]">
+          {copy.dismiss}
+        </button>
       </div>
     </section>
   );
@@ -2475,8 +2620,8 @@ export default function Home() {
             {!workspaceExpanded && (
               <>
                 {showFirstRunGuide && (
-                  <div className="pointer-events-none absolute left-3 top-3 z-30 w-[min(660px,calc(100%-24px))]">
-                    <div className="pointer-events-auto">
+                  <div className="pointer-events-none absolute inset-4 z-30">
+                    <div className="pointer-events-auto h-full">
                       <FirstRunGuide
                         language={language}
                         quickStartPaths={quickStartPaths}
