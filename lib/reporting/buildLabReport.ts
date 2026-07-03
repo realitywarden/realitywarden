@@ -8,6 +8,8 @@ import type {
   SafetyDecision,
   SupportLevel
 } from '@/lib/open-reality-runtime/types';
+import type { LocalRuntimeSession } from '@/lib/runtime/ExecutionSession';
+import type { RuntimeAuditEntry } from '@/lib/runtime/RuntimeAuditLog';
 import type { DeviceProfile } from '@/types/deviceMeta';
 import type { SafetyReport } from '@/types/safety';
 import type { TaskDSL } from '@/types/taskDsl';
@@ -149,6 +151,12 @@ function buildTargetDevice(profile: DeviceProfile) {
   };
 }
 
+function supportLevelFromTaskDsl(taskDsl: TaskDSL | null | undefined): SupportLevel {
+  return taskDsl && 'executionMode' in taskDsl && taskDsl.executionMode === 'read_only'
+    ? 'read_only'
+    : 'simulation_only';
+}
+
 export function buildExecutionLabReport({
   profile,
   scenarioId,
@@ -162,7 +170,8 @@ export function buildExecutionLabReport({
   executionTimeline,
   stateSnapshots,
   result,
-  runtimeResult
+  runtimeResult,
+  runtimeAuditLog = []
 }: {
   profile: DeviceProfile;
   scenarioId: string;
@@ -177,9 +186,10 @@ export function buildExecutionLabReport({
   stateSnapshots: TimelineStateSnapshot[];
   result: 'pass' | 'blocked' | 'failed';
   runtimeResult?: OpenRealityRuntimeResult | null;
+  runtimeAuditLog?: RuntimeAuditEntry[];
 }): LabReport {
   const createdAt = new Date().toISOString();
-  const supportLevel = runtimeResult?.taskDsl?.executionMode === 'read_only' ? 'read_only' : 'simulation_only';
+  const supportLevel = supportLevelFromTaskDsl(runtimeResult?.taskDsl ?? taskDsl);
   const safetyDecision = runtimeResult?.safetyDecision ?? syntheticSafetyDecision('compiled', result, supportLevel, taskDsl);
 
   return {
@@ -199,6 +209,7 @@ export function buildExecutionLabReport({
     reason: runtimeResult?.reason ?? `execution_${result}`,
     user_facing_message: runtimeResult?.userFacingMessage ?? `Execution ${result}.`,
     task_dsl: taskDsl,
+    runtime_audit_log: runtimeAuditLog,
     safety_report: safetyReport,
     adapter_commands: adapterCommands,
     action_plans: actionPlans,
@@ -214,12 +225,14 @@ export function buildRuntimeDecisionLabReport({
   profile,
   scenarioId,
   prompt,
-  runtimeResult
+  runtimeResult,
+  runtimeAuditLog = []
 }: {
   profile: DeviceProfile;
   scenarioId: string;
   prompt: string;
   runtimeResult: OpenRealityRuntimeResult;
+  runtimeAuditLog?: RuntimeAuditEntry[];
 }): LabReport {
   const taskDsl = runtimeResult.taskDsl ?? emptyTaskDsl(prompt);
   const safetyDecision = runtimeResult.safetyDecision;
@@ -243,6 +256,7 @@ export function buildRuntimeDecisionLabReport({
     reason: runtimeResult.reason,
     user_facing_message: runtimeResult.userFacingMessage,
     task_dsl: taskDsl,
+    runtime_audit_log: runtimeAuditLog,
     safety_report: safetyReport,
     adapter_commands: [],
     action_plans: [],
@@ -260,7 +274,9 @@ export function buildAutonomyStopLabReport({
   prompt,
   runtimeResult,
   autonomyStatus,
-  reason
+  reason,
+  userFacingMessageOverride,
+  runtimeAuditLog = []
 }: {
   profile: DeviceProfile;
   scenarioId: string;
@@ -268,6 +284,8 @@ export function buildAutonomyStopLabReport({
   runtimeResult: OpenRealityRuntimeResult;
   autonomyStatus: 'block' | 'ask_human' | 'proposed_plan';
   reason: string;
+  userFacingMessageOverride?: string;
+  runtimeAuditLog?: RuntimeAuditEntry[];
 }): LabReport {
   const mappedStatus = autonomyStatus === 'block' ? 'blocked' : autonomyStatus === 'ask_human' ? 'ask_human' : 'proposed_plan';
   const taskDsl = runtimeResult.taskDsl ?? emptyTaskDsl(prompt);
@@ -293,8 +311,9 @@ export function buildAutonomyStopLabReport({
     safety_decision: safetyDecision,
     execution_mode: safetyDecision.safetyEnvelope.allowedExecutionMode,
     reason,
-    user_facing_message: runtimeResult.userFacingMessage,
+    user_facing_message: userFacingMessageOverride ?? runtimeResult.userFacingMessage,
     task_dsl: taskDsl,
+    runtime_audit_log: runtimeAuditLog,
     safety_report: safetyReport,
     adapter_commands: [],
     action_plans: [],
@@ -303,5 +322,54 @@ export function buildAutonomyStopLabReport({
     execution_timeline: [],
     state_snapshots: [],
     result: mappedStatus === 'blocked' ? 'blocked' : 'failed'
+  };
+}
+
+export function buildLocalRuntimeDecisionLabReport({
+  profile,
+  scenarioId,
+  prompt,
+  session
+}: {
+  profile: DeviceProfile;
+  scenarioId: string;
+  prompt: string;
+  session: LocalRuntimeSession;
+}): LabReport {
+  const taskDsl = session.executableTaskDsl ?? session.runtimeResult.taskDsl ?? emptyTaskDsl(prompt);
+  const supportLevel = supportLevelFromTaskDsl(taskDsl);
+  const decisionStatus = session.status === 'proposed_plan' ? 'ask_human' : session.status;
+  const safetyDecision = session.status === session.runtimeResult.status
+    ? session.runtimeResult.safetyDecision
+    : syntheticSafetyDecision(decisionStatus, session.reason, supportLevel, taskDsl);
+  const safetyReport = syntheticSafetyReport(session.status, session.reason, session.userFacingMessage);
+
+  return {
+    lab_run_id: `lab-${Date.now()}`,
+    device_profile: profile.id,
+    scenario: scenarioId,
+    prompt,
+    status: session.status,
+    created_at: new Date().toISOString(),
+    target_device: buildTargetDevice(profile),
+    goal: session.runtimeResult.goal,
+    capabilities: {
+      required: session.runtimeResult.plan.requiredCapabilities,
+      missing: session.runtimeResult.plan.missingCapabilities
+    },
+    safety_decision: safetyDecision,
+    execution_mode: safetyDecision.safetyEnvelope.allowedExecutionMode,
+    reason: session.reason,
+    user_facing_message: session.userFacingMessage,
+    task_dsl: taskDsl,
+    runtime_audit_log: session.auditLog,
+    safety_report: safetyReport,
+    adapter_commands: [],
+    action_plans: [],
+    device_state_before: {},
+    device_state_after: {},
+    execution_timeline: [],
+    state_snapshots: [],
+    result: session.status === 'blocked' || session.status === 'not_runnable' || session.status === 'unsupported' ? 'blocked' : 'failed'
   };
 }

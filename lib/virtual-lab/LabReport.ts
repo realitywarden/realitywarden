@@ -1,6 +1,7 @@
 import type { AdapterCommand } from '@/lib/adapter/AdapterCommand';
 import type { ActionPlanSummary } from '@/lib/action-runtime/ActionPlan';
 import type { Goal, RuntimeDecisionStatus, SafetyDecision } from '@/lib/open-reality-runtime/types';
+import type { RuntimeAuditEntry } from '@/lib/runtime/RuntimeAuditLog';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import type { SafetyReport } from '@/types/safety';
 import type { TaskDSL } from '@/types/taskDsl';
@@ -35,6 +36,7 @@ export interface LabReport {
   reason: string;
   user_facing_message: string;
   task_dsl: TaskDSL;
+  runtime_audit_log: RuntimeAuditEntry[];
   safety_report: SafetyReport;
   adapter_commands: AdapterCommand[];
   action_plans: ActionPlanSummary[];

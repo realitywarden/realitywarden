@@ -8,6 +8,7 @@ import { buildExecutionLabReport } from '@/lib/reporting/buildLabReport';
 import type { ActionPlan } from '@/lib/action-runtime/ActionPlan';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import { compilePromptToTaskDSL } from '@/lib/compiler/mockTaskCompiler';
+import type { RuntimeAuditEntry } from '@/lib/runtime/RuntimeAuditLog';
 import { runSafetyRuntime } from '@/lib/safety/SafetyRuntime';
 import type { DeviceProfile } from '@/types/deviceMeta';
 import type { SafetyReport } from '@/types/safety';
@@ -99,7 +100,8 @@ export class LiveScenarioRunner {
     promptOverride?: string,
     taskDslOverride?: TaskDSL,
     runtimeResult?: OpenRealityRuntimeResult | null,
-    initialStateOverride?: Record<string, unknown> | null
+    initialStateOverride?: Record<string, unknown> | null,
+    runtimeAuditLog?: RuntimeAuditEntry[]
   ): AsyncGenerator<LiveScenarioEvent> {
     const prompt = promptOverride?.trim() || scenario.prompt;
     const initialState = initialStateOverride ?? scenario.initial_state;
@@ -253,7 +255,8 @@ export class LiveScenarioRunner {
       executionTimeline: [...events, timeline('report', `Lab run finished with result=${result}.`, events.length + 1)],
       stateSnapshots,
       result,
-      runtimeResult
+      runtimeResult,
+      runtimeAuditLog
     });
 
     yield {
