@@ -2,7 +2,13 @@
 
 The Reality Asset Developer Kit is the local path for creating and validating device asset packages before they enter Open Reality Studio.
 
-It is not a marketplace, cloud service, account system, or real device execution layer.
+A Reality Asset is how a device becomes visible to the Open Reality runtime.
+
+It describes what a robot, robot arm, sensor, smart device, lab device, factory system, electronic toy, or future physical device can expose to AI workflows in a simulation-first boundary.
+
+This is the ecosystem entry point: devices should not be hardcoded into one closed brand stack. Developers should be able to describe devices as packages, validate them locally, fix errors, and import them into Open Reality Studio.
+
+It is not a marketplace, cloud service, account system, certified safety product, or live hardware layer.
 
 ## What Is a Reality Asset Package?
 
@@ -27,7 +33,19 @@ It contains:
 
 ## Why Assets Exist
 
-Devices should not be hardcoded into the runtime. A third-party developer should be able to describe a device as a package, validate it locally, fix errors, and then import it into Open Reality Studio.
+Physical AI should not require every company to rebuild a full closed AI-to-device stack.
+
+Reality Assets let more companies and developers participate by describing:
+
+- what the device is
+- what it can do
+- what it must not do
+- which natural-language goals are supported
+- which goals are unsafe or unsupported
+- which capabilities require simulation or human approval
+- which adapter boundary the device exposes
+
+The current Public Alpha is simulation-first, but the asset shape is designed to support a future ecosystem of adapters, simulation packs, safety rules, audit workflows, and deployment services.
 
 ## Create an Asset
 
@@ -41,11 +59,19 @@ Copy it, change the IDs, fill in the manifest, capabilities, prompts, and safety
 
 ## Capability Contracts
 
-`capabilityContracts` describe what the device can do. They are not raw device commands. They are contracts the runtime can reason about before any adapter boundary is reached.
+`capabilityContracts` describe what the device can do. They are not raw device instructions. They are contracts the runtime can reason about before any adapter boundary is reached.
 
-## TaskDSL Is Not a Hardware Command
+## Natural-Language Goals Are Not Device Instructions
 
-TaskDSL is an inspectable task representation. It is not a hardware command and must not be treated as direct device control.
+An AI model may produce a natural-language goal such as "move the cube," "turn on the light," or "take a photo."
+
+Open Reality translates that goal into an inspectable runtime path before it reaches any device boundary.
+
+Natural language is not permission by itself.
+
+## TaskDSL Is Not a Device Instruction
+
+TaskDSL is an inspectable task representation. It is not a device instruction stream and must not be treated as direct device operation.
 
 ## Adapter Boundary
 
@@ -55,7 +81,7 @@ For the current Public Alpha:
 
 - `realAdapterEnabled` must be `false`
 - `adapterMode` must be `simulation_only`, `read_only`, or `real_disabled`
-- real device execution is not supported
+- live device execution is not supported
 - Coming Soon assets cannot be runnable
 
 ## Validate Locally
@@ -91,9 +117,10 @@ This Developer Kit is simulation-first.
 
 It does not support:
 
-- real device execution
-- production hardware control
+- live device execution
+- production hardware use
 - certified industrial safety
 - cloud marketplace
 - accounts
 - payments
+- claims that purely mechanical objects without electronics or interfaces can be changed by software alone
