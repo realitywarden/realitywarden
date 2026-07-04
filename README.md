@@ -1,10 +1,23 @@
 # Open Reality Studio
 
-## The universal software runtime between AI agents and physical devices.
+## Making Physical AI open, safer, and not locked inside one brand.
 
 **Open Reality Studio is a simulation-first AI-to-Action Runtime for the physical world.**
 
-It helps AI agents turn goals into **safe, executable, inspectable, and auditable actions** across robots, labs, factories, smart devices, sensors, drones, and future physical AI systems.
+Many robots, machines, sensors, smart devices, lab instruments, and factory systems already have chips, controllers, motors, sensors, or hardware interfaces.
+
+But they are not automatically AI-controllable.
+
+Open Reality helps ordinary hardware become part of Physical AI through a **universal software runtime** instead of a closed brand stack.
+
+The goal is to help AI enter the physical world in a way that is:
+
+- more open
+- safer
+- more stable
+- faster to adopt
+- easier for more companies and developers to build on
+- less dependent on one closed ecosystem
 
 It is built around one rule:
 
@@ -24,7 +37,11 @@ Only then can it enter **simulation** in this Public Alpha.
 
 The long-term goal is not to build robots or chips.
 
-The goal is to define the **software execution layer** that lets different brands, devices, adapters, and future hardware stacks expose physical actions through a common Open Reality boundary.
+The goal is to define the **common software execution layer** that lets different brands, devices, adapters, and future hardware stacks expose physical actions through a shared Open Reality boundary.
+
+If Physical AI becomes locked inside a few closed stacks, fewer companies can participate.
+
+Open Reality is designed for the opposite direction: more devices, more adapters, more Reality Assets, more integration work, more deployment work, and a wider developer ecosystem around AI-controlled physical systems.
 
 **Current status**
 
@@ -130,18 +147,31 @@ It is a **desktop runtime prototype** with a strict **simulation-only** boundary
 Most AI product demos still jump directly from language to action.
 
 That is acceptable in software.
-It is not acceptable for robotics, labs, factory systems, drones, or physical infrastructure.
+It is not acceptable for robotics, labs, factory systems, drones, smart devices, or physical infrastructure.
+
+Physical AI should not depend on one robot brand, one closed stack, or one capital-controlled ecosystem.
+
+A common runtime boundary can let more device makers, developers, integrators, researchers, and service teams participate without each company having to rebuild the whole AI-to-device stack from zero.
 
 Open Reality Studio exists to prove a different execution model:
 
-1. understand the request
-2. inspect the target device
-3. inspect the world state
-4. decide whether the request is allowed
-5. compile a structured task
-6. validate an adapter plan
-7. log the decision path
-8. only then run simulation
+1. describe the device as a Reality Asset
+2. understand the AI request
+3. inspect the target device and its capability contract
+4. inspect the world state
+5. decide whether the request is allowed, corrected, unsupported, or blocked
+6. compile a structured task
+7. validate an adapter plan
+8. log the decision path
+9. only then run simulation
+
+This is the ecosystem direction:
+
+- hardware companies can expose devices through Reality Assets
+- developers can build adapters and simulation packs
+- integrators can build deployment and monitoring workflows
+- safety teams can define rules and review audit trails
+- more companies can enter Physical AI without being locked into one closed brand stack
 
 ## Quick Start
 
