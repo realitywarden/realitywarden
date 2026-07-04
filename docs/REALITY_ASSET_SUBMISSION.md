@@ -2,7 +2,11 @@
 
 Open Reality accepts Reality Asset submissions that help describe devices for simulation-first Physical AI workflows.
 
-This guide is for contributors who want to propose or submit a Reality Asset Package. It does not enable real device execution.
+This guide is for contributors who want to propose or submit a Reality Asset Package.
+
+Reality Assets are the beginning of the Open Reality ecosystem: more devices, more adapters, more simulation packs, more safety rules, and more integration work around AI-controlled physical systems.
+
+This guide does not enable live device execution.
 
 ## What Can Be Submitted
 
@@ -13,7 +17,9 @@ Accepted submission types:
 - Coming Soon device proposal.
 - Low-risk actuator proposal with `realAdapterEnabled: false`.
 
-Good submissions explain what the device is, what it can do, which capabilities are supported, which prompts are safe, and which prompts must be unsupported or blocked.
+Good submissions explain what the device is, what it can do, which capabilities are supported, which natural-language prompts are safe, and which prompts must be unsupported or blocked.
+
+Potential future asset categories include robots, robot arms, sensors, smart devices, lab equipment, factory systems, electronic toys, drones in simulation-only form, and other physical systems that can be described through a safe runtime boundary.
 
 ## What Cannot Be Submitted
 
@@ -118,6 +124,12 @@ Device type:
 Support level:
 Adapter mode:
 realAdapterEnabled: false
+
+## Why this asset matters
+
+- What kind of hardware or simulation does it represent?
+- What Physical AI workflow could it help describe?
+- Which companies, developers, or integrators could build on it later?
 
 ## What works in simulation
 
