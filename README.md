@@ -1,25 +1,30 @@
 # Open Reality Studio
 
-## AI should not touch reality directly.
+## The universal software runtime between AI agents and physical devices.
 
-Open Reality Studio is a **simulation-only Physical AI Local Runtime prototype**.
+**Open Reality Studio is a simulation-first AI-to-Action Runtime for the physical world.**
 
-It is built around a simple boundary:
+It helps AI agents turn goals into **safe, executable, inspectable, and auditable actions** across robots, labs, factories, smart devices, sensors, drones, and future physical AI systems.
 
-**AI does not send commands straight to hardware.**
+It is built around one rule:
 
-Every request must first pass through:
+**AI should not send commands straight to hardware.**
+
+Before an AI-generated action can reach a device, Open Reality routes it through:
 
 - device capability checks
 - world-state grounding
 - Safety Governor review
-- `TaskDSL` compilation
+- inspectable `TaskDSL` compilation
 - `AdapterPlan` validation
+- simulation / dry-run boundary
 - structured runtime audit logging
 
-Only then can it enter **simulation**.
+Only then can it enter **simulation** in this Public Alpha.
 
-Same protocol for simulation and future real devices.
+The long-term goal is not to build robots or chips.
+
+The goal is to define the **software execution layer** that lets different brands, devices, adapters, and future hardware stacks expose physical actions through a common Open Reality boundary.
 
 **Current status**
 
@@ -27,6 +32,7 @@ Same protocol for simulation and future real devices.
 - simulation-first
 - real device execution disabled
 - no production hardware control
+- no certified industrial safety claim
 
 This repository is a **simulation-only Public Alpha**.
 
