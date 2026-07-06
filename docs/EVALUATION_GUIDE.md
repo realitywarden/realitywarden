@@ -6,7 +6,7 @@ Use it when you want a clean first evaluation of the product without guessing wh
 
 ## What This Alpha Is
 
-Open Reality Studio Desktop is currently a **simulation-only** desktop prototype for physical AI workflows.
+RealityWarden Desktop is currently a **simulation-only** desktop prototype for physical AI workflows.
 
 Runnable device paths in the current Public Alpha:
 
