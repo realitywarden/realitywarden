@@ -1,8 +1,8 @@
-# Open Reality Studio
+# RealityWarden
 
 ## Making Physical AI open, safer, and not locked inside one brand.
 
-**Open Reality Studio is a simulation-first AI-to-Action Runtime for the physical world.**
+**RealityWarden is a simulation-first AI-to-Action Runtime for the physical world.**
 
 Many robots, machines, sensors, smart devices, lab instruments, and factory systems already have chips, controllers, motors, sensors, or hardware interfaces.
 
@@ -153,7 +153,7 @@ Physical AI should not depend on one robot brand, one closed stack, or one capit
 
 A common runtime boundary can let more device makers, developers, integrators, researchers, and service teams participate without each company having to rebuild the whole AI-to-device stack from zero.
 
-Open Reality Studio exists to prove a different execution model:
+RealityWarden exists to prove a different execution model:
 
 1. describe the device as a Reality Asset
 2. understand the AI request
