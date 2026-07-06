@@ -13,7 +13,6 @@ const root = path.resolve(__dirname, '..');
 const sourceRoot = path.resolve(root, '..');
 const appRoot = fs.existsSync(path.join(root, 'package.json')) ? root : sourceRoot;
 const basePort = Number(process.env.ORS_DESKTOP_PORT || 3100);
-const isWindows = process.platform === 'win32';
 const isSmokeTest = process.argv.includes('--smoke-test');
 
 let nextProcess: ChildProcess | null = null;
@@ -64,9 +63,9 @@ function loadingHtml() {
   </head>
   <body>
     <main>
-      <div class="brand">Open Reality Studio Desktop</div>
+      <div class="brand">RealityWarden Desktop</div>
       <h1>Starting Virtual Lab</h1>
-      <p>The local simulator service is starting. Open Reality Studio will load automatically.</p>
+      <p>The local simulator service is starting. RealityWarden will load automatically.</p>
       <div class="bar"></div>
     </main>
   </body>
@@ -164,7 +163,7 @@ async function createWindow() {
     minWidth: 1180,
     minHeight: 720,
     center: true,
-    title: 'Open Reality Studio',
+    title: 'RealityWarden',
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     backgroundColor: '#18191B',
     autoHideMenuBar: true,
@@ -189,11 +188,7 @@ async function createWindow() {
 
 function shutdownServer() {
   if (!nextProcess) return;
-  if (isWindows) {
-    spawn('taskkill', ['/pid', String(nextProcess.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-  } else {
-    nextProcess.kill('SIGTERM');
-  }
+  nextProcess.kill('SIGTERM');
   nextProcess = null;
 }
 
@@ -215,7 +210,7 @@ app.whenReady().then(async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendLog(`Startup failed: ${message}`);
-    dialog.showErrorBox('Open Reality Studio failed to start', message);
+    dialog.showErrorBox('RealityWarden failed to start', message);
     shutdownServer();
     app.quit();
   }
