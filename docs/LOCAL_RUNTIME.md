@@ -2,14 +2,14 @@
 
 ## What this document is
 
-This document explains the **current Local Runtime boundary** inside Open Reality Studio.
+This document explains the **current Local Runtime boundary** inside RealityWarden.
 
 It does not describe an imagined hardware runtime.
 It describes what the repository can actually do today.
 
 ## Core claim
 
-Open Reality Studio is moving from a simulation page toward a **Physical AI Local Runtime**.
+RealityWarden is moving from a simulation page toward a **Physical AI Local Runtime**.
 
 The current repository already enforces a meaningful rule:
 
@@ -219,7 +219,7 @@ It is:
 
 ## Summary
 
-Open Reality Studio is no longer just a simulation page.
+RealityWarden is no longer just a simulation page.
 
 It now has a real internal execution boundary:
 
