@@ -4,7 +4,7 @@ This script is for a real software screen recording of the current Public Alpha.
 
 ## Core Message
 
-Open Reality Studio shows how a natural-language goal from an AI model can be routed through a universal software runtime before it becomes a physical action.
+RealityWarden shows how a natural-language goal from an AI model can be routed through a universal software runtime before it becomes a physical action.
 
 It does not build robots or chips.
 
@@ -18,7 +18,7 @@ Current boundary: simulation-first. Real device execution is not enabled.
 
 ## Recording Flow
 
-1. Open Open Reality Studio Desktop.
+1. Open RealityWarden Desktop.
 2. Show the AI Command Terminal.
 3. Add opening caption:
 
