@@ -25,7 +25,7 @@ Other built-in device families are visible in the workspace, but they are still:
 If you already have a packaged installer, the expected Windows installer file looks like:
 
 ```text
-Open-Reality-Studio-0.1.1-Setup.exe
+RealityWarden-0.1.1-Setup.exe
 ```
 
 Install flow:
@@ -33,7 +33,7 @@ Install flow:
 1. Launch the installer.
 2. Choose an install directory if needed.
 3. Finish the installer.
-4. Start `Open Reality Studio`.
+4. Start `RealityWarden`.
 
 Expected first-run outcome:
 
@@ -54,7 +54,7 @@ npm run desktop:pack
 Expected output:
 
 ```text
-release/Open-Reality-Studio-0.1.1-Setup.exe
+release/RealityWarden-0.1.1-Setup.exe
 ```
 
 If you only want to run the desktop shell from source in a production-like mode without generating an installer:
