@@ -1,6 +1,6 @@
 # Device Support
 
-This document describes the actual device support level in the current Open Reality Studio Desktop Public Alpha.
+This document describes the actual device support level in the current RealityWarden Desktop Public Alpha.
 
 The goal is to be explicit about what is runnable, what is only visual scaffolding, and what remains Coming Soon.
 
@@ -13,7 +13,7 @@ The goal is to be explicit about what is runnable, what is only visual scaffoldi
 | `camera_sensor` | Yes | Yes | Limited zh/en | Yes | Public Alpha | Low-risk simulation only |
 | `mobile_robot` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
 | `conveyor_belt` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
-| `plc_cabinet` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
+| `plc_cabinet` | Yes | No | No main run | Coming Soon | Asset/workspace scaffold only |
 | `lab_instrument` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
 | `warehouse_rack` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
 | `sensor_box` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
