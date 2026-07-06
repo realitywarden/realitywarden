@@ -1,5 +1,5 @@
 {
-  "name": "open-reality-interface",
+  "name": "realitywarden",
   "version": "0.1.1",
   "private": true,
   "description": "Early desktop runtime prototype for physical AI simulation.",
@@ -41,8 +41,8 @@
     "lint": "next lint"
   },
   "build": {
-    "appId": "studio.openreality.desktop",
-    "productName": "Open Reality Studio",
+    "appId": "studio.realitywarden.desktop",
+    "productName": "RealityWarden",
     "icon": "assets/branding/open-reality-studio.ico",
     "asar": true,
     "directories": {
@@ -68,7 +68,7 @@
           ]
         }
       ],
-      "artifactName": "Open-Reality-Studio-${version}-Setup.${ext}"
+      "artifactName": "RealityWarden-${version}-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
