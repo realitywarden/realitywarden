@@ -73,3 +73,38 @@ emergencyStop(): Promise<AdapterResult>
 5. Implement `simulator.adapter.ts` or a real adapter using `RealDeviceAdapter` plus a `DeviceTransport`.
 6. Add one safe and one unsafe scenario under `scenarios/`.
 7. Run `npm run test:virtual-lab` and `npm run verify`.
+
+## Protocol Intake Boundary
+
+Before an adapter is treated as runnable, it should consume protocol artifacts instead of trusting UI state alone.
+
+Minimal examples now exist under:
+
+- `examples/protocol/openreality-protocol-v0.1.consumer-example.json`
+- `examples/protocol/openreality-protocol-v0.1.adapter-intake.json`
+- `examples/adapter-sdk/openreality-adapter-sdk-v0.1.intake-summary.json`
+- `examples/adapter-sdk/simulation-adapter.stub.ts`
+
+Regenerate them with:
+
+```bash
+npm run protocol:consume-example
+npm run protocol:adapter-intake-example
+npm run protocol:adapter-sdk-example
+```
+
+These examples show the intended gating rules:
+
+1. accept only assets marked runnable in Public Alpha
+2. require simulation runtime permission to be `allowed: true`
+3. keep `real_device.execute` disabled
+4. keep protocol-shaped but unsupported assets out of the main Run flow
+
+This is the current SDK boundary: protocol assets may be inspectable for all devices, but adapter intake must remain stricter than protocol discovery.
+
+The `simulation-adapter.stub.ts` example is intentionally narrow. It shows how to:
+
+1. accept only the current Public Alpha runnable device types
+2. reject protocol-only assets before adapter execution
+3. preserve `allowed` / `blocked` command semantics
+4. keep runtime mode explicitly simulation-only

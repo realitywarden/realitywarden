@@ -5,7 +5,7 @@ import type { SafetyReport } from '@/types/safety';
 import type { TaskDSL } from '@/types/taskDsl';
 
 export interface RunBundle {
-  product: 'Open Reality Studio';
+  product: 'RealityWarden';
   generated_at: string;
   prompt: string;
   profile_id: string | null;

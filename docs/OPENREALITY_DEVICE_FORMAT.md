@@ -1,6 +1,8 @@
 # OpenReality Device Format
 
-`.openreality-device.json` packages one importable device asset for Open Reality Studio.
+> Role: file format spec for `.openreality-device.json` only. For the protocol contract see [`OPEN_REALITY_PROTOCOL.md`](./OPEN_REALITY_PROTOCOL.md) via [`PROTOCOL_INDEX.md`](./PROTOCOL_INDEX.md).
+
+`.openreality-device.json` packages one importable device asset for RealityWarden.
 
 ## Format
 

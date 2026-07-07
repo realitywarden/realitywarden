@@ -37,11 +37,11 @@ function SelectChevron() {
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-text-secondary">{children}</div>;
+  return <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{children}</div>;
 }
 
 const selectClassName =
-  'h-7 w-full appearance-none rounded-[3px] border border-[#313338] bg-[#1E1F22] px-2 pr-7 text-[12px] font-medium text-[#E6EAF0] outline-none transition-colors hover:border-[#3A3D45] focus:border-[#0284C7] focus:ring-1 focus:ring-[#0284C7]';
+  'h-7 w-full appearance-none rounded-[3px] border border-[#313338] bg-[#1E1F22] px-2 pr-7 text-[13px] font-medium text-[#E6EAF0] outline-none transition-colors hover:border-[#3A3D45] focus:border-[#0284C7] focus:ring-1 focus:ring-[#0284C7]';
 
 const runnableDeviceTypes: DeviceType[] = ['robot_arm', 'smart_light', 'camera_sensor'];
 
@@ -97,7 +97,7 @@ export function LabConfigurator({
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex-none border-b border-border-panel px-2.5 py-2">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'devices')}</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'devices')}</div>
             <div className="relative w-24">
               <select value={language} onChange={(event) => onLanguageChange(event.target.value as UiLanguage)} className={selectClassName}>
                 <option value="zh">{t(language, 'chinese')}</option>
@@ -149,44 +149,43 @@ export function LabConfigurator({
         </section>
 
         <section className="flex-none border-t border-border-panel px-2.5 py-2">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'public_alpha_support')}</div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'public_alpha_support')}</div>
           <div className="grid gap-2 rounded-[3px] border border-border-panel bg-[#181A1D] p-2">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'supported_now')}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'supported_now')}</div>
               <div className="mt-1 flex flex-wrap gap-1">
                 {(['robot_arm', 'smart_light', 'camera_sensor'] as DeviceType[]).map((type) => (
-                  <span key={type} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[10px] font-semibold text-[#38BDF8]">
+                  <span key={type} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[11px] font-semibold text-[#38BDF8]">
                     {localizeDeviceType(language, type)}
                   </span>
                 ))}
               </div>
             </div>
             <div className="border-t border-border-panel pt-2">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'current_selection')}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'current_selection')}</div>
               <div className="mt-1 flex items-center justify-between gap-2">
-                <div className="truncate text-[12px] font-semibold text-text-primary">{localizeDeviceType(language, deviceType)}</div>
-                <span className={`rounded-[3px] border px-1.5 py-0.5 text-[10px] font-bold ${selectedDeviceRunnable ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'}`}>
+                <div className="truncate text-[13px] font-semibold text-text-primary">{localizeDeviceType(language, deviceType)}</div>
+                <span className={`rounded-[3px] border px-1.5 py-0.5 text-[11px] font-bold ${selectedDeviceRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
                   {selectedDeviceRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
                 </span>
               </div>
               <div className="mt-1 text-[11px] leading-4 text-text-muted">{t(language, 'support_note')}</div>
             </div>
             <div className="border-t border-border-panel pt-2">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'workspace_focus')}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'workspace_focus')}</div>
               <div className="mt-1 text-[11px] leading-4 text-text-primary">
                 <span className="font-semibold text-text-secondary">{t(language, 'active_workspace_device')}:</span>{' '}
                 <span className="font-semibold">{selectedWorkspaceDeviceLabel ?? '-'}</span>
               </div>
-              <div className="mt-1 text-[11px] leading-4 text-text-muted">{t(language, 'workspace_selection_run_same')}</div>
             </div>
           </div>
         </section>
 
         <section className="flex min-h-0 flex-1 flex-col border-t border-border-panel px-2.5 py-2">
           <FieldLabel>{t(language, 'asset_library')}</FieldLabel>
-          <div className="mb-2 rounded-[3px] border border-border-panel bg-[#181A1D] px-2 py-1.5 text-[10px] leading-4 text-text-muted">
+          <div className="mb-2 rounded-[3px] border border-border-panel bg-[#181A1D] px-2 py-1.5 text-[11px] leading-4 text-text-muted">
             {t(language, 'asset_library_note')}
-            <div className="mt-1 text-[10px] text-[#9AA3AF]">{t(language, 'workspace_drag_hint')}</div>
+            <div className="mt-1 text-[11px] text-[#9AA3AF]">{t(language, 'workspace_drag_hint')}</div>
           </div>
           <input
             value={assetQuery}
@@ -225,19 +224,19 @@ export function LabConfigurator({
                     {localizeDeviceType(language, asset.manifest.device_type)} / {localizeCategory(language, asset.manifest.category)}
                   </div>
                   <div className="mt-0.5 flex flex-wrap gap-1">
-                    <span className={`rounded-[3px] border px-1.5 py-0.5 text-[9px] font-semibold ${runnable ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'}`}>
+                    <span className={`rounded-[3px] border px-1.5 py-0.5 text-[11px] font-semibold ${runnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
                       {runnable ? t(language, 'asset_runtime_supported') : t(language, 'asset_runtime_asset_only')}
                     </span>
-                    <span className="rounded-[3px] border border-border-panel bg-[#232529] px-1.5 py-0.5 text-[9px] font-semibold text-text-secondary">{t(language, 'sim')}</span>
-                    <span className="rounded-[3px] border border-border-panel bg-[#232529] px-1.5 py-0.5 text-[9px] font-semibold text-text-secondary">{t(language, 'risk')} {localizeMetadataValue(language, asset.manifest.risk_class ?? 'medium')}</span>
-                    <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] font-semibold text-[#38BDF8]">{t(language, 'license')}</span>
+                    <span className="rounded-[3px] border border-border-panel bg-[#232529] px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary">{t(language, 'sim')}</span>
+                    <span className="rounded-[3px] border border-border-panel bg-[#232529] px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary">{t(language, 'risk')} {localizeMetadataValue(language, asset.manifest.risk_class ?? 'medium')}</span>
+                    <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[11px] font-semibold text-[#38BDF8]">{t(language, 'license')}</span>
                   </div>
                 </div>
                 <div className="self-center justify-self-end text-right">
-                  <div className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[10px] font-bold text-[#38BDF8]">
+                  <div className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[11px] font-bold text-[#38BDF8]">
                     {t(language, 'add_to_workspace')}
                   </div>
-                  <div className="mt-1 text-[9px] font-medium text-text-muted">
+                  <div className="mt-1 text-[11px] font-medium text-text-muted">
                     {t(language, 'drag_to_workspace')}
                   </div>
                 </div>
@@ -255,7 +254,7 @@ export function LabConfigurator({
 
         <section className="flex-none border-t border-border-panel px-2.5 py-2">
           {/* Conformance boundary copy: Developer Preview / Not for production hardware */}
-          <div className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'developer_preview')}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'developer_preview')}</div>
           <div className="mt-1 text-[11px] leading-4 text-text-muted">{t(language, 'not_for_production')}</div>
         </section>
       </div>

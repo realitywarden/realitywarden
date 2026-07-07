@@ -1,3 +1,9 @@
+/**
+ * @deprecated Superseded by `lib/hardware/RealDeviceTransport`, which has
+ * explicit connectivity semantics (isConnected + TransportOfflineError).
+ * Only the deprecated RealDeviceAdapter/MockDeviceTransport use this
+ * interface. Delete together with them after real-device validation.
+ */
 import type { AdapterCommand } from './AdapterCommand';
 import type { AdapterResult } from './AdapterResult';
 

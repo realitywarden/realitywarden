@@ -1,7 +1,7 @@
 {
   "profile_id": "generic-ptz-camera",
   "profile_version": "1.0.0",
-  "manufacturer": "Open Reality Studio",
+  "manufacturer": "RealityWarden",
   "model": "Generic PTZ Camera",
   "device_id": "asset-generic-ptz-camera",
   "device_type": "camera_sensor",

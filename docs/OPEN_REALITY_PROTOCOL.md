@@ -1,6 +1,8 @@
 # Open Reality Protocol v0.1
 
-Open Reality Protocol is the public-facing contract layer for Open Reality Studio.
+> Role: AUTHORITATIVE protocol contract (see [`PROTOCOL_INDEX.md`](./PROTOCOL_INDEX.md)). Other protocol docs defer to this one.
+
+Open Reality Protocol is the public-facing contract layer for RealityWarden.
 
 It defines how a natural-language goal from an AI model can be transformed into an inspectable, simulation-first, permissioned action path before anything reaches a physical-device boundary.
 

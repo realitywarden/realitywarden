@@ -1,12 +1,12 @@
 # Device Action Runtime
 
-Open Reality Studio does not play fixed animations.
+RealityWarden does not play fixed animations.
 
 Virtual devices move from the same Adapter Commands that future real devices will receive. The runtime is a command-driven action layer: it reads the command, the current device state, the device profile, geometry, and constraints, then produces an ActionPlan and playable ActionFrames.
 
 ## Why Not Fixed Animations
 
-Fixed animations make the simulator look active, but they do not prove that a device command is valid. Open Reality Studio needs the virtual path and the future real-device path to share the same command surface:
+Fixed animations make the simulator look active, but they do not prove that a device command is valid. RealityWarden needs the virtual path and the future real-device path to share the same command surface:
 
 Task DSL -> Adapter Commands -> Device Action Runtime -> Virtual Device Motion / State -> Lab Report
 

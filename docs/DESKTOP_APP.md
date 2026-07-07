@@ -1,6 +1,6 @@
 # Desktop App
 
-Open Reality Studio Desktop is the primary product direction. It is a desktop virtual lab for AI-controlled devices, not a website and not a browser presentation.
+RealityWarden Desktop is the primary product direction. It is a desktop virtual lab for AI-controlled devices, not a website and not a browser presentation.
 
 ## Why Desktop
 
@@ -26,7 +26,7 @@ Renderer code never receives direct Node.js or `fs` access.
 - single-instance desktop startup
 - local Next server startup
 - `BrowserWindow` creation
-- application title: Open Reality Studio
+- application title: RealityWarden
 - application menu creation
 - IPC registration
 - shutdown of the local simulator server
@@ -100,7 +100,7 @@ The desktop menu includes:
 - File: New Project, Open Project, Save Project, Save Project As, Export Lab Report, Export Deployment Package, Exit
 - Run: Run Preflight, Run Virtual Lab, Stop, Replay
 - View: Toggle Project Explorer, Toggle Inspector, Toggle Console, Reload
-- Help: About Open Reality Studio
+- Help: About RealityWarden
 
 Menu actions are sent to the renderer through a safe `menu:action` channel.
 
@@ -165,13 +165,13 @@ npm run desktop:pack
 Installer artifact pattern:
 
 ```text
-release/Open-Reality-Studio-<version>-Setup.exe
+release/RealityWarden-<version>-Setup.exe
 ```
 
 Current verified Public Alpha installer artifact:
 
 ```text
-release/Open-Reality-Studio-0.1.1-Setup.exe
+release/RealityWarden-0.1.1-Setup.exe
 ```
 
 If `electron-builder` is missing, the command now fails explicitly instead of exiting successfully without producing an installer.

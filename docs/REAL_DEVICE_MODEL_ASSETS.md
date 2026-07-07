@@ -1,6 +1,6 @@
 # Real Device Model Assets
 
-Open Reality Studio must not label generated geometry as a real device model.
+RealityWarden must not label generated geometry as a real device model.
 
 A real device model asset must come from one of these sources:
 
@@ -49,7 +49,7 @@ generated_placeholder
 
 ## Current Status
 
-Open Reality Studio now has two verified real-source GLB assets:
+RealityWarden now has two verified real-source GLB assets:
 
 | Profile | Runtime asset | Source | License |
 | --- | --- | --- | --- |

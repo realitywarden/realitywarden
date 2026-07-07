@@ -21,3 +21,7 @@ next-dev.err.log
 alpha-smoke-*.png
 smoke-*.png
 demo/
+.tmp-real-hardware-test/
+.tmp-real-hardware-demo/
+.tmp-llm-compiler-test/
+.tmp-llm-smoke/

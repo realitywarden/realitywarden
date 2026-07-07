@@ -6,7 +6,7 @@ Use these drafts for public posts. Keep the boundary clear: this is a simulation
 
 AI should not touch the physical world directly.
 
-Open Reality Studio is a simulation-first desktop runtime for Physical AI workflows:
+RealityWarden is a simulation-first desktop runtime for Physical AI workflows:
 
 - natural language goals
 - device capability checks
@@ -19,7 +19,7 @@ https://github.com/ZqiEE/open-reality-studio
 
 ## X / Twitter Technical Variant
 
-Released Open Reality Studio Public Alpha.
+Released RealityWarden Public Alpha.
 
 It is a local desktop prototype for testing Physical AI workflows before real hardware:
 
@@ -35,7 +35,7 @@ https://github.com/ZqiEE/open-reality-studio
 
 ## Reddit / Hacker News Long Post
 
-I am building Open Reality Studio, a simulation-first desktop runtime for Physical AI workflows.
+I am building RealityWarden, a simulation-first desktop runtime for Physical AI workflows.
 
 The idea is simple: AI should not send commands directly to physical devices. Before anything reaches reality, the system should understand the goal, check the target device's capabilities, simulate the action, block unsafe commands, and leave an audit trail.
 
@@ -63,7 +63,7 @@ I am looking for feedback on the runtime boundary, device asset format, and the 
 
 ## GitHub Discussions Intro
 
-Open Reality Studio is a simulation-first desktop runtime for Physical AI workflows.
+RealityWarden is a simulation-first desktop runtime for Physical AI workflows.
 
 The project explores the runtime layer between AI agents and physical devices:
 
@@ -87,7 +87,7 @@ Feedback wanted:
 
 ## Chinese Short Intro
 
-Open Reality Studio 是一个 simulation-first 的 Physical AI 桌面运行时原型。
+RealityWarden 是一个 simulation-first 的 Physical AI 桌面运行时原型。
 
 核心想法是：AI 不应该直接控制现实设备。真正接触硬件之前，系统应该先理解目标、检查设备能力、仿真执行、拦截危险指令，并留下审计记录。
 

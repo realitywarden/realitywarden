@@ -18,9 +18,26 @@
     --color-bg-panel: #181B26;
     --color-bg-workspace: #0F111A;
     --color-border-panel: #2A2E3D;
-    --color-text-primary: #E2E8F0;
-    --color-text-secondary: #64748B;
+    --color-text-primary: #DBDEE1;
+    --color-text-secondary: #949BA4;
     --color-text-muted-strong: #6B7280;
+    /* STATUS COLORS - single source of truth. Rule: red = blocked, green =
+       executed, orange = running, yellow = warning. Status colors are for
+       status badges/labels ONLY, never for object bodies or decoration.
+       Mirrored in lib/ui/statusColors.ts for three.js materials. */
+    --color-status-blocked: #E11D48;
+    --color-status-blocked-soft: #FCA5A5;
+    --color-status-blocked-edge: #7F1D1D;
+    --color-status-blocked-surface: #2B1116;
+    --color-status-executed: #10B981;
+    --color-status-executed-soft: #34D399;
+    --color-status-executed-edge: #064E3B;
+    --color-status-executed-surface: #10251D;
+    --color-status-running: #F59E0B;
+    --color-status-running-edge: #92400E;
+    --color-status-warning: #FACC15;
+    --color-status-warning-edge: #713F12;
+    --color-status-warning-surface: #2A2112;
     --color-grid-main: #3E4045;
     --color-grid-sub: #2B2D31;
     --color-axis-x: #E11D48;
@@ -103,7 +120,7 @@
   }
 
   .ors-section-title {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -116,7 +133,7 @@
     align-items: center;
     border: 1px solid var(--color-border-panel);
     padding: 0 6px;
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;

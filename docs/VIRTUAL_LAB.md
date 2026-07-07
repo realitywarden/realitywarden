@@ -1,8 +1,8 @@
-# Open Reality Studio Virtual Lab
+# RealityWarden Virtual Lab
 
-## What Open Reality Studio Is
+## What RealityWarden Is
 
-Open Reality Studio is a development platform for AI-controlled devices. It lets developers build, simulate, test, debug, and validate device behavior before touching real hardware.
+RealityWarden is a development platform for AI-controlled devices. It lets developers build, simulate, test, debug, and validate device behavior before touching real hardware.
 
 The Virtual Lab is the current main product. Developers should create Device Profiles, write scenarios, inspect generated Task DSL, debug Safety Runtime results, review Adapter Commands, and export Lab Reports in the Virtual Lab before any real device work.
 

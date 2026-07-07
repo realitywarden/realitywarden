@@ -144,7 +144,7 @@ async function createWindow() {
   const port = await findAvailablePort(basePort);
   const url = `http://127.0.0.1:${port}`;
   const preloadPath = path.join(__dirname, 'preload.js');
-  const iconPath = path.join(appRoot, 'assets', 'branding', 'open-reality-studio.ico');
+  const iconPath = path.join(appRoot, 'assets', 'branding', 'realitywarden.ico');
 
   appendLog(`Starting Next server at ${url}`);
   await startNextServer(port);

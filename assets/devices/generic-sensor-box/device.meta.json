@@ -1,7 +1,7 @@
 {
   "profile_id": "generic-sensor-box",
   "profile_version": "1.0.0",
-  "manufacturer": "Open Reality Studio",
+  "manufacturer": "RealityWarden",
   "model": "Generic Sensor Box",
   "device_id": "asset-generic-sensor-box",
   "device_type": "sensor_box",

@@ -75,7 +75,7 @@ interface OpenRealityProjectFile {
   lab_reports: LabReport[];
   metadata: {
     saved_at: string;
-    app: 'Open Reality Studio Desktop';
+    app: 'RealityWarden Desktop';
     real_device_execution_enabled: false;
   };
 }
@@ -161,6 +161,7 @@ const publicAlphaRunnableDeviceTypes: DeviceType[] = ['robot_arm', 'smart_light'
 const builtinRealityAssets = getBuiltinRealityAssets();
 const workspaceStorageKey = 'open-reality-studio:last-workspace';
 const firstRunGuideStorageKey = 'open-reality-studio:first-run-guide-dismissed';
+const firstRunDemoStorageKey = 'realitywarden:first-run-demo-done';
 const workspaceSlots: [number, number, number][] = [
   [0, 0, 0],
   [4, 0, 0],
@@ -264,8 +265,8 @@ function localUnknownError(language: UiLanguage) {
 
 function startupLogs(language: UiLanguage) {
   return language === 'zh'
-    ? ['[INFO] Open Reality Studio ready.', '[INFO] 工作区已初始化。', '[INFO] 默认路径已就绪：机械臂 -> 把红方块放到后侧安全区。']
-    : ['[INFO] Open Reality Studio ready.', '[INFO] Workspace initialized.', '[INFO] Default path ready: Robot Arm -> move the red cube to the back safe zone.'];
+    ? ['[INFO] RealityWarden ready.', '[INFO] 工作区已初始化。', '[INFO] 默认路径已就绪：机械臂 -> 把红方块放到后侧安全区。']
+    : ['[INFO] RealityWarden ready.', '[INFO] Workspace initialized.', '[INFO] Default path ready: Robot Arm -> move the red cube to the back safe zone.'];
 }
 
 function exportLabReport(report: LabReport | null) {
@@ -600,7 +601,7 @@ function BottomConsole({
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="mr-2 flex h-5 w-6 items-center justify-center border border-border-panel bg-[#181B26] text-[10px] font-bold text-text-secondary hover:bg-[#232736]"
+          className="mr-2 flex h-5 w-6 items-center justify-center border border-border-panel bg-[#181B26] text-[11px] font-bold text-text-secondary hover:bg-[#232736]"
           title={expanded ? 'Collapse console' : 'Expand console'}
         >
           {expanded ? 'v' : '^'}
@@ -610,14 +611,14 @@ function BottomConsole({
             {tab}
           </div>
         ))}
-        <div className="ml-auto truncate font-mono text-[10px] text-text-secondary">
+        <div className="ml-auto truncate font-mono text-[11px] text-text-secondary">
           {replayPlaying ? t(language, 'status_playing_motion') : latestLog}
         </div>
       </div>
       {expanded && (
       <div className="grid h-[calc(100%-2rem)] grid-cols-[1.05fr_1fr_.8fr_1fr] overflow-hidden font-mono text-[11px]">
         <div className="custom-scrollbar overflow-auto border-r border-border-panel p-1.5">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'current_playback')}</div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'current_playback')}</div>
           <div className="mb-2 flex flex-wrap items-center gap-1">
             <button type="button" title={replayPlaying ? t(language, 'pause') : t(language, 'play')} onClick={onPlayPause} disabled={!labReport} className="flex h-6 w-8 items-center justify-center rounded-[3px] border border-[#30363D] bg-[#232529] text-[11px] font-semibold text-text-primary hover:bg-[#2B2D31] disabled:opacity-40">
               {replayPlaying ? '||' : '▶'}
@@ -639,12 +640,12 @@ function BottomConsole({
                 key={speed}
                 type="button"
                 onClick={() => onSpeedChange(speed)}
-                className={`h-5 border px-1.5 text-[10px] font-semibold ${replaySpeed === speed ? 'border-selected bg-[#0B2233] text-[#38BDF8]' : 'border-[#30363D] bg-[#1E1F22] text-text-secondary hover:bg-[#2B2D31]'}`}
+                className={`h-5 border px-1.5 text-[11px] font-semibold ${replaySpeed === speed ? 'border-selected bg-[#0B2233] text-[#38BDF8]' : 'border-[#30363D] bg-[#1E1F22] text-text-secondary hover:bg-[#2B2D31]'}`}
               >
                 {speed}x
               </button>
             ))}
-            <label className="ml-2 flex items-center gap-1 text-[10px] text-text-secondary">
+            <label className="ml-2 flex items-center gap-1 text-[11px] text-text-secondary">
               <input type="checkbox" checked={slowMode} onChange={(event) => onSlowModeChange(event.target.checked)} className="h-3 w-3 accent-[#0066CC]" />
               {t(language, 'slow_mode')}
             </label>
@@ -658,7 +659,7 @@ function BottomConsole({
           <div className="mt-2 text-text-secondary">{selectedSnapshot?.message ?? t(language, 'waiting_run')}</div>
         </div>
         <div className="custom-scrollbar overflow-auto border-r border-border-panel p-1.5">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'adapter_commands')}</div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'adapter_commands')}</div>
           {commands.length === 0 && <div className="text-text-secondary">{t(language, 'no_commands_generated')}</div>}
           {commands.map((command) => {
             const commandEvents = playbackEvents.filter((event) => event.command_id === command.id);
@@ -666,17 +667,17 @@ function BottomConsole({
             const isBlocked = commandEvents.some((event) => event.status === 'blocked') || command.allowed === false;
             const isCompleted = commandEvents.length > 0 && playbackEvents.findIndex((event) => event.command_id === command.id) < replayIndex && !isCurrent;
             return (
-            <div key={command.id} className={`mb-1 border-l-2 px-2 py-1 ${isBlocked ? 'border-blocked bg-[#3A2028] text-[#FCA5A5]' : isCurrent ? 'border-selected bg-[#232D36] text-text-primary' : isCompleted ? 'border-pass bg-[#1D2B24] text-[#A7F3D0]' : 'border-transparent text-text-secondary'}`}>
+            <div key={command.id} className={`mb-1 border-l-2 px-2 py-1 ${isBlocked ? 'border-blocked bg-[#3A2028] text-status-blocked-soft' : isCurrent ? 'border-selected bg-[#232D36] text-text-primary' : isCompleted ? 'border-pass bg-[#1D2B24] text-[#A7F3D0]' : 'border-transparent text-text-secondary'}`}>
               {command.id} / {command.action} / {command.target ?? '-'}
             </div>
           );})}
         </div>
         <div className="custom-scrollbar overflow-auto border-r border-border-panel p-1.5">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'state_diff')}</div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'state_diff')}</div>
           <div className="text-text-secondary">{selectedSnapshot?.changed_keys?.length ? selectedSnapshot.changed_keys.join(', ') : t(language, 'waiting_state_changes')}</div>
         </div>
         <div className="custom-scrollbar overflow-auto p-1.5">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'logs')}</div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'logs')}</div>
           {logs.length === 0 && (
             <>
               {consoleLogs.map((log) => (
@@ -738,15 +739,15 @@ function AICommandTerminal({
   };
   const badgeClass =
     status.kind === 'blocked' || status.kind === 'failed'
-      ? 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]'
+      ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'
       : status.kind === 'running'
-        ? 'border-[#92400E] bg-[#2A2112] text-[#F59E0B]'
+        ? 'border-status-running-edge bg-status-warning-surface text-status-running'
       : status.kind === 'completed'
-        ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]'
+        ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft'
         : status.kind === 'coming_soon'
-          ? 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'
+          ? 'border-status-warning-edge bg-status-warning-surface text-status-warning'
         : status.kind === 'ask_human' || status.kind === 'proposed_plan'
-          ? 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'
+          ? 'border-status-warning-edge bg-status-warning-surface text-status-warning'
             : 'border-border-panel bg-[#232529] text-text-secondary';
   const badgeText =
     status.kind === 'ready' ? t(language, 'command_ready')
@@ -780,10 +781,10 @@ function AICommandTerminal({
 
   return (
     <section className="flex flex-none flex-col gap-1.5 border-t border-[#313338] border-b border-[#23262B] bg-[#15171A] px-3 py-2 shadow-[0_-12px_24px_rgba(0,0,0,0.22)]">
-      <div className="flex items-center gap-2.5">
-        <div className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{labels.label}</div>
-        <div className="flex h-9 min-w-0 flex-1 items-center rounded-[3px] border border-[#313338] bg-[#0B0C0E] focus-within:border-[#0284C7]">
-          <div className="shrink-0 border-r border-[#313338] px-2 font-mono text-[11px] font-bold text-[#7DD3FC]">
+      <div className="flex items-start gap-2.5">
+        <div className="w-20 shrink-0 pt-2.5 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{labels.label}</div>
+        <div className="flex min-h-[3.75rem] min-w-0 flex-1 items-stretch rounded-[3px] border border-[#313338] bg-[#0B0C0E] focus-within:border-[#0284C7]">
+          <div className="flex shrink-0 items-center border-r border-[#313338] px-2 font-mono text-[11px] font-bold text-[#7DD3FC]">
             USER &gt;
           </div>
           <textarea
@@ -796,8 +797,8 @@ function AICommandTerminal({
               }
             }}
             spellCheck={false}
-            rows={1}
-            className="h-8 max-h-9 flex-1 resize-none border-0 bg-transparent px-3 py-1.5 font-mono text-[12px] leading-5 text-[#E6EAF0] outline-none placeholder:text-[#5F6670]"
+            rows={3}
+            className="min-h-[3.5rem] max-h-40 flex-1 resize-y border-0 bg-transparent px-3 py-2 font-mono text-[13px] leading-5 text-[#E6EAF0] outline-none placeholder:text-[#5F6670]"
             placeholder={guidedPlaceholder}
           />
         </div>
@@ -805,59 +806,59 @@ function AICommandTerminal({
           type="button"
           disabled={running || !runTargetRunnable}
           onClick={submit}
-          className="h-9 rounded-[3px] border border-[#075985] bg-[#0066CC] px-4 text-[12px] font-medium text-white hover:bg-[#0A74DA] disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-9 rounded-[3px] border border-[#075985] bg-[#0066CC] px-4 text-[13px] font-medium text-white hover:bg-[#0A74DA] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {running ? labels.running : labels.run}
         </button>
         <button
           type="button"
           onClick={onStop}
-          className="h-9 rounded-[3px] border border-[#5A2B2B] px-3 text-[12px] font-medium text-[#F87171] hover:bg-[#2A1111]"
+          className="h-9 rounded-[3px] border border-[#5A2B2B] px-3 text-[13px] font-medium text-[#F87171] hover:bg-[#2A1111]"
         >
           {labels.stop}
         </button>
         <button
           type="button"
           disabled
-          className="h-9 rounded-[3px] border border-border-panel px-3 text-[12px] font-medium text-text-secondary opacity-40"
+          className="h-9 rounded-[3px] border border-border-panel px-3 text-[13px] font-medium text-text-secondary opacity-40"
         >
           {labels.validate}
         </button>
         <div className="min-w-[170px] max-w-[280px] shrink-0">
-          <div className={`inline-flex h-6 items-center rounded-[3px] border px-2 text-[10px] font-bold uppercase tracking-wide ${badgeClass}`}>{badgeText}</div>
-          <div className="mt-0.5 truncate text-[10px] text-text-secondary" title={status.message}>{status.message}</div>
-            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-text-muted">
+          <div className={`inline-flex h-6 items-center rounded-[3px] border px-2 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>{badgeText}</div>
+          <div className="mt-0.5 truncate text-[11px] text-text-secondary" title={status.message}>{status.message}</div>
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
               <span className="font-semibold text-text-secondary">{t(language, 'active_workspace_device')}:</span>
               <span className="truncate text-text-primary" title={runTargetLabel}>{runTargetLabel}</span>
-            <span className={`rounded-[3px] border px-1.5 py-0.5 font-bold ${runTargetRunnable ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'}`}>
+            <span className={`rounded-[3px] border px-1.5 py-0.5 font-bold ${runTargetRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
               {runTargetRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
             </span>
             </div>
-            <div className="mt-0.5 text-[10px] text-[#9BD4FF]">{t(language, 'workspace_selection_run_same')}</div>
+            <div className="mt-0.5 text-[11px] text-[#9BD4FF]">{t(language, 'workspace_selection_run_same')}</div>
             {!runTargetRunnable && (
-              <div className="mt-0.5 text-[10px] text-[#FACC15]">
+              <div className="mt-0.5 text-[11px] text-status-warning">
                 {t(language, 'welcome_protocol_only')}
               </div>
             )}
             {!runTargetRunnable && (
-              <div className="mt-0.5 text-[10px] text-[#FACC15]">
+              <div className="mt-0.5 text-[11px] text-status-warning">
                 {t(language, 'select_runnable_target_hint')}
               </div>
             )}
           </div>
         </div>
       {!runTargetRunnable && (
-        <div className="ml-20 rounded-[3px] border border-[#713F12] bg-[#2A2112] px-3 py-2">
-          <div className="text-[11px] font-semibold text-[#FACC15]">{t(language, 'asset_only_runtime_title')}</div>
-          <div className="mt-1 text-[10px] leading-4 text-[#E5C76B]">{t(language, 'asset_only_runtime_detail')}</div>
+        <div className="ml-20 rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-3 py-2">
+          <div className="text-[11px] font-semibold text-status-warning">{t(language, 'asset_only_runtime_title')}</div>
+          <div className="mt-1 text-[11px] leading-4 text-[#E5C76B]">{t(language, 'asset_only_runtime_detail')}</div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-[#D6B457]">{t(language, 'jump_to_runnable_path')}</span>
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[#D6B457]">{t(language, 'jump_to_runnable_path')}</span>
             {quickStartPaths.map((path) => (
               <button
                 key={`jump-${path.id}`}
                 type="button"
                 onClick={() => onQuickStart(path)}
-                className="rounded-[3px] border border-[#85611B] bg-[#33260F] px-2 py-1 text-[10px] font-semibold text-[#F8D77A] hover:bg-[#3F3013]"
+                className="rounded-[3px] border border-[#85611B] bg-[#33260F] px-2 py-1 text-[11px] font-semibold text-[#F8D77A] hover:bg-[#3F3013]"
               >
                 {localizeDeviceType(language, path.deviceType)}
               </button>
@@ -865,7 +866,7 @@ function AICommandTerminal({
           </div>
         </div>
       )}
-      <div className="ml-20 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#8A94A0] xl:flex">
+      <div className="ml-20 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-[#8A94A0]">
         <span>{t(language, 'command_target_notice')}</span>
         <span className="text-[#4B5563]">|</span>
         <span>{t(language, 'command_safe_blocked_notice')}</span>
@@ -873,17 +874,18 @@ function AICommandTerminal({
         <span>{t(language, 'simulation_only')}</span>
       </div>
       <div className="ml-20 flex min-h-5 items-center gap-2">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'starter_commands')}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'starter_commands')}</div>
         <div className="custom-scrollbar flex flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden whitespace-nowrap">
           {primaryStarter && (
-            <span className="shrink-0 text-[10px] text-[#5F6670]">{t(language, 'command_try_first')}</span>
+            <span className="shrink-0 text-[11px] text-[#5F6670]">{t(language, 'command_try_first')}</span>
           )}
           {starterPrompts.length > 0 ? starterPrompts.map((starter) => (
             <button
               key={`${runTargetDeviceType}-${starter}`}
               type="button"
               onClick={() => onPromptChange(starter)}
-              className="shrink-0 rounded-[3px] border border-border-panel bg-[#232529] px-2 py-[3px] text-[11px] font-medium text-text-primary hover:bg-[#2B2D31]"
+              title={starter}
+              className="max-w-[320px] shrink-0 truncate rounded-[3px] border border-border-panel bg-[#232529] px-2 py-[3px] text-[11px] font-medium text-text-primary hover:bg-[#2B2D31]"
             >
               {starter}
             </button>
@@ -895,27 +897,27 @@ function AICommandTerminal({
       {activeQuickStart && (
         <div className="ml-20 hidden rounded-[3px] border border-border-panel bg-[#181A1D] px-3 py-1 2xl:block">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'guided_evaluation')}</span>
-            <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-2 py-0.5 text-[10px] font-semibold text-[#38BDF8]">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'guided_evaluation')}</span>
+            <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-2 py-0.5 text-[11px] font-semibold text-[#38BDF8]">
               {t(language, 'current_path')}: {activeQuickStart.title}
             </span>
-            <span className={`rounded-[3px] border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeClass}`}>
+            <span className={`rounded-[3px] border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>
               {badgeText}
             </span>
-            <span className="text-[10px] text-[#C7D2DA] truncate">
+            <span className="min-w-0 max-w-full flex-1 truncate text-[11px] text-[#C7D2DA]" title={activeQuickStart.expected}>
               <span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_expected')}:</span> {activeQuickStart.expected}
             </span>
               {nextQuickStart && (
               <button
                 type="button"
                 onClick={() => onQuickStart(nextQuickStart)}
-                className="rounded-[3px] border border-border-panel bg-[#232529] px-2 py-1 text-[10px] font-semibold text-text-primary hover:bg-[#2B2D31]"
+                className="rounded-[3px] border border-border-panel bg-[#232529] px-2 py-1 text-[11px] font-semibold text-text-primary hover:bg-[#2B2D31]"
               >
                 {t(language, 'try_next')}
               </button>
             )}
           </div>
-          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-[9px] leading-4 text-[#A7B0BA]">
+          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-4 text-[#A7B0BA]">
             <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_proof')}:</span> {activeQuickStart.proof}</span>
             <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_validates')}:</span> {activeQuickStart.validates}</span>
             {nextQuickStart && (
@@ -924,11 +926,11 @@ function AICommandTerminal({
           </div>
           {!running && status.kind === 'ready' && (
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-semibold text-[#9BD4FF]">{t(language, 'quick_start_next_step')}</span>
+              <span className="text-[11px] font-semibold text-[#9BD4FF]">{t(language, 'quick_start_next_step')}</span>
               <button
                 type="button"
                 onClick={onRun}
-                className="rounded-[3px] border border-[#075985] bg-[#0284C7] px-2 py-1 text-[10px] font-semibold text-white hover:bg-[#0369A1]"
+                className="rounded-[3px] border border-[#075985] bg-[#0284C7] px-2 py-1 text-[11px] font-semibold text-white hover:bg-[#0369A1]"
               >
                 {t(language, 'quick_start_run_now')}
               </button>
@@ -955,8 +957,8 @@ function WorkspaceDeviceStrip({
   return (
     <section className="flex flex-none items-center gap-2 border-b border-[#23262B] bg-[#17191C] px-3 py-1">
       <div className="w-24 shrink-0">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'workspace_devices')}</div>
-        <div className="mt-0.5 text-[9px] leading-4 text-[#6B7280]">{t(language, 'workspace_activate_device')}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'workspace_devices')}</div>
+        <div className="mt-0.5 text-[11px] leading-4 text-[#6B7280]">{t(language, 'workspace_activate_device')}</div>
       </div>
       <div className="custom-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden">
         {devices.map((device) => {
@@ -970,14 +972,14 @@ function WorkspaceDeviceStrip({
               className={`flex shrink-0 items-center gap-1.5 rounded-[3px] border px-2 py-1 text-left ${selected ? 'border-[#075985] bg-[#0B2233] text-[#D8EEFF]' : 'border-border-panel bg-[#232529] text-text-primary hover:bg-[#2B2D31]'}`}
             >
               <span className="text-[11px] font-semibold">{localizeDisplayName(language, device.label)}</span>
-              <span className="rounded-[3px] border border-border-panel px-1 py-0.5 text-[9px] font-bold text-text-secondary">
+              <span className="rounded-[3px] border border-border-panel px-1 py-0.5 text-[11px] font-bold text-text-secondary">
                 {localizeDeviceType(language, device.deviceType)}
               </span>
-              <span className={`rounded-[3px] border px-1 py-0.5 text-[9px] font-bold ${runnable ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#713F12] bg-[#2A2112] text-[#FACC15]'}`}>
+              <span className={`rounded-[3px] border px-1 py-0.5 text-[11px] font-bold ${runnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
                 {runnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
               </span>
               {selected && (
-                <span className="rounded-[3px] border border-[#075985] bg-[#12324B] px-1 py-0.5 text-[9px] font-bold text-[#7DD3FC]">
+                <span className="rounded-[3px] border border-[#075985] bg-[#12324B] px-1 py-0.5 text-[11px] font-bold text-[#7DD3FC]">
                   {t(language, 'active_workspace_device')}
                 </span>
               )}
@@ -985,7 +987,7 @@ function WorkspaceDeviceStrip({
           );
         })}
       </div>
-      <div className="hidden max-w-[240px] shrink-0 text-right text-[9px] leading-4 text-[#6B7280] xl:block">
+      <div className="hidden max-w-[240px] shrink-0 text-right text-[11px] leading-4 text-[#6B7280] xl:block">
         {t(language, 'workspace_run_rule')}
       </div>
     </section>
@@ -1007,7 +1009,7 @@ function FirstRunGuide({
   const copy = language === 'zh'
     ? {
         headline: 'AI 不应该直接触碰现实。',
-        subtitle: 'Open Reality Studio 是 AI Agent 与真实世界设备之间的安全与责任层。',
+        subtitle: 'RealityWarden 是 AI Agent 与真实世界设备之间的安全与责任层。',
         eyebrow: 'Simulation-first Public Alpha',
         boundary: '当前不会执行真实设备命令',
         trySimulation: '试运行仿真',
@@ -1033,7 +1035,7 @@ function FirstRunGuide({
       }
     : {
         headline: 'AI should not touch reality directly.',
-        subtitle: 'Open Reality Studio is the safety and accountability layer between AI agents and real-world devices.',
+        subtitle: 'RealityWarden is the safety and accountability layer between AI agents and real-world devices.',
         eyebrow: 'Simulation-first Public Alpha',
         boundary: 'Real device execution is not enabled yet',
         trySimulation: 'Try Simulation',
@@ -1070,8 +1072,8 @@ function FirstRunGuide({
       <div className="grid gap-8 xl:grid-cols-[1.1fr_.9fr]">
         <div>
           <div className="mb-4 flex flex-wrap gap-2">
-            <span className="border border-[#3F3F46] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#D4D4D8]">{copy.eyebrow}</span>
-            <span className="border border-[#3F3F46] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#A1A1AA]">{copy.boundary}</span>
+            <span className="border border-[#3F3F46] px-2 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#D4D4D8]">{copy.eyebrow}</span>
+            <span className="border border-[#3F3F46] px-2 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#A1A1AA]">{copy.boundary}</span>
           </div>
           <h1 className="max-w-3xl text-[52px] font-semibold leading-[0.98] tracking-[-0.04em] text-white">{copy.headline}</h1>
           <p className="mt-5 max-w-2xl text-[16px] leading-7 text-[#A1A1AA]">{copy.subtitle}</p>
@@ -1088,7 +1090,7 @@ function FirstRunGuide({
           </div>
           <div className="mt-6 flex flex-wrap gap-2">
             {copy.chips.map((chip) => (
-              <span key={chip} className="border border-[#27272A] bg-[#09090B] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A1A1AA]">{chip}</span>
+              <span key={chip} className="border border-[#27272A] bg-[#09090B] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A1A1AA]">{chip}</span>
             ))}
           </div>
           <div className="mt-6 grid gap-2 md:grid-cols-3">
@@ -1100,8 +1102,8 @@ function FirstRunGuide({
                 className="border border-[#27272A] bg-[#050505] p-3 text-left hover:border-[#52525B] hover:bg-[#0A0A0A]"
                 title={path.prompt}
               >
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#71717A]">{localizeDeviceType(language, path.deviceType)}</div>
-                <div className="mt-1 text-[12px] font-semibold text-white">{path.title}</div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#71717A]">{localizeDeviceType(language, path.deviceType)}</div>
+                <div className="mt-1 text-[13px] font-semibold text-white">{path.title}</div>
                 <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-[#A1A1AA]">{path.expected}</div>
               </button>
             ))}
@@ -1110,7 +1112,7 @@ function FirstRunGuide({
         <div className="border border-[#27272A] bg-[#050505] p-5">
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
             <div className="space-y-2">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.gateLeft}</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.gateLeft}</div>
               <div className="grid grid-cols-4 gap-2">
                 {Array.from({ length: 16 }).map((_, index) => (
                   <span key={index} className="h-2 w-2 rounded-full bg-white/20" />
@@ -1119,11 +1121,11 @@ function FirstRunGuide({
             </div>
             <div className="flex h-48 w-16 flex-col items-center justify-center border-x border-white/20">
               <div className="h-full w-px bg-gradient-to-b from-transparent via-white to-transparent" />
-              <div className="my-3 whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.16em] text-white [writing-mode:vertical-rl]">{copy.gateCenter}</div>
+              <div className="my-3 whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.16em] text-white [writing-mode:vertical-rl]">{copy.gateCenter}</div>
               <div className="h-full w-px bg-gradient-to-b from-transparent via-white to-transparent" />
             </div>
             <div>
-              <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.gateRight}</div>
+              <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.gateRight}</div>
               <div className="relative h-40 border border-[#3F3F46] bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:22px_22px]">
                 <div className="absolute bottom-7 left-8 h-12 w-24 border border-white/70" />
                 <div className="absolute bottom-7 right-8 h-20 w-8 border border-white/45" />
@@ -1131,7 +1133,7 @@ function FirstRunGuide({
               </div>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] uppercase tracking-[0.12em] text-[#A1A1AA]">
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[11px] uppercase tracking-[0.12em] text-[#A1A1AA]">
             <span>Intent</span><span>Checked</span><span>Simulated</span>
           </div>
         </div>
@@ -1141,18 +1143,18 @@ function FirstRunGuide({
         <div className="border border-[#27272A] bg-[#050505] p-4">
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">{copy.pipelineTitle}</div>
           <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.pipelineSubtitle}</p>
-          <div className="mt-4 border border-[#27272A] bg-black px-3 py-2 font-mono text-[12px] text-[#E4E4E7]">{copy.prompt}</div>
+          <div className="mt-4 border border-[#27272A] bg-black px-3 py-2 font-mono text-[13px] text-[#E4E4E7]">{copy.prompt}</div>
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             {pipeline.map((step, index) => (
               <div key={step} className="border border-[#27272A] bg-[#09090B] p-3">
-                <div className="text-[10px] font-mono text-[#71717A]">0{index + 1}</div>
-                <div className="mt-1 text-[12px] font-semibold text-[#E4E4E7]">{step}</div>
+                <div className="text-[11px] font-mono text-[#71717A]">0{index + 1}</div>
+                <div className="mt-1 text-[13px] font-semibold text-[#E4E4E7]">{step}</div>
               </div>
             ))}
           </div>
           <div className="mt-4 grid gap-2 md:grid-cols-2">
             <div className="border border-[#3F3F46] bg-[#0A0A0A] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white">{copy.decisionSafe}</div>
-            <div className="border border-[#4C1D1D] bg-[#1A0D0D] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#FCA5A5]">{copy.decisionBlocked}</div>
+            <div className="border border-[#4C1D1D] bg-[#1A0D0D] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-status-blocked-soft">{copy.decisionBlocked}</div>
           </div>
         </div>
 
@@ -1164,9 +1166,9 @@ function FirstRunGuide({
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {assetCards.map(([name, capability, status]) => (
                 <div key={name} className="border border-[#27272A] bg-[#09090B] p-3">
-                  <div className="text-[12px] font-semibold">{name}</div>
-                  <div className="mt-1 font-mono text-[10px] text-[#A1A1AA]">{capability}</div>
-                  <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#D4D4D8]">{status}</div>
+                  <div className="text-[13px] font-semibold">{name}</div>
+                  <div className="mt-1 font-mono text-[11px] text-[#A1A1AA]">{capability}</div>
+                  <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#D4D4D8]">{status}</div>
                 </div>
               ))}
             </div>
@@ -1184,11 +1186,11 @@ function FirstRunGuide({
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#71717A]">Accountability</div>
           <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">{copy.auditTitle}</h2>
           <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.auditSubtitle}</p>
-          <div className="mt-4 grid grid-cols-[58px_1fr_90px_90px] border border-[#27272A] font-mono text-[10px]">
+          <div className="mt-4 grid grid-cols-[58px_1fr_90px_90px] border border-[#27272A] font-mono text-[11px]">
             {['Time', 'Prompt', 'Decision', 'Reason'].map((head) => <div key={head} className="border-b border-[#27272A] px-2 py-2 text-[#71717A]">{head}</div>)}
             <div className="px-2 py-2 text-[#A1A1AA]">00:14</div>
             <div className="truncate px-2 py-2 text-[#E4E4E7]">Enable real adapter</div>
-            <div className="px-2 py-2 text-[#FCA5A5]">BLOCKED</div>
+            <div className="px-2 py-2 text-status-blocked-soft">BLOCKED</div>
             <div className="truncate px-2 py-2 text-[#A1A1AA]">real disabled</div>
           </div>
         </div>
@@ -1197,13 +1199,13 @@ function FirstRunGuide({
           <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">{copy.ecosystemTitle}</h2>
           <p className="mt-2 text-[13px] leading-6 text-[#A1A1AA]">{copy.ecosystemSubtitle}</p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {roles.map((role) => <span key={role} className="border border-[#27272A] bg-[#09090B] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4D4D8]">{role}</span>)}
+            {roles.map((role) => <span key={role} className="border border-[#27272A] bg-[#09090B] px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4D4D8]">{role}</span>)}
           </div>
         </div>
       </div>
 
       <div className="mt-5 flex justify-end">
-        <button type="button" onClick={onDismiss} className="h-9 border border-[#3F3F46] bg-[#0A0A0A] px-4 text-[12px] font-semibold text-[#E4E4E7] hover:bg-[#18181B]">
+        <button type="button" onClick={onDismiss} className="h-9 border border-[#3F3F46] bg-[#0A0A0A] px-4 text-[13px] font-semibold text-[#E4E4E7] hover:bg-[#18181B]">
           {copy.dismiss}
         </button>
       </div>
@@ -1277,7 +1279,14 @@ export default function Home() {
   const workspaceBlocked = workspaceIssues.some((issue) => issue.severity === 'blocked');
   const workspaceWarnings = workspaceIssues.filter((issue) => issue.severity === 'warning').length;
 
-  const selectedWorkspaceDevice = workspaceDevices.find((device) => device.id === selectedWorkspaceDeviceId) ?? null;
+  // Single source of truth for "the active device": explicit selection first,
+  // otherwise the first workspace device — the SAME fallback the 3D stage
+  // uses. Previously the inspector/command bar fell back to the type dropdown
+  // instead, so three panels could name three different devices.
+  const selectedWorkspaceDevice =
+    workspaceDevices.find((device) => device.id === selectedWorkspaceDeviceId)
+    ?? workspaceDevices[0]
+    ?? null;
   const selectedWorkspaceAsset = assetForId(availableAssets, selectedWorkspaceDevice?.assetId);
   const selectedWorkspaceProfile = selectedWorkspaceAsset
     ? profileFromAsset(selectedWorkspaceAsset)
@@ -1478,7 +1487,7 @@ export default function Home() {
     lab_reports: labReport ? [labReport] : [],
     metadata: {
       saved_at: new Date().toISOString(),
-      app: 'Open Reality Studio Desktop',
+      app: 'RealityWarden Desktop',
       real_device_execution_enabled: false
     }
   }), [buildWorkspaceFile, labReport, language, projectName, workspaceDevices]);
@@ -1545,9 +1554,14 @@ export default function Home() {
   }, [applyWorkspaceFile]);
 
   useEffect(() => {
-    const workspace = buildWorkspaceFile();
-    window.localStorage.setItem(workspaceStorageKey, JSON.stringify(workspace));
-    setAutosavedAt(workspace.saved_at);
+    // Debounced autosave: serializing the whole workspace on every keystroke
+    // caused needless main-thread work; 600ms of quiet is enough.
+    const timer = window.setTimeout(() => {
+      const workspace = buildWorkspaceFile();
+      window.localStorage.setItem(workspaceStorageKey, JSON.stringify(workspace));
+      setAutosavedAt(workspace.saved_at);
+    }, 600);
+    return () => window.clearTimeout(timer);
   }, [buildWorkspaceFile]);
 
   const dismissFirstRunGuide = useCallback(() => {
@@ -1634,6 +1648,17 @@ export default function Home() {
     setSelectedWorkspaceDeviceId((selectedId) => selectedId === deviceId ? null : selectedId);
     if (removed) showNotice('warning', noticeMessage(language, `\u5df2\u79fb\u9664\u8bbe\u5907\uff1a${removed.label}`, `Device removed: ${removed.label}`));
   }, [language, showNotice, workspaceDevices]);
+
+  const handleRemoveSelectedDevice = useCallback(() => {
+    const device = workspaceDevices.find((item) => item.id === selectedWorkspaceDeviceId) ?? workspaceDevices[0];
+    if (!device) return;
+    const confirmed = window.confirm(
+      language === 'zh'
+        ? `确认移除设备「${device.label}」？此操作不影响其他设备。`
+        : `Remove device "${device.label}"? Other devices are not affected.`
+    );
+    if (confirmed) removeWorkspaceDevice(device.id);
+  }, [language, removeWorkspaceDevice, selectedWorkspaceDeviceId, workspaceDevices]);
 
   const duplicateWorkspaceDevice = useCallback((deviceId: string) => {
     const source = workspaceDevices.find((device) => device.id === deviceId);
@@ -1877,7 +1902,7 @@ export default function Home() {
     });
     const baseRunLogs = startupLogs(language);
     const runtimeAuditLogs = localRuntimeSession.auditLog.map((entry) =>
-      `[${entry.level.toUpperCase()}] [${entry.stage}] ${entry.code}: ${entry.message}`
+      `[${entry.level.toUpperCase()}] [${entry.stage}] ${entry.code}: ${entry.message} (hardwareSignalSent=${entry.hardwareSignalSent})`
     );
     const publishLocalRuntimeDecisionReport = () => {
       setLabReport(buildLocalRuntimeDecisionLabReport({
@@ -1918,6 +1943,9 @@ export default function Home() {
       setCommandStatus({ kind: terminalKind, message });
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
+        language === 'zh'
+          ? '[SIMULATION] 仿真运行 —— 未向真实硬件发送任何信号。'
+          : '[SIMULATION] Simulated run — no signals were sent to real hardware.',
         ...runtimeAuditLogs,
         ...baseRunLogs
       ]);
@@ -1939,6 +1967,9 @@ export default function Home() {
     try {
       replaceLogs([
         `[INFO] ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`,
+        language === 'zh'
+          ? '[SIMULATION] 仿真运行 —— 未向真实硬件发送任何信号。'
+          : '[SIMULATION] Simulated run — no signals were sent to real hardware.',
         ...runtimeAuditLogs,
         ...baseRunLogs
       ]);
@@ -2030,6 +2061,10 @@ export default function Home() {
         if (event.kind === 'report') {
           setLabReport(event.report);
           setWorkspaceValidation(null);
+          const auditBlockedCount = event.report.state_snapshots?.filter((snapshot) => snapshot.stage === 'blocked').length ?? 0;
+          prependLog(language === 'zh'
+            ? `[AUDIT] 本次 ${event.report.adapter_commands.length} 条适配器指令，拦截 ${auditBlockedCount} 条，hardwareSignalSent=false（仿真，未触碰真实硬件）。`
+            : `[AUDIT] ${event.report.adapter_commands.length} adapter command(s), ${auditBlockedCount} blocked, hardwareSignalSent=false (simulation, no real hardware touched).`);
           const finalSnapshot = event.report.state_snapshots?.[event.report.state_snapshots.length - 1] ?? null;
           setSelectedSnapshot(finalSnapshot);
           if (finalSnapshot?.action_frame) setCurrentActionFrame(finalSnapshot.action_frame);
@@ -2065,6 +2100,35 @@ export default function Home() {
       }
     }
   }, [availableAssets, clearPlaybackTimers, effectiveSelectedProfile, language, prompt, replaySpeed, selectedProfile, selectedScenario, selectedWorkspaceDevice, selectedWorkspaceDeviceId, showNotice, slowMode, workspaceDevices.length]);
+
+  const runScenarioRef = useRef(runScenario);
+  useEffect(() => {
+    runScenarioRef.current = runScenario;
+  }, [runScenario]);
+
+  // First-launch auto demo: run the unsafe starter once so a new user watches
+  // the safety layer block a command within the first 30 seconds. Never
+  // repeats after the first launch (persisted flag).
+  const autoDemoTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoDemoTriggeredRef.current || typeof window === 'undefined') return;
+    if (window.localStorage.getItem(firstRunDemoStorageKey)) return;
+    autoDemoTriggeredRef.current = true;
+    window.localStorage.setItem(firstRunDemoStorageKey, '1');
+    const demoPrompt = getLocalizedPrompt(getScenarioForProfile('virtual-robot-arm', 'unsafe'), language);
+    setPrompt(demoPrompt);
+    setConsoleLogs((logs) => [
+      language === 'zh'
+        ? '[DEMO] 首次启动演示：即将发送一条不安全指令（把方块扔出桌面），观察安全层如何拦截它。'
+        : '[DEMO] First-run demo: sending an unsafe command (throw the cube off the table) so you can watch the safety layer block it.',
+      ...logs
+    ]);
+    const timer = window.setTimeout(() => {
+      void runScenarioRef.current();
+    }, 1600);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const runFullValidation = useCallback(async () => {
     setValidationRunning(true);
@@ -2302,6 +2366,7 @@ export default function Home() {
     liveRunActiveRef.current = false;
     clearPlaybackTimers();
     setRunning(false);
+    setReplayPlaying(false);
     setValidationRunning(false);
     setCurrentActionFrame(null);
     setCommandStatus({
@@ -2390,9 +2455,16 @@ export default function Home() {
     const targetStep = task.steps.find((step) => step.id === 'step-4' && step.action === 'move_to_pose')
       ?? [...task.steps].reverse().find((step) => step.action === 'move_to_pose' && step.target);
     if (!targetStep?.target) return null;
-    const target = targetPosition(String(targetStep.zone ?? targetStep.target), effectiveSelectedProfile.geometry);
+    const localTarget = targetPosition(String(targetStep.target ?? targetStep.zone), effectiveSelectedProfile.geometry);
     const selectedDevice = semanticWorkspaceDevices.find((device) => device.id === selectedWorkspaceDeviceId) ?? semanticWorkspaceDevices[0];
-    const origin = previewOriginFromState(selectedDevice?.state, selectedDevice?.position ?? [0, 0, 0] as [number, number, number]);
+    // The device (and everything it animates) renders inside a group offset by
+    // device.position, while the preview marker is drawn in world coordinates.
+    // Shift the local zone target into world space so the predicted marker and
+    // the actual landing spot always coincide.
+    const base = selectedDevice?.position ?? ([0, 0, 0] as [number, number, number]);
+    const target: [number, number, number] = [localTarget[0] + base[0], localTarget[1], localTarget[2] + base[2]];
+    const localOrigin = previewOriginFromState(selectedDevice?.state, [0, 0, 0]);
+    const origin: [number, number, number] = [localOrigin[0] + base[0], 0, localOrigin[2] + base[2]];
     return {
       target,
       path: [origin, target] as [[number, number, number], [number, number, number]],
@@ -2406,10 +2478,10 @@ export default function Home() {
       <div className="flex h-9 w-full select-none items-center border-b border-border-panel bg-bg-panel">
         <div className="flex h-full w-[264px] shrink-0 items-center gap-2 border-r border-border-panel px-3 text-[11px] font-semibold text-text-primary">
           <div className="min-w-0">
-            <div className="text-[9px] font-bold uppercase tracking-wide text-text-muted-strong">{t(language, 'app_project')}</div>
-            <div className="max-w-[160px] truncate text-[12px] font-semibold text-text-primary">{projectName}</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-text-muted-strong">{t(language, 'app_project')}</div>
+            <div className="max-w-[160px] truncate text-[13px] font-semibold text-text-primary">{projectName}</div>
           </div>
-          <span className={`ml-auto rounded-[3px] border px-1.5 py-0.5 text-[10px] ${workspaceBlocked ? 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]' : workspaceWarnings > 0 ? 'border-[#713F12] bg-[#2A2112] text-[#FACC15]' : 'border-[#064E3B] bg-[#10251D] text-[#34D399]'}`}>
+          <span className={`ml-auto rounded-[3px] border px-1.5 py-0.5 text-[11px] ${workspaceBlocked ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : workspaceWarnings > 0 ? 'border-status-warning-edge bg-status-warning-surface text-status-warning' : 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft'}`}>
             {language === 'zh'
               ? workspaceBlocked ? '\u9884\u68c0\u963b\u65ad' : workspaceWarnings > 0 ? `\u9884\u68c0 ${workspaceWarnings} \u9879\u8b66\u544a` : '\u9884\u68c0\u901a\u8fc7'
               : workspaceBlocked ? 'Preflight Blocked' : workspaceWarnings > 0 ? `${workspaceWarnings} Warnings` : 'Preflight Passed'}
@@ -2417,45 +2489,45 @@ export default function Home() {
         </div>
         <div className="flex h-full min-w-0 flex-1 items-center justify-between">
           <div className="toolbar-scroll custom-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden px-3">
-          <button type="button" onClick={newProject} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+          <button type="button" onClick={newProject} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
             {t(language, 'app_new')}
           </button>
-          <button type="button" onClick={() => void openProject()} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+          <button type="button" onClick={() => void openProject()} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
             {t(language, 'app_open')}
           </button>
-          <button type="button" onClick={() => setAssetImportOpen(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+          <button type="button" onClick={() => setAssetImportOpen(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
             {t(language, 'app_import_asset')}
           </button>
           <span className="mx-1 h-6 w-px bg-border-panel" />
-          <button type="button" onClick={() => void saveWorkspace(false)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+          <button type="button" onClick={() => void saveWorkspace(false)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
             {t(language, 'app_save_project')}
           </button>
-          <button type="button" onClick={() => void saveWorkspace(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+          <button type="button" onClick={() => void saveWorkspace(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
             {t(language, 'app_save_as')}
           </button>
           {/* Restore Last autosaved workspace entry for desktop conformance checks. */}
-          <button type="button" title={t(language, 'app_restore')} onClick={restoreLastWorkspace} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+          <button type="button" title={t(language, 'app_restore')} onClick={restoreLastWorkspace} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
             {t(language, 'app_restore')}
           </button>
-          <button type="button" title={t(language, 'app_quick_start')} onClick={reopenFirstRunGuide} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[12px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
+          <button type="button" title={t(language, 'app_quick_start')} onClick={reopenFirstRunGuide} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[13px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
             {t(language, 'app_quick_start')}
           </button>
           </div>
           <div className="flex h-full shrink-0 items-center gap-1.5 border-l border-border-panel px-3">
-          <button type="button" title={!currentRunTargetRunnable ? t(language, 'select_runnable_target_hint') : undefined} onClick={() => void runScenario()} disabled={running || !currentRunTargetRunnable} className="h-7 rounded-[3px] border border-[#075985] bg-[#0284C7] px-3 text-[12px] font-bold text-white hover:bg-[#0369A1] disabled:cursor-not-allowed disabled:opacity-40">
+          <button type="button" title={!currentRunTargetRunnable ? t(language, 'select_runnable_target_hint') : undefined} onClick={() => void runScenario()} disabled={running || !currentRunTargetRunnable} className="h-7 rounded-[3px] border border-[#075985] bg-[#0284C7] px-3 text-[13px] font-bold text-white hover:bg-[#0369A1] disabled:cursor-not-allowed disabled:opacity-40">
             {t(language, 'app_run')}
           </button>
-          <span className={`h-7 rounded-[3px] border px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide ${labReport?.result === 'blocked' ? 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]' : replayPlaying ? 'border-[#92400E] bg-[#2A2112] text-[#F59E0B]' : labReport?.result === 'pass' ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-border-panel bg-[#232529] text-text-secondary'}`}>
+          <span className={`h-7 rounded-[3px] border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${labReport?.result === 'blocked' ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : replayPlaying ? 'border-status-running-edge bg-status-warning-surface text-status-running' : labReport?.result === 'pass' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-border-panel bg-[#232529] text-text-secondary'}`}>
             {labReport?.result === 'blocked' ? t(language, 'status_safety_blocked') : replayPlaying ? t(language, 'status_playing_motion') : labReport?.result === 'pass' ? t(language, 'status_executed') : t(language, 'status_idle')}
           </span>
-          <button type="button" onClick={stopRun} className="h-7 rounded-[3px] border border-[#4C1D1D] bg-[#25191B] px-3 text-[12px] font-semibold text-[#FCA5A5] hover:bg-[#3A2020]">
+          <button type="button" onClick={stopRun} className="h-7 rounded-[3px] border border-[#4C1D1D] bg-[#25191B] px-3 text-[13px] font-semibold text-status-blocked-soft hover:bg-[#3A2020]">
             {t(language, 'app_stop')}
           </button>
           <span className="mx-1 h-6 w-px bg-border-panel" />
-          <button type="button" onClick={() => void exportCurrentLabReport()} disabled={!labReport} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[12px] font-semibold text-text-primary hover:bg-[#2B2D31] disabled:opacity-40">
+          <button type="button" onClick={() => void exportCurrentLabReport()} disabled={!labReport} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31] disabled:opacity-40">
             {t(language, 'app_export_report')}
           </button>
-          <button type="button" onClick={() => void exportDeploymentConfig()} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[12px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
+          <button type="button" onClick={() => void exportDeploymentConfig()} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[13px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
             {t(language, 'app_export_adapter_package')}
           </button>
           </div>
@@ -2472,8 +2544,8 @@ export default function Home() {
         </div>
       </div>
       {operatorNotice && (
-        <div className="pointer-events-none fixed right-3 top-12 z-50 max-w-[420px] border border-border-panel bg-bg-panel px-3 py-2 text-[12px] font-semibold">
-          <span className={operatorNotice.severity === 'success' ? 'text-[#047857]' : operatorNotice.severity === 'warning' ? 'text-[#92400E]' : operatorNotice.severity === 'error' ? 'text-[#BE123C]' : 'text-[#0066CC]'}>
+        <div className="pointer-events-none fixed left-1/2 top-12 z-50 max-w-[420px] -translate-x-1/2 border border-border-panel bg-bg-panel px-3 py-2 text-[13px] font-semibold shadow-lg">
+          <span className={operatorNotice.severity === 'success' ? 'text-status-executed' : operatorNotice.severity === 'warning' ? 'text-status-running' : operatorNotice.severity === 'error' ? 'text-status-blocked' : 'text-[#0066CC]'}>
             {operatorNotice.message}
           </span>
         </div>
@@ -2516,6 +2588,7 @@ export default function Home() {
               onDropAsset={handleAddAsset}
               onSelectWorkspaceDevice={handleWorkspaceSelect}
               onMoveWorkspaceDevice={(deviceId, position) => updateWorkspaceDevice(deviceId, { position })}
+              onRemoveSelectedDevice={handleRemoveSelectedDevice}
             />
             {!workspaceExpanded && (
               <>

@@ -1,3 +1,10 @@
+/**
+ * @deprecated Superseded by `lib/hardware/` (Esp32DeviceAdapter + HardwareExecutionGate),
+ * which adds honest `signalSent` semantics and safety-gated execution.
+ * Kept temporarily as a reference until the four real-device acceptance
+ * scenarios pass on physical hardware; delete after that validation.
+ * Do NOT wire new code to this class.
+ */
 import type { DeviceMeta } from '@/types/deviceMeta';
 import type { AdapterCommand } from './AdapterCommand';
 import type { AdapterInterface } from './AdapterInterface';

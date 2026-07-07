@@ -1,6 +1,6 @@
 # Device Onboarding Guide
 
-This guide explains the minimum contract for adding a new device to Open Reality Studio without enabling real hardware control.
+This guide explains the minimum contract for adding a new device to RealityWarden without enabling real hardware control.
 
 Current boundary:
 
@@ -146,4 +146,4 @@ Do not:
 - silently map unsupported prompts to existing device actions
 - claim industrial certification or production readiness
 
-Open Reality Studio remains a simulation-first runtime prototype.
+RealityWarden remains a simulation-first runtime prototype.

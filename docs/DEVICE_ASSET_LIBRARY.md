@@ -1,6 +1,6 @@
 # Device Asset Library
 
-The Device Asset Library is the built-in industrial-style equipment library used by Open Reality Studio Desktop.
+The Device Asset Library is the built-in industrial-style equipment library used by RealityWarden Desktop.
 
 Built-in assets are generic industrial-style assets.
 They do not use unauthorized brand logos, trademarks, or vendor CAD files.
@@ -8,7 +8,7 @@ Users may import their own licensed models.
 
 ## Why Realistic Industrial-style Assets
 
-Open Reality Studio is a desktop simulator and virtual lab. The workspace should feel like an engineering tool, so built-in devices need recognizable industrial structure: robot bases, AGV chassis, PTZ camera heads, conveyor rollers, PLC cabinets, sensor housings, lab instruments, and warehouse racks.
+RealityWarden is a desktop simulator and virtual lab. The workspace should feel like an engineering tool, so built-in devices need recognizable industrial structure: robot bases, AGV chassis, PTZ camera heads, conveyor rollers, PLC cabinets, sensor housings, lab instruments, and warehouse racks.
 
 These assets are generic. They are not digital twins of specific vendor products.
 
@@ -41,7 +41,7 @@ README.md
 
 ## License Boundary
 
-Every asset must declare a license. Built-in Open Reality Studio assets use:
+Every asset must declare a license. Built-in RealityWarden assets use:
 
 ```text
 project-owned-generic
@@ -104,7 +104,7 @@ The package contains:
 
 ## GLB / GLTF Import
 
-GLB and GLTF imports are previewed in the Asset Import Wizard. The imported asset still requires a license and source. If profile metadata is incomplete, Open Reality Studio uses a procedural fallback profile until the user binds a complete `.openreality-device.json` package.
+GLB and GLTF imports are previewed in the Asset Import Wizard. The imported asset still requires a license and source. If profile metadata is incomplete, RealityWarden uses a procedural fallback profile until the user binds a complete `.openreality-device.json` package.
 
 ## Workspace Registration
 

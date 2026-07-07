@@ -1,10 +1,10 @@
 # Reality Asset Submission Guide
 
-Open Reality accepts Reality Asset submissions that help describe devices for simulation-first Physical AI workflows.
+RealityWarden accepts Reality Asset submissions that help describe devices for simulation-first Physical AI workflows.
 
 This guide is for contributors who want to propose or submit a Reality Asset Package.
 
-Reality Assets are the beginning of the Open Reality ecosystem: more devices, more adapters, more simulation packs, more safety rules, and more integration work around AI-controlled physical systems.
+Reality Assets are the beginning of the RealityWarden ecosystem: more devices, more adapters, more simulation packs, more safety rules, and more integration work around AI-controlled physical systems.
 
 This guide does not enable live device execution.
 
@@ -146,10 +146,10 @@ realAdapterEnabled: false
 ## Validation
 
 - [ ] npm run validate:reality-asset -- path/to/asset.json
-- [ ] I understand Open Reality is simulation-first.
+- [ ] I understand RealityWarden is simulation-first.
 - [ ] I am not enabling real device execution.
 ```
 
 ## Real Device Boundary
 
-Open Reality Studio Public Alpha is simulation-only. Reality Asset submissions cannot enable live hardware control. Future real device adapters must go through explicit adapter, safety, dry-run, and human-approval boundaries before they can be considered.
+RealityWarden Public Alpha is simulation-only. Reality Asset submissions cannot enable live hardware control. Future real device adapters must go through explicit adapter, safety, dry-run, and human-approval boundaries before they can be considered.

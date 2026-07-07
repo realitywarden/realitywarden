@@ -8,7 +8,7 @@ Many robots, machines, sensors, smart devices, lab instruments, and factory syst
 
 But they are not automatically AI-controllable.
 
-Open Reality helps ordinary hardware become part of Physical AI through a **universal software runtime** instead of a closed brand stack.
+RealityWarden helps ordinary hardware become part of Physical AI through a **universal software runtime** instead of a closed brand stack.
 
 The goal is to help AI enter the physical world in a way that is:
 
@@ -23,7 +23,7 @@ It is built around one rule:
 
 **AI should not send commands straight to hardware.**
 
-Before an AI-generated action can reach a device, Open Reality routes it through:
+Before an AI-generated action can reach a device, RealityWarden routes it through:
 
 - device capability checks
 - world-state grounding
@@ -37,22 +37,23 @@ Only then can it enter **simulation** in this Public Alpha.
 
 The long-term goal is not to build robots or chips.
 
-The goal is to define the **common software execution layer** that lets different brands, devices, adapters, and future hardware stacks expose physical actions through a shared Open Reality boundary.
+The goal is to define the **common software execution layer** that lets different brands, devices, adapters, and future hardware stacks expose physical actions through a shared RealityWarden boundary.
 
 If Physical AI becomes locked inside a few closed stacks, fewer companies can participate.
 
-Open Reality is designed for the opposite direction: more devices, more adapters, more Reality Assets, more integration work, more deployment work, and a wider developer ecosystem around AI-controlled physical systems.
+RealityWarden is designed for the opposite direction: more devices, more adapters, more Reality Assets, more integration work, more deployment work, and a wider developer ecosystem around AI-controlled physical systems.
 
 **Current status**
 
 - Public Alpha
-- simulation-first
-- real device execution disabled
-- no production hardware control
-- no certified industrial safety claim
+- simulation-first: the main workbench never touches hardware
+- a first, tightly gated REAL hardware path exists for one bench rig
+  (ESP32 + SG90 servo + HC-SR04 — see
+  [docs/REAL_HARDWARE_ESP32.md](./docs/REAL_HARDWARE_ESP32.md)); it runs only
+  through an audited safety gate, and blocked commands can never reach the wire
+- no production hardware control, no industrial safety certification
 
-This repository is a **simulation-only Public Alpha**.
-
+The simulation workbench itself remains a **simulation-only Public Alpha**.
 No hardware required.
 
 **Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
@@ -62,7 +63,7 @@ No hardware required.
 ```mermaid
 flowchart LR
   A["Natural Language Prompt"]
-  B["Open Reality Local Runtime"]
+  B["RealityWarden Local Runtime"]
   B1["Capability Check"]
   B2["World Model"]
   B3["Safety Governor"]
@@ -84,7 +85,7 @@ flowchart LR
   B --> B6
   C --> D
   D --> E
-  X -. disabled in Public Alpha .- B
+  X -. gated: bench rig only, via HardwareExecutionGate .- B
 ```
 
 The important point is the boundary in the middle. The current repository proves that AI-to-device workflows can be mediated by a local runtime before anything touches execution.
@@ -127,7 +128,7 @@ Exact support matrix: [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md)
 
 ## What this Public Alpha does not do
 
-- no real device execution
+- no real device execution from the main simulation workbench
 - no production hardware control
 - no certified industrial safety guarantee
 - no claim that all device families are runnable
@@ -282,15 +283,20 @@ More detail: [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md)
 - [docs/ROADMAP.md](./docs/ROADMAP.md)
 - [docs/DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md)
 
-## Future Real Device Adapter Boundary
+## Real Device Adapter Boundary
 
-Future real-device work must remain behind explicit adapter and safety boundaries.
+Real-device work stays behind explicit adapter and safety boundaries.
 
-That future route is not enabled in this Public Alpha.
+The first real path (ESP32 bench rig) already follows this rule:
 
-- real adapter execution remains disabled
-- simulation-first remains the product truth
-- any future hardware path must stay behind local safety enforcement
+- the simulation workbench cannot dispatch to hardware; the SafetyMonitor
+  rejects any manifest with a real adapter enabled
+- the hardware route runs only through `HardwareExecutionGate`
+  (`lib/hardware/`): blocked commands never reach the adapter, offline is
+  never faked, missing/stale/implausible sensor data default-blocks actuation,
+  and every decision is audited with `hardwareSignalSent`
+- simulation-first remains the product truth; hardware support expands only
+  device-by-device, each behind the same gate
 - current repository scope is still simulation-only
 
 ## Contributing

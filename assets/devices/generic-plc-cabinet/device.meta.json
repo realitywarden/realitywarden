@@ -1,7 +1,7 @@
 {
   "profile_id": "generic-plc-cabinet",
   "profile_version": "1.0.0",
-  "manufacturer": "Open Reality Studio",
+  "manufacturer": "RealityWarden",
   "model": "Generic PLC Cabinet",
   "device_id": "asset-generic-plc-cabinet",
   "device_type": "plc_cabinet",

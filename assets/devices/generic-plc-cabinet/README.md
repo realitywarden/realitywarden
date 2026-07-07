@@ -6,4 +6,4 @@ Users may import their own licensed models.
 
 License: project-owned-generic.
 Brand: generic.
-Visual model: procedural fallback created for Open Reality Studio.
+Visual model: procedural fallback created for RealityWarden.

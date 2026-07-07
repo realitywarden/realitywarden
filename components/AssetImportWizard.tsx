@@ -135,7 +135,7 @@ export function AssetImportWizard({ onImport, onClose }: { onImport: (asset: Dev
                 {index + 1}. {label}
               </button>
             ))}
-            {error && <div className="mt-3 border border-[#FECDD3] bg-[#FFF1F2] p-2 text-[#BE123C]">{error}</div>}
+            {error && <div className="mt-3 border border-[#FECDD3] bg-[#FFF1F2] p-2 text-status-blocked">{error}</div>}
           </aside>
           <main className="overflow-auto p-4">
             {step === 1 && (
@@ -169,10 +169,10 @@ export function AssetImportWizard({ onImport, onClose }: { onImport: (asset: Dev
             {step === 3 && <pre className="h-full overflow-auto border border-[#D1D5DB] bg-white p-3 text-xs">{JSON.stringify(deviceFile ?? fallbackOpenRealityFile(manifest), null, 2)}</pre>}
             {step === 4 && (
               <div className="grid gap-2 text-sm">
-                <div className={license.valid ? 'border border-[#A7F3D0] bg-[#ECFDF5] p-3 text-[#047857]' : 'border border-[#FECDD3] bg-[#FFF1F2] p-3 text-[#BE123C]'}>
+                <div className={license.valid ? 'border border-[#A7F3D0] bg-[#ECFDF5] p-3 text-status-executed' : 'border border-[#FECDD3] bg-[#FFF1F2] p-3 text-status-blocked'}>
                   {license.valid ? 'License review passed.' : license.failures.join(' ')}
                 </div>
-                <div className={manifest.brand === 'generic' || manifest.brand === 'user-owned' ? 'border border-[#A7F3D0] bg-[#ECFDF5] p-3 text-[#047857]' : 'border border-[#FDE68A] bg-[#FFFBEB] p-3 text-[#92400E]'}>
+                <div className={manifest.brand === 'generic' || manifest.brand === 'user-owned' ? 'border border-[#A7F3D0] bg-[#ECFDF5] p-3 text-status-executed' : 'border border-[#FDE68A] bg-[#FFFBEB] p-3 text-status-running'}>
                   Brand status: {manifest.brand}
                 </div>
               </div>

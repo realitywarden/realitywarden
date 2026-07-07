@@ -1,3 +1,9 @@
+/**
+ * @deprecated Superseded by `lib/hardware/` transports (RealDeviceTransport +
+ * SerialEsp32Transport; tests use their own fakes). Kept temporarily as a
+ * reference until real-device acceptance passes; delete after that.
+ * Do NOT wire new code to this class.
+ */
 import type { AdapterCommand } from './AdapterCommand';
 import type { AdapterResult } from './AdapterResult';
 import type { DeviceTransport } from './DeviceTransport';

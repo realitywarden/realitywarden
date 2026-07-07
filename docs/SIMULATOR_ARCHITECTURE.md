@@ -1,6 +1,6 @@
 # Simulator Architecture
 
-Open Reality Studio uses a semantic simulator architecture. The simulator is not a visual toy layer; it is the virtual execution boundary used to validate AI-controlled device behavior before real hardware is considered.
+RealityWarden uses a semantic simulator architecture. The simulator is not a visual toy layer; it is the virtual execution boundary used to validate AI-controlled device behavior before real hardware is considered.
 
 ## Runtime Chain
 

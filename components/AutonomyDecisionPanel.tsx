@@ -136,18 +136,18 @@ function localExecutionMode(language: UiLanguage, decision: OpenRealityRuntimeRe
 }
 
 function statusClass(status: RuntimeDecisionStatus | null) {
-  if (status === 'compiled') return 'border-[#14532D] bg-[#10251D] text-[#86EFAC]';
-  if (status === 'blocked') return 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]';
+  if (status === 'compiled') return 'border-[#14532D] bg-status-executed-surface text-[#86EFAC]';
+  if (status === 'blocked') return 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft';
   if (status === 'ask_human' || status === 'ambiguous' || status === 'unsupported' || status === 'not_runnable') {
-    return 'border-[#713F12] bg-[#2A2112] text-[#FACC15]';
+    return 'border-status-warning-edge bg-status-warning-surface text-status-warning';
   }
   return 'border-[#313338] bg-[#181A1D] text-[#9AA3AF]';
 }
 
 function stepClass(state: PipelineState) {
-  if (state === 'pass') return 'border-[#14532D] bg-[#10251D] text-[#86EFAC]';
-  if (state === 'blocked') return 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]';
-  if (state === 'warning') return 'border-[#713F12] bg-[#2A2112] text-[#FACC15]';
+  if (state === 'pass') return 'border-[#14532D] bg-status-executed-surface text-[#86EFAC]';
+  if (state === 'blocked') return 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft';
+  if (state === 'warning') return 'border-status-warning-edge bg-status-warning-surface text-status-warning';
   if (state === 'processing') return 'border-[#075985] bg-[#0B2233] text-[#7DD3FC]';
   return 'border-[#313338] bg-[#111214] text-[#6B7280]';
 }
@@ -212,7 +212,7 @@ function buildPipeline(language: UiLanguage, decision: OpenRealityRuntimeResult 
 function kv(label: string, value: ReactNode) {
   return (
     <div className="grid grid-cols-[112px_1fr] gap-x-3 border-t border-white/5 py-2 first:border-t-0">
-      <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{label}</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{label}</div>
       <div className="min-w-0 text-[11px] leading-5 text-[#DBDEE1]">{value}</div>
     </div>
   );
@@ -246,10 +246,10 @@ export function AutonomyDecisionPanel({
       <div className="border-b border-border-panel bg-[#15171A] px-3 py-2">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#7DD3FC]">{t.title}</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7DD3FC]">{t.title}</div>
             <div className="mt-0.5 text-[11px] leading-4 text-[#9AA3AF]">{t.subtitle}</div>
           </div>
-          <span className="shrink-0 rounded-[3px] border border-[#713F12] bg-[#2A2112] px-2 py-1 font-mono text-[9px] font-bold tracking-wide text-[#FACC15]">
+          <span className="shrink-0 rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-status-warning">
             {t.boundary}
           </span>
         </div>
@@ -266,13 +266,13 @@ export function AutonomyDecisionPanel({
             {kv(t.targetDevice, (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">{targetDeviceLabel}</span>
-                <span className="rounded-[3px] border border-[#313338] bg-[#181A1D] px-1.5 py-0.5 text-[10px] text-[#9AA3AF]">
+                <span className="rounded-[3px] border border-[#313338] bg-[#181A1D] px-1.5 py-0.5 text-[11px] text-[#9AA3AF]">
                   {localizeDeviceType(language, targetDeviceType)}
                 </span>
               </div>
             ))}
             {kv(t.runtimeStatus, (
-              <span className={`inline-flex rounded-[3px] border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusClass(decision.status)}`}>
+              <span className={`inline-flex rounded-[3px] border px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusClass(decision.status)}`}>
                 {localStatus(language, decision.status)}
               </span>
             ))}
@@ -281,7 +281,7 @@ export function AutonomyDecisionPanel({
             {kv(t.requiredCapabilities, decision.plan.requiredCapabilities.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {decision.plan.requiredCapabilities.map((capability) => (
-                  <span key={capability} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[10px] text-[#9BD4FF]">
+                  <span key={capability} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[11px] text-[#9BD4FF]">
                     {localizeCapability(language, capability)}
                   </span>
                 ))}
@@ -290,7 +290,7 @@ export function AutonomyDecisionPanel({
             {kv(t.missingCapabilities, decision.plan.missingCapabilities.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {decision.plan.missingCapabilities.map((capability) => (
-                  <span key={capability} className="rounded-[3px] border border-[#7F1D1D] bg-[#2B1116] px-1.5 py-0.5 text-[10px] text-[#FCA5A5]">
+                  <span key={capability} className="rounded-[3px] border border-status-blocked-edge bg-status-blocked-surface px-1.5 py-0.5 text-[11px] text-status-blocked-soft">
                     {localizeCapability(language, capability)}
                   </span>
                 ))}
@@ -301,34 +301,34 @@ export function AutonomyDecisionPanel({
           </div>
         )}
 
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.latest}</div>
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t.latest}</div>
         <div className="grid gap-1.5">
           {pipeline.map((step, index) => (
             <div key={step.id} className={`rounded-[3px] border px-2.5 py-2 ${stepClass(step.state)}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] text-[#86868B]">{String(index + 1).padStart(2, '0')}</span>
+                    <span className="font-mono text-[11px] text-[#86868B]">{String(index + 1).padStart(2, '0')}</span>
                     <span className="text-[11px] font-bold uppercase tracking-wide">{step.label}</span>
                   </div>
-                  <div className="mt-1 text-[10px] leading-4 text-[#9AA3AF]">{step.detail}</div>
+                  <div className="mt-1 text-[11px] leading-4 text-[#9AA3AF]">{step.detail}</div>
                   {step.evidence && (
-                    <div className="mt-1 border-l border-current/30 pl-2 font-mono text-[10px] leading-4 text-current">
+                    <div className="mt-1 border-l border-current/30 pl-2 font-mono text-[11px] leading-4 text-current">
                       {step.evidence}
                     </div>
                   )}
                 </div>
-                <span className="shrink-0 font-mono text-[9px] font-bold">{stepMark(step.state)}</span>
+                <span className="shrink-0 font-mono text-[11px] font-bold">{stepMark(step.state)}</span>
               </div>
             </div>
           ))}
         </div>
 
         <details className="mt-2 rounded-[3px] border border-[#313338] bg-[#0B0C0E]">
-          <summary className="cursor-pointer px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+          <summary className="cursor-pointer px-2.5 py-2 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
             {t.payload}
           </summary>
-          <pre className="custom-scrollbar max-h-40 overflow-auto border-t border-[#313338] p-2 font-mono text-[10px] leading-4 text-[#9AA3AF]">
+          <pre className="custom-scrollbar max-h-40 overflow-auto border-t border-[#313338] p-2 font-mono text-[11px] leading-4 text-[#9AA3AF]">
             {payloadPreview ?? t.emptyPayload}
           </pre>
         </details>

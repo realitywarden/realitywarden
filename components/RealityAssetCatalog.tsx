@@ -51,10 +51,10 @@ const copy = {
 };
 
 const supportClassName: Record<RealityAssetPackage['supportLevel'], string> = {
-  simulation_only: 'border-[#064E3B] bg-[#10251D] text-[#34D399]',
+  simulation_only: 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft',
   read_only: 'border-[#075985] bg-[#0B2233] text-[#38BDF8]',
   coming_soon: 'border-[#3F3F46] bg-[#24262B] text-[#A1A1AA]',
-  unsupported: 'border-[#4C1D1D] bg-[#25191B] text-[#FCA5A5]'
+  unsupported: 'border-[#4C1D1D] bg-[#25191B] text-status-blocked-soft'
 };
 
 function supportLabel(supportLevel: RealityAssetPackage['supportLevel']) {
@@ -106,17 +106,17 @@ export function RealityAssetCatalog({
     <section className="border-t border-border-panel bg-[#12151E]">
       <div className="flex h-8 items-center justify-between border-b border-border-panel px-3">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-text-muted-strong">{text.title}</div>
-          <div className="text-[10px] text-text-muted">{text.subtitle}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-text-muted-strong">{text.title}</div>
+          <div className="text-[11px] text-text-muted">{text.subtitle}</div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-[3px] border border-[#3F3F46] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-muted">
+          <span className="rounded-[3px] border border-[#3F3F46] px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">
             {text.realDisabled}
           </span>
           <button
             type="button"
             onClick={() => setExpanded((value) => !value)}
-            className="h-5 border border-border-panel bg-[#181B26] px-2 text-[10px] font-semibold text-text-secondary hover:bg-[#232736]"
+            className="h-5 border border-border-panel bg-[#181B26] px-2 text-[11px] font-semibold text-text-secondary hover:bg-[#232736]"
           >
             {expanded ? text.hideAssets : text.showAssets}
           </button>
@@ -129,7 +129,7 @@ export function RealityAssetCatalog({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={text.pasteJson}
-          className="h-12 resize-none border border-border-panel bg-[#111214] px-2 py-1 font-mono text-[10px] text-text-primary outline-none focus:border-[#0284C7]"
+          className="h-12 resize-none border border-border-panel bg-[#111214] px-2 py-1 font-mono text-[11px] text-text-primary outline-none focus:border-[#0284C7]"
         />
         <button
           type="button"
@@ -140,7 +140,7 @@ export function RealityAssetCatalog({
           {text.importJson}
         </button>
         {importResult && (
-          <div className={`col-span-2 border px-2 py-1 text-[10px] ${importResult.status === 'imported' ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]'}`}>
+          <div className={`col-span-2 border px-2 py-1 text-[11px] ${importResult.status === 'imported' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'}`}>
             {importResult.status.toUpperCase()}: {importResult.userFacingMessage}
             {importResult.errors.length > 0 && <span className="ml-2 font-mono">{importResult.errors[0]}</span>}
           </div>
@@ -160,13 +160,13 @@ export function RealityAssetCatalog({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="truncate text-[11px] font-semibold text-text-primary">{asset.name}</div>
-                  <div className="mt-0.5 font-mono text-[10px] text-text-muted">{asset.deviceType}</div>
+                  <div className="mt-0.5 font-mono text-[11px] text-text-muted">{asset.deviceType}</div>
                 </div>
-                <span className={`shrink-0 rounded-[3px] border px-1.5 py-0.5 text-[9px] font-semibold ${supportClassName[asset.supportLevel]}`}>
+                <span className={`shrink-0 rounded-[3px] border px-1.5 py-0.5 text-[11px] font-semibold ${supportClassName[asset.supportLevel]}`}>
                   {supportLabel(asset.supportLevel)}
                 </span>
               </div>
-              <div className="mt-2 grid grid-cols-[72px_1fr] gap-x-2 gap-y-1 text-[10px]">
+              <div className="mt-2 grid grid-cols-[72px_1fr] gap-x-2 gap-y-1 text-[11px]">
                 <span className="uppercase tracking-wide text-text-muted">{text.capabilities}</span>
                 <span className="font-mono text-text-primary">{asset.capabilityContracts.length}</span>
                 <span className="uppercase tracking-wide text-text-muted">{text.adapter}</span>
@@ -174,7 +174,7 @@ export function RealityAssetCatalog({
                 <span className="uppercase tracking-wide text-text-muted">{text.safety}</span>
                 <span className="truncate font-mono text-text-primary">{text.noHardware}</span>
                 <span className="uppercase tracking-wide text-text-muted">{text.validation}</span>
-                <span className={validation.valid ? 'font-mono text-[#34D399]' : 'font-mono text-[#FCA5A5]'}>
+                <span className={validation.valid ? 'font-mono text-status-executed-soft' : 'font-mono text-status-blocked-soft'}>
                   {validation.valid ? text.valid : text.invalid}
                 </span>
                 <span className="uppercase tracking-wide text-text-muted">{text.source}</span>

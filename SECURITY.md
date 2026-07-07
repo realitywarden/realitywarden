@@ -1,6 +1,6 @@
 # Security Policy
 
-Open Reality Studio is a simulation-first Public Alpha. Community submissions must not include real device execution behavior.
+RealityWarden is a simulation-first Public Alpha. Community submissions must not include real device execution behavior.
 
 ## Forbidden in Community Assets
 

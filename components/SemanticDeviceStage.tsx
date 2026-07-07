@@ -1,6 +1,7 @@
 'use client';
 
 import { Canvas, useFrame } from '@react-three/fiber';
+import { STATUS_COLORS } from '@/lib/ui/statusColors';
 import { ContactShadows, Html, OrbitControls, useGLTF } from '@react-three/drei';
 import { Suspense, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -297,7 +298,7 @@ function ScenarioPreviewOverlay({ preview, blocked }: { preview?: SemanticDevice
     if (!preview) return null;
     const geometry = new THREE.BufferGeometry().setFromPoints(preview.path.map((point) => new THREE.Vector3(point[0], 0.045, point[2])));
     const material = new THREE.LineDashedMaterial({
-      color: blocked || preview.unsafe ? '#E11D48' : preview.passed ? '#10B981' : '#0284C7',
+      color: blocked || preview.unsafe ? STATUS_COLORS.blocked : preview.passed ? STATUS_COLORS.executed : STATUS_COLORS.info,
       dashSize: 0.2,
       gapSize: 0.1,
       transparent: true,
@@ -308,7 +309,7 @@ function ScenarioPreviewOverlay({ preview, blocked }: { preview?: SemanticDevice
     return object;
   }, [blocked, preview]);
   if (!preview) return null;
-  const color = blocked || preview.unsafe ? '#E11D48' : preview.passed ? '#10B981' : '#38BDF8';
+  const color = blocked || preview.unsafe ? STATUS_COLORS.blocked : preview.passed ? STATUS_COLORS.executed : '#38BDF8';
   return (
     <>
       {line && <primitive object={line} />}
@@ -335,7 +336,11 @@ function footprintSizeForDevice(deviceType: DeviceType): [number, number] {
   return [1.2, 1.2];
 }
 
-function SelectedDeviceFootprint({ device, language }: { device: SemanticWorkspaceDevice; language: 'zh' | 'en' }) {
+function SelectedDeviceFootprint({ device, language }: { device?: SemanticWorkspaceDevice; language: 'zh' | 'en' }) {
+  // Empty workspace: nothing selected, nothing to draw. Without this guard an
+  // empty workspace crashed the whole stage (React error screen), which made
+  // it look like "you must already have a device before adding one".
+  if (!device) return null;
   const [width, depth] = footprintSizeForDevice(device.deviceType);
   const edgeThickness = 0.03;
   const crossLength = Math.min(width, depth) * 0.42;
@@ -464,7 +469,7 @@ function BlockedWarningRing({ blocked }: { blocked: boolean }) {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
       <ringGeometry args={[1.55, 1.62, 96]} />
-      <meshStandardMaterial ref={materialRef} color="#E11D48" roughness={0.85} metalness={0.05} transparent opacity={0.28} />
+      <meshStandardMaterial ref={materialRef} color={STATUS_COLORS.blocked} roughness={0.85} metalness={0.05} transparent opacity={0.28} />
     </mesh>
   );
 }
@@ -605,11 +610,11 @@ function WorkspaceDeviceMesh({
       )}
       {(hovered || showPersistentLabel) && (
         <Html center position={[0.84, selected ? 1.34 : 1.28, 0]}>
-          <div className={`pointer-events-none whitespace-nowrap rounded-[3px] border px-1.5 py-0.5 font-mono text-[7px] font-semibold leading-3 ${selected ? 'border-[#075985] bg-[#0B2233]/70 text-[#D8EEFF] opacity-85' : runTarget ? 'border-[#92400E] bg-[#2A2112]/76 text-[#FDE68A] opacity-82' : 'border-[#313338] bg-[#101114]/50 text-[#9AA3AF] opacity-62'}`}>
+          <div className={`pointer-events-none whitespace-nowrap rounded-[3px] border px-1.5 py-0.5 font-mono text-[7px] font-semibold leading-3 ${selected ? 'border-[#075985] bg-[#0B2233]/70 text-[#D8EEFF] opacity-85' : runTarget ? 'border-status-running-edge bg-status-warning-surface/76 text-[#FDE68A] opacity-82' : 'border-[#313338] bg-[#101114]/50 text-[#9AA3AF] opacity-62'}`}>
             <div>{shortName}</div>
             <div className="text-[7px] text-[#6B7280]">{localizeDeviceType(language, device.deviceType)} / {status}</div>
             {runTarget && (
-              <div className="text-[7px] font-bold text-[#F59E0B]">{language === 'zh' ? '\u5f53\u524d\u8fd0\u884c\u76ee\u6807' : 'RUN TARGET'}</div>
+              <div className="text-[7px] font-bold text-status-running">{language === 'zh' ? '\u5f53\u524d\u8fd0\u884c\u76ee\u6807' : 'RUN TARGET'}</div>
             )}
           </div>
         </Html>
@@ -705,10 +710,10 @@ export function SemanticDeviceStage({
         <ContactShadows position={[0, 0.01, 0]} opacity={0.16} scale={8.6} blur={3.2} far={3.8} color="#000000" />
         {blocked && (
           <Html center position={[0, 1.75, 0]}>
-            <div className="max-w-[360px] border border-[#FECDD3] bg-[#FFF1F2]/95 px-4 py-2 text-center text-xs font-bold tracking-wide text-[#BE123C]">
+            <div className="max-w-[360px] border border-[#FECDD3] bg-[#FFF1F2]/95 px-4 py-2 text-center text-xs font-bold tracking-wide text-status-blocked">
               <div>{t(language, 'blocked_by_safety_runtime')}</div>
               {blockedReason && (
-                <div className="mt-1 text-[10px] font-semibold leading-4 text-[#9F1239]">
+                <div className="mt-1 text-[11px] font-semibold leading-4 text-[#9F1239]">
                   {blockedReason}
                 </div>
               )}
@@ -724,26 +729,26 @@ export function SemanticDeviceStage({
         )}
         <OrbitControls enablePan maxPolarAngle={Math.PI / 2.05} minDistance={2.6} maxDistance={22} target={[0, 0.82, 0]} />
       </Canvas>
-      <div className="pointer-events-none absolute left-3 top-3 rounded-[3px] border border-[#313338] bg-[#1E1F22]/82 px-2 py-1 font-mono text-[9px] leading-4 text-[#949BA4]">
+      <div className="pointer-events-none absolute left-3 top-3 rounded-[3px] border border-[#313338] bg-[#1E1F22]/82 px-2 py-1 font-mono text-[11px] leading-4 text-[#949BA4]">
         <div className="font-semibold text-[#C2CAD3]">{t(language, 'perspective_grid_snap')}</div>
       </div>
       {scenarioPreview && (
-        <div className="pointer-events-none absolute left-3 top-[2.65rem] rounded-[3px] border border-[#313338] bg-[#1E1F22]/82 px-2 py-1 font-mono text-[9px] font-semibold text-[#38BDF8]">
+        <div className="pointer-events-none absolute left-3 top-[2.65rem] rounded-[3px] border border-[#313338] bg-[#1E1F22]/82 px-2 py-1 font-mono text-[11px] font-semibold text-[#38BDF8]">
           {t(language, 'action_plan_preview')}
         </div>
       )}
       {blocked && (
-        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 border border-[#E11D48] bg-[#2B1116]/95 px-3 py-1 font-mono text-[11px] font-bold text-[#E11D48]">
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 border border-status-blocked bg-status-blocked-surface/95 px-3 py-1 font-mono text-[11px] font-bold text-status-blocked">
           {t(language, 'safety_runtime_blocked_caps')}
         </div>
       )}
       {!compactSingleDeviceView && (
-        <div className="pointer-events-none absolute right-3 bottom-3 rounded-[3px] border border-[#313338] bg-[#1E1F22]/72 px-2 py-1 font-mono text-[9px] leading-4 text-[#8A8F98]">
+        <div className="pointer-events-none absolute right-3 bottom-3 rounded-[3px] border border-[#313338] bg-[#1E1F22]/72 px-2 py-1 font-mono text-[11px] leading-4 text-[#8A8F98]">
           <span className="text-[#E6EAF0]">{t(language, 'workspace_layout_bounds')}</span>: X {workspaceBounds.minX}..{workspaceBounds.maxX}, Z {workspaceBounds.minZ}..{workspaceBounds.maxZ}
         </div>
       )}
       {selectedDevice && !compactSingleDeviceView && (
-        <div className="pointer-events-none absolute right-3 top-3 rounded-[3px] border border-[#075985] bg-[#0B2233]/68 px-2 py-1 font-mono text-[9px] leading-4 text-[#D8EEFF]">
+        <div className="pointer-events-none absolute right-3 top-3 rounded-[3px] border border-[#075985] bg-[#0B2233]/68 px-2 py-1 font-mono text-[11px] leading-4 text-[#D8EEFF]">
           <div className="font-semibold">{t(language, 'workspace_selected_layout')}</div>
           <div>{localizeDisplayName(language, selectedDevice.label)}</div>
           <div>X {selectedDevice.position[0].toFixed(1)} | Y {selectedDevice.position[1].toFixed(1)} | Z {selectedDevice.position[2].toFixed(1)}</div>

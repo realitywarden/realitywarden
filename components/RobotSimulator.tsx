@@ -173,7 +173,7 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
 
     const red = new THREE.Mesh(
       new THREE.BoxGeometry(geometry.objects.red_cube.size, geometry.objects.red_cube.size, geometry.objects.red_cube.size),
-      new THREE.MeshStandardMaterial({ color: 0xd9534f, roughness: 0.7 })
+      new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.7 })
     );
     red.position.copy(toVector3(geometry.objects.red_cube.position));
     scene.add(red);

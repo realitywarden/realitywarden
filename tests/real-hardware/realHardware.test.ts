@@ -1,0 +1,512 @@
+/**
+ * Safety invariant tests for the real-hardware execution path.
+ *
+ * These are behavioral spy/mock tests, not documentation checks:
+ * - blocked command  => adapter.execute() call count === 0 AND zero frames on the wire
+ * - sensor missing / stale / invalid => actuation blocked (default-block)
+ * - distance below minSafeDistance   => actuation blocked
+ * - transport offline => signalSent:false + "hardware offline", never fake success
+ * - every audit entry carries an explicit hardwareSignalSent boolean
+ */
+import { Esp32DeviceAdapter, ESP32_SERVO_RIG_CAPABILITIES } from '../../lib/hardware/Esp32DeviceAdapter';
+import { HardwareExecutionGate } from '../../lib/hardware/HardwareExecutionGate';
+import { TransportOfflineError } from '../../lib/hardware/RealDeviceTransport';
+import type { RealDeviceTransport } from '../../lib/hardware/RealDeviceTransport';
+import { SerialEsp32Transport } from '../../lib/hardware/SerialEsp32Transport';
+import type { SerialPortLike } from '../../lib/hardware/SerialEsp32Transport';
+import type {
+  HardwareCommand,
+  SensorReading,
+  SensorSafetyPolicy,
+  TransportFrame,
+  TransportResponse
+} from '../../lib/hardware/types';
+import { RuntimeAuditLog } from '../../lib/runtime/RuntimeAuditLog';
+import { SafetyMonitor } from '../../lib/runtime/SafetyMonitor';
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(`ASSERTION FAILED: ${message}`);
+  }
+}
+
+/** Transport spy: records every frame that would reach the wire. */
+class FakeTransport implements RealDeviceTransport {
+  sentFrames: TransportFrame[] = [];
+  private connected = false;
+
+  constructor(private readonly respond: (frame: TransportFrame) => TransportResponse = (frame) => ({
+    id: frame.id,
+    ok: true,
+    data: frame.cmd === 'read_distance' ? { distanceCm: 42 } : { angle: frame.args?.angle }
+  })) {}
+
+  async connect() { this.connected = true; }
+  async disconnect() { this.connected = false; }
+  isConnected() { return this.connected; }
+
+  async send(frame: TransportFrame): Promise<TransportResponse> {
+    if (!this.connected) throw new TransportOfflineError();
+    this.sentFrames.push(frame);
+    return this.respond(frame);
+  }
+}
+
+/** Adapter spy: counts every execute() invocation. */
+class SpyAdapter extends Esp32DeviceAdapter {
+  executeCalls = 0;
+  async execute(command: HardwareCommand) {
+    this.executeCalls += 1;
+    return super.execute(command);
+  }
+}
+
+const NOW = 1_750_000_000_000;
+
+const freshDistancePolicy: SensorSafetyPolicy = {
+  sensorId: 'hc-sr04',
+  maxAgeMs: 1000,
+  minPlausibleValue: 2,   // HC-SR04 physical range: 2cm..400cm
+  maxPlausibleValue: 400,
+  minSafeDistanceCm: 10
+};
+
+function reading(value: number, ageMs = 0): SensorReading {
+  return {
+    sensorId: 'hc-sr04',
+    capabilityId: 'read_distance',
+    value,
+    unit: 'cm',
+    timestampMs: NOW - ageMs
+  };
+}
+
+function servoCommand(angle: number): HardwareCommand {
+  return {
+    id: `cmd-${angle}-${Math.random().toString(36).slice(2, 8)}`,
+    deviceId: 'esp32-servo-rig',
+    capabilityId: 'move_to_angle',
+    args: { angle }
+  };
+}
+
+function buildGate(transport: FakeTransport) {
+  const adapter = new SpyAdapter(transport, ESP32_SERVO_RIG_CAPABILITIES);
+  const audit = new RuntimeAuditLog();
+  const gate = new HardwareExecutionGate(adapter, new SafetyMonitor(), audit);
+  return { adapter, audit, gate };
+}
+
+async function testBlockedNeverReachesHardware() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, audit, gate } = buildGate(transport);
+
+  // Out-of-range angle (limit is 0..180) with perfectly healthy sensors.
+  const outcome = await gate.run({
+    command: servoCommand(200),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'blocked', 'angle 200 must be blocked');
+  assert(adapter.executeCalls === 0, 'blocked command must NOT invoke adapter.execute() (call count must be 0)');
+  assert(transport.sentFrames.length === 0, 'blocked command must put zero frames on the wire');
+  assert(outcome.result.signalSent === false, 'blocked outcome must report signalSent=false');
+
+  const entries = audit.list();
+  const blockedEntry = entries.find((entry) => entry.code === 'hardware_command_blocked');
+  assert(blockedEntry, 'block decision must be written to the audit log');
+  assert(blockedEntry.hardwareSignalSent === false, 'blocked audit entry must have hardwareSignalSent=false');
+
+  // Negative angle must also be blocked without reaching hardware.
+  const negative = await gate.run({
+    command: servoCommand(-5),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+  assert(negative.status === 'blocked', 'angle -5 must be blocked');
+  assert(adapter.executeCalls === 0, 'adapter.execute() call count must stay 0 after second blocked command');
+}
+
+async function testSensorMissingDefaultBlocks() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [], // no data at all
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'blocked', 'missing sensor data must default-block actuation');
+  assert(outcome.reason.indexOf('sensor_missing') === 0, `reason must be sensor_missing, got: ${outcome.reason}`);
+  assert(adapter.executeCalls === 0, 'missing-sensor block must not reach adapter.execute()');
+}
+
+async function testSensorStaleDefaultBlocks() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100, 5000)], // 5s old, maxAgeMs=1000
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'blocked', 'stale sensor data must default-block actuation');
+  assert(outcome.reason.indexOf('sensor_stale') === 0, `reason must be sensor_stale, got: ${outcome.reason}`);
+  assert(adapter.executeCalls === 0, 'stale-sensor block must not reach adapter.execute()');
+}
+
+async function testSensorInvalidDefaultBlocks() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  for (const badValue of [9999, 0.5, NaN]) {
+    const outcome = await gate.run({
+      command: servoCommand(45),
+      capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+      sensorReadings: [reading(badValue)],
+      sensorPolicies: [freshDistancePolicy],
+      nowMs: NOW
+    });
+    assert(outcome.status === 'blocked', `implausible sensor value ${badValue} must default-block actuation`);
+    assert(outcome.reason.indexOf('sensor_invalid') === 0, `reason must be sensor_invalid, got: ${outcome.reason}`);
+  }
+  assert(adapter.executeCalls === 0, 'invalid-sensor blocks must not reach adapter.execute()');
+}
+
+async function testMinSafeDistanceInterlock() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  // Legal angle, fresh + plausible reading, but obstacle too close (5cm < 10cm).
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(5)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'blocked', 'distance below minSafeDistance must block actuation');
+  assert(
+    outcome.reason.indexOf('min_safe_distance_violation') === 0,
+    `reason must be min_safe_distance_violation, got: ${outcome.reason}`
+  );
+  assert(adapter.executeCalls === 0, 'min-safe-distance block must not reach adapter.execute()');
+}
+
+async function testOfflineTransportNeverFakesSuccess() {
+  const transport = new FakeTransport();
+  // NOT connected on purpose.
+  const { adapter, audit, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'failed', 'offline hardware must fail, not fake success');
+  assert(outcome.result.ok === false, 'offline result.ok must be false');
+  assert(outcome.result.signalSent === false, 'offline result.signalSent must be false');
+  assert(outcome.result.detail === 'hardware offline', `offline detail must be "hardware offline", got: ${outcome.result.detail}`);
+  assert(adapter.executeCalls === 1, 'allowed command reaches the adapter, which then reports offline honestly');
+  assert(transport.sentFrames.length === 0, 'offline transport must not record any sent frame');
+
+  const failedEntry = audit.list().find((entry) => entry.code === 'hardware_command_failed');
+  assert(failedEntry, 'offline failure must be audited');
+  assert(failedEntry.hardwareSignalSent === false, 'offline audit entry must have hardwareSignalSent=false');
+}
+
+async function testAllowedCommandExecutesAndAudits() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, audit, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'executed', 'legal command with healthy sensors must execute');
+  assert(outcome.executionMode === 'real_hardware', 'outcome must be labeled real_hardware');
+  assert(outcome.result.signalSent === true, 'executed result must report signalSent=true');
+  assert(adapter.executeCalls === 1, 'allowed command must invoke adapter.execute() exactly once');
+  assert(transport.sentFrames.length === 1, 'exactly one frame must reach the wire');
+  assert(transport.sentFrames[0].cmd === 'move_to_angle', 'wire frame must carry move_to_angle');
+  assert(transport.sentFrames[0].args?.angle === 45, 'wire frame must carry angle=45');
+
+  const executedEntry = audit.list().find((entry) => entry.code === 'hardware_command_executed');
+  assert(executedEntry, 'executed decision must be audited');
+  assert(executedEntry.hardwareSignalSent === true, 'executed audit entry must have hardwareSignalSent=true');
+}
+
+async function testReadsAllowedWhileActuationLockedOut() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { gate } = buildGate(transport);
+
+  // Sensor data missing: actuation is locked out, but a read_distance command
+  // (non-actuation) may pass so the operator can re-establish observability.
+  const outcome = await gate.run({
+    command: {
+      id: 'read-1',
+      deviceId: 'esp32-servo-rig',
+      capabilityId: 'read_distance',
+      args: {}
+    },
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'executed', 'read_distance must stay available while actuation is locked out');
+}
+
+async function testUnsupportedCapabilityFailsLoudly() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: {
+      id: 'bogus-1',
+      deviceId: 'esp32-servo-rig',
+      capabilityId: 'launch_rocket' as never,
+      args: {}
+    },
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'blocked', 'unsupported capability must be blocked, never guessed');
+  assert(outcome.reason.indexOf('unsupported_capability') === 0, 'reason must name the unsupported capability');
+  assert(adapter.executeCalls === 0, 'unsupported capability must not reach adapter.execute()');
+  assert(transport.sentFrames.length === 0, 'unsupported capability must put zero frames on the wire');
+}
+
+async function testEveryAuditEntryCarriesHardwareSignalSent() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { audit, gate } = buildGate(transport);
+
+  await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+  await gate.run({
+    command: servoCommand(200),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    sensorPolicies: [freshDistancePolicy],
+    nowMs: NOW
+  });
+  audit.info('input', 'note', 'plain info entry');
+
+  const entries = audit.list();
+  assert(entries.length >= 3, 'audit log must contain the recorded entries');
+  for (const entry of entries) {
+    assert(
+      typeof entry.hardwareSignalSent === 'boolean',
+      `every audit entry must carry boolean hardwareSignalSent (entry ${entry.code})`
+    );
+  }
+
+  const exported = JSON.parse(audit.exportJson()) as Array<Record<string, unknown>>;
+  assert(exported.length === entries.length, 'exportJson must contain every entry');
+  for (const entry of exported) {
+    assert(
+      typeof entry.hardwareSignalSent === 'boolean',
+      'exported audit entries must carry boolean hardwareSignalSent'
+    );
+  }
+}
+
+/** Fake serial port for SerialEsp32Transport protocol tests. */
+class FakeSerialPort implements SerialPortLike {
+  written: string[] = [];
+  private opened = false;
+  private dataListeners: Array<(chunk: string) => void> = [];
+  private closeListeners: Array<() => void> = [];
+  autoRespond: ((line: string) => string | null) | null = null;
+
+  async open() { this.opened = true; }
+  async close() {
+    this.opened = false;
+    this.closeListeners.forEach((listener) => listener());
+  }
+  async write(chunk: string) {
+    if (!this.opened) throw new Error('port not open');
+    this.written.push(chunk);
+    if (this.autoRespond) {
+      const response = this.autoRespond(chunk.trim());
+      if (response !== null) {
+        // Deliver asynchronously and split across chunks to exercise buffering.
+        const mid = Math.floor(response.length / 2);
+        setTimeout(() => this.emitData(response.slice(0, mid)), 0);
+        setTimeout(() => this.emitData(response.slice(mid)), 1);
+      }
+    }
+  }
+  onData(listener: (chunk: string) => void) { this.dataListeners.push(listener); }
+  onClose(listener: () => void) { this.closeListeners.push(listener); }
+  isOpen() { return this.opened; }
+  emitData(chunk: string) { this.dataListeners.forEach((listener) => listener(chunk)); }
+}
+
+async function testSerialTransportProtocol() {
+  const port = new FakeSerialPort();
+  port.autoRespond = (line) => {
+    const frame = JSON.parse(line) as TransportFrame;
+    return `${JSON.stringify({ id: frame.id, ok: true, data: { angle: frame.args?.angle } })}\n`;
+  };
+  const transport = new SerialEsp32Transport(port, { requestTimeoutMs: 500 });
+
+  // Sending before connect must throw offline, not write anything.
+  let threw = false;
+  try {
+    await transport.send({ id: 'x1', cmd: 'move_to_angle', args: { angle: 10 } });
+  } catch (error) {
+    threw = error instanceof TransportOfflineError;
+  }
+  assert(threw, 'send before connect must throw TransportOfflineError');
+  const writtenBeforeConnect: number = port.written.length;
+  assert(writtenBeforeConnect === 0, 'nothing may be written before connect');
+
+  await transport.connect();
+  const response = await transport.send({ id: 'x2', cmd: 'move_to_angle', args: { angle: 90 } });
+  assert(response.ok === true, 'serial round-trip must succeed');
+  assert(response.id === 'x2', 'response must be matched by id');
+  const writtenAfterSend: number = port.written.length;
+  assert(writtenAfterSend === 1 && port.written[0].indexOf('"move_to_angle"') >= 0, 'frame must be written as JSON line');
+
+  // Malformed line must be recorded as protocol error, not treated as success.
+  port.autoRespond = null;
+  const pendingTimeout = transport.send({ id: 'x3', cmd: 'read_distance' }).then(
+    () => { throw new Error('timeout expected'); },
+    (error: Error) => error
+  );
+  port.emitData('not-json\n');
+  const timeoutError = await pendingTimeout;
+  assert(timeoutError.message.indexOf('timeout') >= 0, 'unanswered request must time out');
+  assert(
+    (transport.getLastProtocolError() ?? '').indexOf('malformed') >= 0,
+    'malformed device line must be surfaced as protocol error'
+  );
+
+  // Port close must fail pending requests and flip connectivity.
+  await transport.disconnect();
+  assert(transport.isConnected() === false, 'disconnect must report not connected');
+}
+
+async function testMedianFilterRejectsNoise() {
+  const { MedianFilter } = await import('../../lib/hardware/SensorConditioning');
+  const filter = new MedianFilter(5);
+  assert(filter.median() === null, 'empty filter must report null (fail closed), never a fake value');
+  filter.push(100);
+  filter.push(101);
+  filter.push(3);    // noise spike downward
+  filter.push(99);
+  const median = filter.push(100);
+  assert(median === 100, `median of [100,101,3,99,100] must be 100, got ${median}`);
+  filter.push(NaN);
+  assert(filter.median() === 100, 'NaN samples must be rejected, not poison the window');
+}
+
+async function testDistanceInterlockHysteresis() {
+  const { DistanceInterlock } = await import('../../lib/hardware/SensorConditioning');
+  const interlock = new DistanceInterlock({ lockBelowCm: 10, releaseAboveCm: 12 });
+
+  let state = interlock.update(20);
+  assert(state.locked === false, 'clear distance must not lock');
+  assert(state.effectiveMinSafeDistanceCm === 10, 'unlocked threshold must equal lockBelowCm');
+
+  state = interlock.update(9);
+  assert(state.locked === true, 'distance below lockBelowCm must lock');
+  assert(state.effectiveMinSafeDistanceCm === 12, 'locked threshold must rise to releaseAboveCm');
+
+  state = interlock.update(10.5); // inside hysteresis band
+  assert(state.locked === true, 'inside the band the interlock must STAY locked (no flapping)');
+
+  state = interlock.update(11.9); // still inside band
+  assert(state.locked === true, '11.9 < releaseAboveCm must stay locked');
+
+  state = interlock.update(12.1);
+  assert(state.locked === false, 'above releaseAboveCm must unlock');
+
+  state = interlock.update(11); // band again, now from unlocked side
+  assert(state.locked === false, 'inside the band from the unlocked side must stay unlocked');
+
+  state = interlock.update(null);
+  assert(state.locked === true, 'missing data must lock (fail closed)');
+
+  // Conservativeness invariant: effective threshold never below lockBelowCm.
+  for (const value of [5, 10.5, 13, null, 8]) {
+    state = interlock.update(value as number | null);
+    assert(state.effectiveMinSafeDistanceCm >= 10, 'effective threshold must never drop below lockBelowCm');
+  }
+
+  let threw = false;
+  try {
+    // eslint-disable-next-line no-new
+    new DistanceInterlock({ lockBelowCm: 10, releaseAboveCm: 10 });
+  } catch {
+    threw = true;
+  }
+  assert(threw, 'releaseAboveCm <= lockBelowCm must be rejected at construction');
+}
+
+async function main() {
+  const tests: Array<[string, () => Promise<void>]> = [
+    ['blocked command never reaches hardware', testBlockedNeverReachesHardware],
+    ['sensor missing => default-block', testSensorMissingDefaultBlocks],
+    ['sensor stale => default-block', testSensorStaleDefaultBlocks],
+    ['sensor invalid => default-block', testSensorInvalidDefaultBlocks],
+    ['min safe distance interlock blocks actuation', testMinSafeDistanceInterlock],
+    ['offline transport never fakes success', testOfflineTransportNeverFakesSuccess],
+    ['allowed command executes with signalSent=true', testAllowedCommandExecutesAndAudits],
+    ['reads stay available while actuation locked out', testReadsAllowedWhileActuationLockedOut],
+    ['unsupported capability fails loudly', testUnsupportedCapabilityFailsLoudly],
+    ['every audit entry carries hardwareSignalSent', testEveryAuditEntryCarriesHardwareSignalSent],
+    ['serial transport protocol behaves honestly', testSerialTransportProtocol],
+    ['median filter rejects noise, never fakes data', testMedianFilterRejectsNoise],
+    ['distance interlock hysteresis stays conservative', testDistanceInterlockHysteresis]
+  ];
+
+  for (const [name, test] of tests) {
+    await test();
+    console.log(`ok - ${name}`);
+  }
+  console.log(`Real hardware safety invariant tests passed (${tests.length} tests).`);
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});

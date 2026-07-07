@@ -1,6 +1,6 @@
 # Commercial Positioning
 
-Open Reality Studio is a simulation-first desktop runtime for Physical AI workflows.
+RealityWarden is a simulation-first desktop runtime for Physical AI workflows.
 
 It is not a generic website, not a cloud dashboard, and not only a robot arm demo. The product thesis is that AI systems should not jump directly from natural language into real hardware execution. They need a local runtime that can understand intent, check device capability, ground the task against world state, apply safety policy, simulate the outcome, and record an audit trail before any real adapter is allowed.
 
@@ -101,7 +101,7 @@ The monetization wedge is not “chat with your robot.” It is reducing the cos
 
 The right current statement is:
 
-Open Reality Studio is an early simulation-first Physical AI desktop runtime prototype for understanding, validating, and auditing device workflows before real hardware execution.
+RealityWarden is an early simulation-first Physical AI desktop runtime prototype for understanding, validating, and auditing device workflows before real hardware execution.
 
 The wrong current statement would be:
 

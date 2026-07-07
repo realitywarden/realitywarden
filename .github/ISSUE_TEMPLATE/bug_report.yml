@@ -1,12 +1,12 @@
 name: Bug report
-description: Report a reproducible issue in Open Reality Studio.
+description: Report a reproducible issue in RealityWarden.
 title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug. Open Reality Studio is currently simulation-first and does not enable real device execution.
+        Thanks for reporting a bug. RealityWarden is currently simulation-first and does not enable real device execution.
   - type: input
     id: version
     attributes:

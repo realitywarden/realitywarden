@@ -415,7 +415,7 @@ function AuditSection({
     <section className="border-b border-[#E5E5EA] bg-[#F5F5F7]">
       <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-white">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[10px] text-[#86868B]">{open ? 'v' : '>'}</span>
+          <span className="text-[11px] text-[#86868B]">{open ? 'v' : '>'}</span>
           <div className="truncate text-xs font-semibold uppercase tracking-wide text-[#1D1D1F]">{title}</div>
           {summary && <div className="truncate text-[11px] text-[#86868B]">{summary}</div>}
         </div>
@@ -447,7 +447,7 @@ function DarkJsonBlock({ value, viewFullLabel }: { value: unknown; viewFullLabel
 function InlineMetric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="border border-[#E5E5EA] bg-white px-2.5 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-[#86868B]">{label}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">{label}</div>
       <div className="mt-1 truncate text-xs font-semibold text-[#1D1D1F]">{value}</div>
     </div>
   );
@@ -458,7 +458,7 @@ function KeyValueGrid({ rows }: { rows: Array<[string, React.ReactNode]> }) {
     <div className="grid gap-2">
       {rows.map(([key, value]) => (
         <div key={key} className="grid grid-cols-[100px_1fr] gap-x-2 gap-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-[#86868B]">{key}</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">{key}</div>
           <div className="min-w-0 break-words font-mono text-[11px] leading-4 text-text-primary">{value}</div>
         </div>
       ))}
@@ -470,7 +470,7 @@ function InspectorGroup({ title, defaultOpen = false, children }: { title: strin
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-b border-border-panel">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="flex h-8 w-full items-center justify-between bg-[#1B1D20] px-3 text-left text-[10px] font-bold uppercase tracking-wide text-text-secondary hover:bg-[#232529]">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="flex h-8 w-full items-center justify-between bg-[#1B1D20] px-3 text-left text-[11px] font-bold uppercase tracking-wide text-text-secondary hover:bg-[#232529]">
         <span>{title}</span>
         <span>{open ? '-' : '+'}</span>
       </button>
@@ -492,7 +492,7 @@ function TaskPlanView({ language, taskDsl }: { language: UiLanguage; taskDsl: Ta
       <div className="border border-[#E5E5EA] bg-white">
         {taskDsl.steps.map((step, index) => (
           <div key={step.id} className="grid grid-cols-[34px_1fr] gap-2 border-b border-[#F3F4F6] px-2.5 py-2.5 last:border-b-0">
-            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#EAF3FF] text-[10px] font-bold text-[#0066CC]">{index + 1}</div>
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#EAF3FF] text-[11px] font-bold text-[#0066CC]">{index + 1}</div>
             <div>
               <div className="text-xs font-semibold text-[#1D1D1F]">{t.actions[step.action]}</div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-5 text-[#86868B]">
@@ -522,7 +522,7 @@ function AdapterCommandView({ language, commands, activeCommandId }: { language:
       <div className="border border-[#E5E5EA] bg-white">
         {commands.map((command, index) => (
           <div key={command.id} className={`grid grid-cols-[34px_1fr_auto] gap-2 border-b border-l-2 border-b-[#F3F4F6] px-2.5 py-2.5 last:border-b-0 ${command.id === activeCommandId ? 'border-l-[#0066CC] bg-[#F3F8FF]' : 'border-l-transparent'}`}>
-            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#F5F5F7] text-[10px] font-bold text-[#86868B]">{index + 1}</div>
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#F5F5F7] text-[11px] font-bold text-[#86868B]">{index + 1}</div>
             <div>
               <div className="text-xs font-semibold text-[#1D1D1F]">{t.actions[command.action]}</div>
               <div className="mt-1 text-[11px] leading-5 text-[#86868B]">
@@ -567,13 +567,13 @@ function ActionPlanView({ language, report, activeCommandId }: { language: UiLan
                 {plan.validation.blocked ? t.block : t.allow}
               </div>
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-semibold uppercase tracking-wide text-[#86868B]">
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">
               <span>{t.frameCount}: {plan.frame_count}</span>
               <span>{t.duration}: {plan.duration_ms}ms</span>
               <span>{t.validation}: {plan.validation.reachable ? 'reachable' : 'blocked'}</span>
             </div>
             {plan.validation.reason && (
-              <div className="mt-2 border border-[#FECDD3] bg-[#FFF1F2] px-2 py-1.5 text-[11px] font-semibold leading-relaxed text-[#BE123C]">
+              <div className="mt-2 border border-[#FECDD3] bg-[#FFF1F2] px-2 py-1.5 text-[11px] font-semibold leading-relaxed text-status-blocked">
                 {plan.validation.reason}
               </div>
             )}
@@ -599,14 +599,14 @@ function StateInspector({ language, before, snapshot }: { language: UiLanguage; 
   return (
     <div className="grid gap-2 border border-[#E5E5EA] bg-white p-2.5 font-mono text-[11px] text-[#1D1D1F]">
       {frame && (
-        <div className="grid grid-cols-3 gap-2 border border-[#D7E7FA] bg-[#F3F8FF] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#0066CC]">
+        <div className="grid grid-cols-3 gap-2 border border-[#D7E7FA] bg-[#F3F8FF] px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#0066CC]">
           <span>{language === 'zh' ? '命令' : 'Command'}: {frame.command_id}</span>
           <span>{language === 'zh' ? '时间' : 'Time'}: {frame.time_ms}ms</span>
           <span>{language === 'zh' ? '进度' : 'Progress'}: {Math.round(frame.progress * 100)}%</span>
         </div>
       )}
       <div>
-        <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{language === 'zh' ? '设备状态' : 'Device State'}</div>
+        <div className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{language === 'zh' ? '设备状态' : 'Device State'}</div>
         {Object.entries(state).map(([key, value]) => (
           <div key={key} className={`grid grid-cols-[120px_1fr] gap-3 px-2 py-1 ${changed.has(key) ? 'bg-[#EAF3FF] text-[#0066CC]' : 'text-[#1D1D1F]'}`}>
             <span className="text-[#86868B]">{key}</span>
@@ -616,7 +616,7 @@ function StateInspector({ language, before, snapshot }: { language: UiLanguage; 
       </div>
       {hasVisualState && (
         <div className="border-t border-[#F3F4F6] pt-2">
-          <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{language === 'zh' ? '视觉动作帧' : 'Visual Action Frame'}</div>
+          <div className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{language === 'zh' ? '视觉动作帧' : 'Visual Action Frame'}</div>
           {Object.entries(visualState).map(([key, value]) => (
             <div key={key} className="grid grid-cols-[120px_1fr] gap-3 px-2 py-1 text-[#1D1D1F]">
               <span className="text-[#86868B]">{key}</span>
@@ -667,7 +667,7 @@ function ExecutionTimeline({
                   <div className="mt-1.5 text-[11px] font-semibold text-[#0066CC]">{t.changed}: {snapshot.changed_keys.join(', ')}</div>
                 )}
                 {actionPlan && (
-                  <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#86868B]">
+                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">
                     {language === 'zh'
                       ? `${actionPlan.frame_count} 帧 · ${actionPlan.duration_ms}ms`
                       : `${actionPlan.frame_count} frames · ${actionPlan.duration_ms}ms`}
@@ -738,7 +738,7 @@ function DeviceInspector({
     <section className="border-b border-border-panel bg-bg-panel p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t.deviceInspector}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t.deviceInspector}</div>
           <div className="mt-1 text-[15px] font-semibold leading-5 text-text-primary">{localizeDisplayName(language, selectedWorkspaceDevice?.label ?? localProfileName(profile, language))}</div>
           <div className="mt-1 text-[11px] leading-5 text-text-secondary">
             {localizeDeviceType(language, meta.device_type)} / {language === 'zh' ? '\u578b\u53f7' : 'Model'} {localizeDisplayName(language, meta.model)}
@@ -768,7 +768,7 @@ function DeviceInspector({
         <InspectorGroup title={ti(language, 'inspector_capabilities')} defaultOpen>
           <div className="flex flex-wrap gap-1.5">
             {meta.capabilities.map((capability) => (
-              <span key={capability} className="max-w-full rounded-[3px] border border-border-panel bg-[#232529] px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-text-primary">
+              <span key={capability} className="max-w-full rounded-[3px] border border-border-panel bg-[#232529] px-1.5 py-0.5 text-[11px] font-semibold leading-4 text-text-primary">
                 {localizeCapability(language, capability)}
               </span>
             ))}
@@ -808,15 +808,15 @@ function DeviceInspector({
 
       <div className="mt-2 border border-[#E5E5EA] bg-white p-2.5">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{ti(language, 'inspector_runtime_state')}</div>
-          <span className={`border px-1.5 py-0.5 text-[10px] font-bold ${selectedWorkspaceDevice?.last_run_result === 'blocked' ? 'border-[#FECDD3] bg-[#FFF1F2] text-[#BE123C]' : selectedWorkspaceDevice?.last_run_result === 'pass' ? 'border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]' : 'border-[#E5E5EA] bg-[#F5F5F7] text-[#86868B]'}`}>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{ti(language, 'inspector_runtime_state')}</div>
+          <span className={`border px-1.5 py-0.5 text-[11px] font-bold ${selectedWorkspaceDevice?.last_run_result === 'blocked' ? 'border-[#FECDD3] bg-[#FFF1F2] text-status-blocked' : selectedWorkspaceDevice?.last_run_result === 'pass' ? 'border-[#A7F3D0] bg-[#ECFDF5] text-status-executed' : 'border-[#E5E5EA] bg-[#F5F5F7] text-[#86868B]'}`}>
             {selectedWorkspaceDevice?.last_run_result ? localResult(selectedWorkspaceDevice.last_run_result, language) : ti(language, 'not_run')}
           </span>
         </div>
         <div className="mt-2 grid gap-1 font-mono text-[11px]">
           {runtimeEntries.map(([key, value]) => (
-            <div key={key} className="grid grid-cols-[110px_1fr] gap-2">
-              <span className="text-[#86868B]">{key}</span>
+            <div key={key} className="grid grid-cols-[150px_1fr] gap-2">
+              <span className="break-all text-[#86868B]">{key}</span>
               <span className="truncate text-[#1D1D1F]">{localValue(value, language)}</span>
             </div>
           ))}
@@ -825,7 +825,7 @@ function DeviceInspector({
 
       {selectedAsset && (
         <div className="mt-2 grid gap-2 border border-[#E5E5EA] bg-white p-2.5 text-[11px] leading-5 text-[#1D1D1F]">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.assetInfo}</div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t.assetInfo}</div>
           <div>{localizeDisplayName(language, selectedAsset.manifest.display_name)}</div>
           <div>{language === 'zh' ? '\u5206\u7c7b' : 'Category'}: {localizeCategory(language, selectedAsset.manifest.category)}</div>
           <div>{t.license}: {localizeMetadataValue(language, selectedAsset.manifest.license)}</div>
@@ -837,10 +837,10 @@ function DeviceInspector({
       )}
 
       <div className="mt-2 border border-[#E5E5EA] bg-white p-2.5">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.capabilities}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t.capabilities}</div>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {meta.capabilities.map((capability) => (
-            <span key={capability} className="border border-[#E5E5EA] bg-[#F5F5F7] px-2 py-1 text-[10px] font-semibold text-[#1D1D1F]">
+            <span key={capability} className="border border-[#E5E5EA] bg-[#F5F5F7] px-2 py-1 text-[11px] font-semibold text-[#1D1D1F]">
               {localizeCapability(language, capability)}
             </span>
           ))}
@@ -848,7 +848,7 @@ function DeviceInspector({
       </div>
 
       <div className="mt-2 grid gap-2 border border-[#E5E5EA] bg-white p-2.5 text-[11px] leading-5 text-[#1D1D1F]">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.constraints}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t.constraints}</div>
         <div>{t.workspace}: X {workspace.x_min}..{workspace.x_max}, Y {workspace.y_min}..{workspace.y_max}, Z {workspace.z_min}..{workspace.z_max}</div>
         <div>{t.forbiddenZones}: {meta.constraints.forbidden_zones.map((zone) => localValue(zone, language)).join(', ') || '-'}</div>
         <div>
@@ -857,12 +857,12 @@ function DeviceInspector({
       </div>
 
       <div className="mt-2 border border-[#E5E5EA] bg-white p-2.5">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.deploymentConfig}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t.deploymentConfig}</div>
         {!selectedWorkspaceDevice ? (
           <div className="mt-2 text-[11px] leading-5 text-[#86868B]">{t.noWorkspaceDevice}</div>
         ) : (
           <div className="mt-2 grid gap-2">
-            <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+            <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
               {t.deviceName}
               <input
                 value={localizeDisplayName(language, selectedWorkspaceDevice.label)}
@@ -871,48 +871,48 @@ function DeviceInspector({
               />
             </label>
             <div className="grid gap-1">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.layoutPosition}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t.layoutPosition}</div>
               <div className="text-[11px] leading-5 text-[#6B7280]">{t.layoutHint}</div>
               <div className="grid grid-cols-3 gap-2">
-                <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+                <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
                   {t.posX}
                   <input
                     type="number"
                     step="0.1"
                     min={workspace.x_min}
                     max={workspace.x_max}
-                    value={currentPosition[0]}
+                    value={Number(currentPosition[0].toFixed(2))}
                     onChange={(event) => updateLayoutPosition(0, event.target.value)}
                     className="h-7 border border-[#E5E5EA] bg-white px-2 font-mono text-xs normal-case tracking-normal text-[#1D1D1F] outline-none focus:border-[#0066CC] focus:ring-1 focus:ring-[#0066CC]"
                   />
                 </label>
-                <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+                <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
                   {t.posY}
                   <input
                     type="number"
                     step="0.1"
                     min={workspace.y_min}
                     max={workspace.y_max}
-                    value={currentPosition[1]}
+                    value={Number(currentPosition[1].toFixed(2))}
                     onChange={(event) => updateLayoutPosition(1, event.target.value)}
                     className="h-7 border border-[#E5E5EA] bg-white px-2 font-mono text-xs normal-case tracking-normal text-[#1D1D1F] outline-none focus:border-[#0066CC] focus:ring-1 focus:ring-[#0066CC]"
                   />
                 </label>
-                <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+                <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
                   {t.posZ}
                   <input
                     type="number"
                     step="0.1"
                     min={workspace.z_min}
                     max={workspace.z_max}
-                    value={currentPosition[2]}
+                    value={Number(currentPosition[2].toFixed(2))}
                     onChange={(event) => updateLayoutPosition(2, event.target.value)}
                     className="h-7 border border-[#E5E5EA] bg-white px-2 font-mono text-xs normal-case tracking-normal text-[#1D1D1F] outline-none focus:border-[#0066CC] focus:ring-1 focus:ring-[#0066CC]"
                   />
                 </label>
               </div>
             </div>
-            <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+            <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
               {t.adapterTargetId}
               <input
                 value={selectedWorkspaceDevice.config.adapter_target_id}
@@ -921,7 +921,7 @@ function DeviceInspector({
               />
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+              <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
                 {t.maxSpeed}
                 <select
                   value={selectedWorkspaceDevice.config.max_speed}
@@ -933,7 +933,7 @@ function DeviceInspector({
                   <option value="fast">{localValue('fast', language)}</option>
                 </select>
               </label>
-              <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+              <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
                 {t.forceLimit}
                 <select
                   value={selectedWorkspaceDevice.config.force_limit}
@@ -946,7 +946,7 @@ function DeviceInspector({
                 </select>
               </label>
             </div>
-            <label className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">
+            <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">
               {t.forbiddenZones}
               <input
                 value={selectedWorkspaceDevice.config.forbidden_zones.join(', ')}
@@ -985,7 +985,7 @@ function DeviceInspector({
             <button
               type="button"
               onClick={() => onWorkspaceDeviceRemove(selectedWorkspaceDevice.id)}
-              className="h-7 border border-[#FECDD3] bg-[#FFF1F2] px-2 text-[11px] font-semibold text-[#BE123C] hover:bg-[#FFE4E6]"
+              className="h-7 border border-[#FECDD3] bg-[#FFF1F2] px-2 text-[11px] font-semibold text-status-blocked hover:bg-[#FFE4E6]"
             >
               {ti(language, 'remove_device')}
             </button>
@@ -994,18 +994,18 @@ function DeviceInspector({
       </div>
 
       <div className="mt-2 border border-[#E5E5EA] bg-white p-2.5">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.workspaceValidation}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t.workspaceValidation}</div>
         {!workspaceValidation ? (
           <div className="mt-2 text-[11px] leading-5 text-[#86868B]">{t.validationNotRun}</div>
         ) : (
           <div className="mt-2 grid gap-1.5 text-[11px] leading-5 text-[#1D1D1F]">
-            <div className={workspaceValidation.result === 'pass' ? 'font-bold text-[#047857]' : 'font-bold text-[#BE123C]'}>
+            <div className={workspaceValidation.result === 'pass' ? 'font-bold text-status-executed' : 'font-bold text-status-blocked'}>
               {localResult(workspaceValidation.result, language)} / {workspaceValidation.run_id}
             </div>
             {workspaceValidation.device_results.map((result) => (
               <div key={result.workspace_device_id} className="flex justify-between gap-2 border-t border-[#F3F4F6] pt-1.5">
                 <span className="truncate">{result.label}</span>
-                <span className={result.result === 'pass' ? 'font-bold text-[#047857]' : 'font-bold text-[#BE123C]'}>{localResult(result.result, language)}</span>
+                <span className={result.result === 'pass' ? 'font-bold text-status-executed' : 'font-bold text-status-blocked'}>{localResult(result.result, language)}</span>
               </div>
             ))}
           </div>
@@ -1058,7 +1058,7 @@ export function AuditPanel({
       <section className="border-b border-[#E5E5EA] bg-[#F5F5F7] p-3">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[#86868B]">{t.safetyRuntime}</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-[#86868B]">{t.safetyRuntime}</div>
             <div className="mt-1 text-base font-semibold text-[#1D1D1F]">{t.executionGate}</div>
           </div>
           <StatusPill status={safetyReport?.status === 'pass' ? 'pass' : safetyReport?.status === 'blocked' ? 'blocked' : safetyReport?.status === 'needs_confirmation' ? 'needs_confirmation' : 'idle'} language={language} />
@@ -1080,7 +1080,7 @@ export function AuditPanel({
         </div>
 
         {blocked && (
-          <div className="mt-3 border border-[#FECDD3] bg-[#FFF1F2] p-3 text-xs font-semibold leading-relaxed text-[#BE123C]">
+          <div className="mt-3 border border-[#FECDD3] bg-[#FFF1F2] p-3 text-xs font-semibold leading-relaxed text-status-blocked">
             {t.blocked}: {language === 'zh' ? '\u5371\u9669\u547d\u4ee4\u5df2\u5728\u8bbe\u5907\u6267\u884c\u524d\u88ab\u5b89\u5168\u8fd0\u884c\u65f6\u62e6\u622a\u3002' : safetyReport.blocked_reasons.join(' ')}
           </div>
         )}

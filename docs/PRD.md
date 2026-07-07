@@ -1,6 +1,6 @@
 # Product Requirements
 
-Open Reality Studio is a desktop Virtual Lab for AI-controlled devices.
+RealityWarden is a desktop Virtual Lab for AI-controlled devices.
 
 The product goal is to let developers build, simulate, test, debug, replay, validate, and audit AI-controlled device workflows before touching real hardware.
 

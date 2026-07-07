@@ -9,6 +9,7 @@ import { localizeDeviceType, localizeDisplayName, localizeFidelity, t } from '@/
 import { getSimulatorFidelity } from '@/lib/virtual-lab/SimulatorFidelity';
 import type { SemanticWorkspaceDevice } from './SemanticDeviceStage';
 import { SemanticDeviceStage } from './SemanticDeviceStage';
+import { StageErrorBoundary } from './StageErrorBoundary';
 import type { UiLanguage } from './LabConfigurator';
 
 function localBlockedReason(reason: string | undefined, language: UiLanguage) {
@@ -38,7 +39,8 @@ export function VirtualDeviceStage({
   onDropDevice,
   onDropAsset,
   onSelectWorkspaceDevice,
-  onMoveWorkspaceDevice
+  onMoveWorkspaceDevice,
+  onRemoveSelectedDevice
 }: {
   language: UiLanguage;
   profile: DeviceProfile;
@@ -56,6 +58,7 @@ export function VirtualDeviceStage({
   onDropAsset?: (assetId: string) => void;
   onSelectWorkspaceDevice: (deviceId: string) => void;
   onMoveWorkspaceDevice?: (deviceId: string, position: [number, number, number]) => void;
+  onRemoveSelectedDevice?: () => void;
 }) {
   const [dropzoneActive, setDropzoneActive] = useState(false);
   const fidelity = getSimulatorFidelity(profile.deviceMeta);
@@ -97,10 +100,11 @@ export function VirtualDeviceStage({
     >
       <div className="relative min-h-0 flex-1">
         <div className="pointer-events-none absolute inset-2 z-20 border border-[#FACC15]/10">
-          <div className="absolute left-2 top-2 rounded-[3px] border border-[#FACC15]/20 bg-black/30 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#FACC15]/75 backdrop-blur-sm">
+          <div className="absolute left-2 top-2 rounded-[3px] border border-[#FACC15]/20 bg-black/30 px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-status-warning/75 backdrop-blur-sm">
             Airgapped · Simulation Only
           </div>
         </div>
+        <StageErrorBoundary language={language}>
         <SemanticDeviceStage
           deviceType={profile.deviceMeta.device_type}
           state={replayState}
@@ -117,20 +121,35 @@ export function VirtualDeviceStage({
           onSelectWorkspaceDevice={onSelectWorkspaceDevice}
           onMoveWorkspaceDevice={onMoveWorkspaceDevice}
         />
+        </StageErrorBoundary>
+        {workspaceDevices.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <div className="border border-dashed border-[#4B5563] bg-black/45 px-5 py-4 text-center backdrop-blur-sm">
+              <div className="text-[14px] font-semibold text-[#E6EAF0]">
+                {language === 'zh' ? '工作区是空的' : 'The workspace is empty'}
+              </div>
+              <div className="mt-1 text-[12px] leading-5 text-[#9AA3AF]">
+                {language === 'zh'
+                  ? '从左侧资产库拖入一个设备，或直接点击资产卡片添加。'
+                  : 'Drag a device in from the asset library on the left, or click an asset card to add one.'}
+              </div>
+            </div>
+          </div>
+        )}
         {!compactSingleDeviceView && (
-          <div className="pointer-events-none absolute left-3 top-3 rounded-[3px] border border-white/5 bg-black/28 px-2 py-1 text-[10px] leading-4 text-[#9AA3AF] backdrop-blur-md">
+          <div className="pointer-events-none absolute left-3 top-10 max-w-[46%] rounded-[3px] border border-white/5 bg-black/28 px-2 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md">
             <span className="font-semibold text-[#E6EAF0]">{language === 'zh' ? '\u5de5\u4f5c\u533a' : 'Workspace'}</span>
             <span className="mx-2 text-[#4B5563]">|</span>
             <span>{t(language, 'workspace_drop_hint')}</span>
           </div>
         )}
         {compactSingleDeviceView && (
-          <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/26 px-2.5 py-1 text-[10px] leading-4 text-[#9AA3AF] backdrop-blur-md">
+          <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/26 px-2.5 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md">
             <div>{t(language, 'workspace_drop_hint')}</div>
             <div className="text-[#7E8791]">{t(language, 'workspace_drag_hint')}</div>
           </div>
         )}
-        <div className="pointer-events-none absolute left-1/2 top-12 -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/24 px-2 py-1 text-[9px] leading-4 text-[#A7B0BA] backdrop-blur-md">
+        <div className="pointer-events-none absolute left-1/2 top-12 -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/24 px-2 py-1 text-[11px] leading-4 text-[#A7B0BA] backdrop-blur-md">
           <span className="font-semibold text-[#E6EAF0]">{t(language, 'active_workspace_device')}</span>
           <span className="mx-1 text-[#4B5563]">-&gt;</span>
           <span>{displayName}</span>
@@ -142,7 +161,7 @@ export function VirtualDeviceStage({
           <span className="font-semibold text-[#E6EAF0]">{t(language, 'workspace_observe_here')}</span>
         </div>
         {!compactSingleDeviceView && (
-          <div className="pointer-events-none absolute right-3 top-12 min-w-[210px] max-w-[280px] rounded-[3px] border border-white/5 bg-black/32 px-2 py-1 text-[10px] leading-4 text-[#A7B0BA] backdrop-blur-md">
+          <div className="pointer-events-none absolute right-3 top-12 min-w-[210px] max-w-[280px] rounded-[3px] border border-white/5 bg-black/32 px-2 py-1 text-[11px] leading-4 text-[#A7B0BA] backdrop-blur-md">
             <div>
               <span className="font-semibold text-[#E6EAF0]">{t(language, 'active_workspace_device')}</span>: {displayName}
             </div>
@@ -150,21 +169,33 @@ export function VirtualDeviceStage({
             {scenarioPreview && !running && (
               <div className="mt-0.5 text-[#7E8791]">{t(language, 'workspace_preview_hint')}</div>
             )}
-            <div className="mt-1 inline-flex rounded-[3px] border border-[#313338] bg-[#101114]/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#9AA3AF]">
+            <div className="mt-1 inline-flex rounded-[3px] border border-[#313338] bg-[#101114]/70 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#9AA3AF]">
               {running ? t(language, 'running') : t(language, 'command_ready')}
             </div>
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => onExpandedChange?.(!expanded)}
-          className="pointer-events-auto absolute right-3 top-3 rounded-[3px] border border-white/10 bg-black/45 px-2 py-1 text-[10px] font-semibold text-[#DDE6EF] backdrop-blur-md hover:bg-black/60"
-        >
-          {expanded
-            ? (language === 'zh' ? '还原工作区' : 'Restore workspace')
-            : (language === 'zh' ? '放大工作区' : 'Expand workspace')}
-        </button>
-        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[360px] rounded-[3px] border border-white/5 bg-black/35 px-2 py-1 font-mono text-[10px] leading-4 text-[#8A8F98] opacity-75 backdrop-blur-md">
+        <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-1.5">
+          {onRemoveSelectedDevice && selectedWorkspaceDevice && (
+            <button
+              type="button"
+              onClick={onRemoveSelectedDevice}
+              title={language === 'zh' ? `移除当前设备：${displayName}` : `Remove selected device: ${displayName}`}
+              className="rounded-[3px] border border-status-blocked-edge bg-black/45 px-2 py-1 text-[11px] font-semibold text-status-blocked-soft backdrop-blur-md hover:bg-status-blocked-surface"
+            >
+              {language === 'zh' ? '移除设备' : 'Remove device'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onExpandedChange?.(!expanded)}
+            className="rounded-[3px] border border-white/10 bg-black/45 px-2 py-1 text-[11px] font-semibold text-[#DDE6EF] backdrop-blur-md hover:bg-black/60"
+          >
+            {expanded
+              ? (language === 'zh' ? '还原工作区' : 'Restore workspace')
+              : (language === 'zh' ? '放大工作区' : 'Expand workspace')}
+          </button>
+        </div>
+        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[360px] rounded-[3px] border border-white/5 bg-black/35 px-2 py-1 font-mono text-[11px] leading-4 text-[#8A8F98] opacity-75 backdrop-blur-md">
           <span className="text-[#E6EAF0]">{t(language, 'device')}</span>: {displayName}
           <span className="mx-2 text-[#4B5563]">|</span>
           <span className="text-[#E6EAF0]">{t(language, 'device_type')}</span>: {displayType}
@@ -176,7 +207,7 @@ export function VirtualDeviceStage({
           <span className="text-[#E6EAF0]">{t(language, 'simulation_only')}</span>
         </div>
         {!compactSingleDeviceView && (
-          <div className="pointer-events-none absolute bottom-3 right-3 rounded-[3px] border border-white/5 bg-black/35 px-2 py-1 text-[9px] leading-4 text-[#8A8F98] opacity-80 backdrop-blur-md">
+          <div className="pointer-events-none absolute bottom-3 right-3 rounded-[3px] border border-white/5 bg-black/35 px-2 py-1 text-[11px] leading-4 text-[#8A8F98] opacity-80 backdrop-blur-md">
             <div>{t(language, 'workspace_legend_layout')}</div>
             <div>{t(language, 'workspace_legend_run')}</div>
           </div>

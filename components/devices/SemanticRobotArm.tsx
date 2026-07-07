@@ -265,7 +265,7 @@ export function SemanticRobotArm({ state, ...props }: { state: Record<string, un
       <group position={renderedCubePosition}>
         <mesh>
           <boxGeometry args={[CUBE_RENDER_SIZE, CUBE_RENDER_SIZE, CUBE_RENDER_SIZE]} />
-          <meshStandardMaterial color="#D9534F" roughness={0.85} metalness={0.05} />
+          <meshStandardMaterial color="#C9CED6" roughness={0.85} metalness={0.05} />
         </mesh>
         {(contactHighlight || attachProgress > 0.2) && (
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.18, 0]}>

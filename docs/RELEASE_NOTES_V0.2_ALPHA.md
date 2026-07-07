@@ -1,4 +1,4 @@
-# Open Reality Studio v0.2 Alpha Release Notes
+# RealityWarden v0.2 Alpha Release Notes
 
 This document prepares the next public release candidate. It does not create a release tag and it does not claim that the product is production-ready.
 

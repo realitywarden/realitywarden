@@ -1,11 +1,18 @@
 import type { PlanCandidate } from './Planner';
 import type { GroundingResult, WorldModel } from './WorldModel';
 
+/**
+ * HONESTY NOTE: this simulator is a deterministic RULE ENGINE, not a
+ * probabilistic model. Every field below is a boolean rule outcome — "did
+ * this rule fire" — never a probability estimate. Do not present these
+ * values as model confidence anywhere in the UI or docs.
+ */
 export interface ConsequenceResult {
+  rule_based: true;
   reachable: boolean;
-  collision_risk: number;
-  fragile_contact_risk: number;
-  outside_workspace_risk: number;
+  collision_risk: boolean;
+  fragile_contact_risk: boolean;
+  outside_workspace_risk: boolean;
   target_placeable: boolean;
   predicted_state: Record<string, unknown>;
   reasons: string[];
@@ -33,10 +40,11 @@ export class ConsequenceSimulator {
     if (object && !object.movable) reasons.push('Object is not movable.');
 
     return {
+      rule_based: true,
       reachable: Boolean(region) && !outside,
-      collision_risk: fragile ? 0.55 : 0.08,
-      fragile_contact_risk: fragile ? 0.92 : 0.02,
-      outside_workspace_risk: outside ? 1 : 0,
+      collision_risk: fragile,
+      fragile_contact_risk: fragile,
+      outside_workspace_risk: outside,
       target_placeable: Boolean(region) && !outside && !fragile,
       predicted_state: object && region ? { [object.id]: { position: region.position } } : {},
       reasons

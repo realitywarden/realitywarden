@@ -1,4 +1,5 @@
-import { BrowserWindow, Menu } from 'electron';
+import { BrowserWindow, Menu, shell } from 'electron';
+import path from 'node:path';
 
 type MenuAction =
   | 'project:new'
@@ -20,8 +21,6 @@ function send(action: MenuAction) {
 }
 
 export function createAppMenu(root: string) {
-  void root;
-
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
       label: 'File',
@@ -61,7 +60,8 @@ export function createAppMenu(root: string) {
     {
       label: 'Help',
       submenu: [
-        { label: 'About RealityWarden', enabled: false }
+        { label: 'Documentation', click: () => shell.openPath(path.join(root, 'docs')) },
+        { label: 'About RealityWarden', click: () => shell.openExternal('https://openreality.studio') }
       ]
     }
   ]));

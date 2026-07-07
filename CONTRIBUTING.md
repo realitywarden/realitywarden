@@ -1,6 +1,6 @@
-# Contributing to Open Reality Studio
+# Contributing to RealityWarden
 
-Open Reality Studio is a simulation-first desktop runtime for Physical AI workflows. It lets AI-driven tasks pass through device descriptions, capability checks, safety decisions, simulation, and audit trails before any future adapter boundary.
+RealityWarden is a simulation-first desktop runtime for Physical AI workflows. It lets AI-driven tasks pass through device descriptions, capability checks, safety decisions, simulation, and audit trails before any future adapter boundary.
 
 ## What a Reality Asset Is
 
@@ -43,7 +43,7 @@ Adapter code is not accepted in community asset submissions.
 
 Hardware execution requires separate review, certification, and explicit local enablement.
 
-Open Reality Studio remains simulation-first.
+RealityWarden remains simulation-first.
 
 ## How to Submit a Reality Asset Draft
 

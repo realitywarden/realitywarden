@@ -1,6 +1,6 @@
 # Operator Workflow
 
-This document describes the standard Open Reality Studio operator workflow. It is the expected verification path for a virtual lab workspace.
+This document describes the standard RealityWarden operator workflow. It is the expected verification path for a virtual lab workspace.
 
 ## Workflow
 
@@ -25,4 +25,4 @@ This document describes the standard Open Reality Studio operator workflow. It i
 
 ## Real Hardware Boundary
 
-Open Reality Studio is currently a Virtual Lab. Real hardware execution is not exposed as the main product path. Future real device execution must go through certified adapters, verified transports, human supervision, and the same Device Profile, Task DSL, Safety Runtime, and Adapter Interface used by the simulator.
+RealityWarden is currently a Virtual Lab. Real hardware execution is not exposed as the main product path. Future real device execution must go through certified adapters, verified transports, human supervision, and the same Device Profile, Task DSL, Safety Runtime, and Adapter Interface used by the simulator.
