@@ -33,6 +33,8 @@ Before an AI-generated action can reach a device, RealityWarden routes it throug
 - simulation / dry-run boundary
 - structured runtime audit logging
 
+Same protocol for simulation and future real devices.
+
 Only then can it enter **simulation** in this Public Alpha.
 
 The long-term goal is not to build robots or chips.
