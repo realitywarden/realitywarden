@@ -1,67 +1,71 @@
 # Roadmap
 
-This roadmap is intentionally narrow. The priority is not feature count. The priority is making the public surface honest, stable, understandable, and clearly positioned around an open Physical AI ecosystem.
+This roadmap is intentionally narrow. The priority is not feature count. The
+priority is keeping the public surface honest, stable, usable, and clearly
+positioned around an open Physical AI ecosystem.
 
-Open Reality is not trying to build robots or chips.
+RealityWarden is not trying to build robots or chips. The direction is a
+universal software runtime that helps ordinary hardware become
+AI-controllable through Reality Assets, capability contracts,
+simulation-first action paths, adapter boundaries, and audit logs.
 
-The direction is a universal software runtime that helps ordinary hardware become AI-controllable through Reality Assets, capability contracts, simulation-first action paths, adapter boundaries, and audit logs.
+Product direction and the full v0.3–v0.6 plan live in `PRODUCT_VISION.md`;
+this file only tracks execution order. The six invariants defined there bind
+every item below.
 
-## Now: Public Alpha
+## Now: Real-Device Acceptance (v0.2 close-out)
 
-Current focus:
+- run the four-scenario real-device acceptance on the reference kit
+  (ESP32 + SG90 + HC-SR04), per `REAL_HARDWARE_ESP32.md`
+- `npm run verify` green on the Windows host (build included)
+- close visual-review leftovers (neutral-gray inline hex consolidation)
+- after acceptance passes: delete the three `@deprecated` legacy adapter
+  files (`RealDeviceAdapter.ts`, `MockDeviceTransport.ts`,
+  `DeviceTransport.ts`)
 
-- keep `robot_arm` stable as the primary runnable path
-- keep `smart_light` and `camera_sensor` stable as low-risk runnable paths
-- show the core story clearly: natural-language goal -> runtime -> checked simulation path
-- keep unsupported prompts from silently executing
-- keep non-public devices behind `Coming Soon`
-- tighten language consistency for first-screen UX
-- keep build / verify / smoke tests passing
+## Next: v0.3 — Real Hardware in the Product
 
-## Next: Public Alpha Hardening
-
-- reduce remaining zh/en mixed display values
-- clean command status and log presentation
-- improve README / docs / public support matrix
-- tighten repo hygiene for public publishing
-- improve deterministic smoke testing for the three public devices
-- make Reality Asset creation easier to understand
-- make the app look more like a universal runtime and less like a single robot demo
+- wire `lib/hardware/` into the main UI: explicit `REAL HARDWARE` device
+  identity + connection wizard
+- LLM compiler UI wiring per the approved `LLM_COMPILER_DRAFT.md` (status
+  chip, `[COMPILER]` log lines, explicit fallback badge)
+- one-click firmware flashing MVP for the reference kit
+- keep simulation the default path; real hardware is always opt-in and
+  visibly distinct
 
 ## Next: Ecosystem Surface
 
 - improve Reality Asset Catalog presentation
-- add clearer "Build a Reality Asset in 10 minutes" documentation
-- show how robots, sensors, smart devices, lab equipment, factory systems, and electronic toys can be represented as Reality Assets
+- keep "Build a Reality Asset in 10 minutes" documentation current
+- show how robots, sensors, smart devices, lab equipment, factory systems,
+  and electronic toys can be represented as Reality Assets
 - clarify how developers can contribute simulation-only assets
-- clarify how future adapters, simulation packs, safety rules, audit templates, and deployment workflows could form around the protocol
+- clarify how future adapters, simulation packs, safety rules, audit
+  templates, and deployment workflows form around the protocol
 
-## Later: Simulator Depth
+## Later: v0.4–v0.6 (detail in PRODUCT_VISION.md)
 
-- richer state editors
-- scenario editor
-- stronger playback inspection
-- deeper per-device semantic action coverage
-- better multi-device workspace behavior
-- clearer safe / corrected / blocked execution outcomes
+- v0.4: user-defined actions (declarative Action Manifest + capability
+  editor), sensor polling/subscription model
+- v0.5: manual import — datasheet/PDF to draft DeviceProfile via local LLM,
+  human-reviewed, simulation-first enablement
+- v0.6: ecosystem marketplace alpha — declarative assets only, signed,
+  trust-tiered, disabled-by-default on install
 
-## Later: Real Device Research Boundary
+## Standing rules (unchanged)
 
-Only after the Public Alpha surface is clean and the simulation-first protocol is stable:
+- show the core story clearly: natural-language goal -> runtime -> checked
+  simulation path
+- unsupported prompts never silently execute
+- non-ready devices stay behind `Coming Soon`
+- build / verify / smoke tests stay green
 
-- research low-risk real-device adapter boundaries
-- explore read-only or low-risk device integration paths
-- keep local runtime gating before any real-device route
-- keep human approval and audit trail requirements explicit
-- do not claim certified safety or production hardware readiness
+## Not In Scope Through v0.6
 
-## Not In Public Alpha Scope
-
-These are explicitly out of scope until after Public Alpha is clean:
-
-- live device execution
-- LocalRuntime / EdgeRuntime for hardware operation
-- vendor-certified safety claims
-- protocol expansion for every device family
-- enabling every scaffolded device in main Run
-- claiming that purely mechanical objects without chips, controllers, sensors, actuators, motors, or interfaces can be changed by software alone
+- vendor-certified industrial safety claims
+- cloud dependency for any safety decision
+- marketplace distribution of executable code
+- protocol changes that are not additive
+- paid marketplace transactions
+- claiming that purely mechanical objects without chips, controllers,
+  sensors, actuators, motors, or interfaces can be changed by software alone
