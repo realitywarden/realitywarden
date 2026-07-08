@@ -2,7 +2,7 @@
 
 ## Making Physical AI open, safer, and not locked inside one brand.
 
-**RealityWarden is a simulation-first AI-to-Action Runtime for the physical world.**
+**RealityWarden is the audited gate between AI and the physical world — a safety runtime between AI agents and real hardware.**
 
 Many robots, machines, sensors, smart devices, lab instruments, and factory systems already have chips, controllers, motors, sensors, or hardware interfaces.
 
@@ -33,9 +33,7 @@ Before an AI-generated action can reach a device, RealityWarden routes it throug
 - simulation / dry-run boundary
 - structured runtime audit logging
 
-Same protocol for simulation and future real devices.
-
-Only then can it enter **simulation** in this Public Alpha.
+Only after every layer passes can an action execute at all — and every run is visibly labeled as simulation or real hardware, never conflated.
 
 The long-term goal is not to build robots or chips.
 
@@ -48,15 +46,12 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
 **Current status**
 
 - Public Alpha
-- simulation-first: the main workbench never touches hardware
+- the main simulation workbench never touches hardware
 - a first, tightly gated REAL hardware path exists for one bench rig
   (ESP32 + SG90 servo + HC-SR04 — see
   [docs/REAL_HARDWARE_ESP32.md](./docs/REAL_HARDWARE_ESP32.md)); it runs only
   through an audited safety gate, and blocked commands can never reach the wire
 - no production hardware control, no industrial safety certification
-
-The simulation workbench itself remains a **simulation-only Public Alpha**.
-No hardware required.
 
 **Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 
@@ -111,6 +106,15 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
   - `robot_arm`
   - `smart_light`
   - `camera_sensor`
+
+## Develop in simulation, deploy to real hardware
+
+**Develop in simulation, deploy to real hardware — strictly separated, never conflated.** This is invariant 6 of the project: simulated runs are marked `[SIMULATION]`, real runs are marked `real_hardware`, and you always know which world you are acting in.
+
+Simulation is where workflows are built, tested, replayed, and audited before any device is involved. The simulation workbench itself remains a **simulation-only Public Alpha**.
+No hardware required.
+
+Same protocol for simulation and future real devices.
 
 ## Runnable devices
 
@@ -266,7 +270,7 @@ Prompt
 
 This is the current product truth:
 
-- **simulation-first**
+- **audited gate before any execution**
 - **local runtime gated**
 - **adapter boundary present**
 - **real execution disabled**
@@ -297,8 +301,8 @@ The first real path (ESP32 bench rig) already follows this rule:
   (`lib/hardware/`): blocked commands never reach the adapter, offline is
   never faked, missing/stale/implausible sensor data default-blocks actuation,
   and every decision is audited with `hardwareSignalSent`
-- simulation-first remains the product truth; hardware support expands only
-  device-by-device, each behind the same gate
+- simulation and reality stay strictly separated; hardware support expands
+  only device-by-device, each behind the same gate
 - current repository scope is still simulation-only
 
 ## Contributing
@@ -306,7 +310,7 @@ The first real path (ESP32 bench rig) already follows this rule:
 - test the runtime boundary
 - report unclear execution states
 - submit Reality Asset ideas
-- propose simulation-first device manifests
+- propose simulation-ready device manifests
 
 The repository is most useful when contributions preserve the current rule:
 
