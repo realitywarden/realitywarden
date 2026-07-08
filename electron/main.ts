@@ -6,6 +6,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { registerExportIpc } from './ipc/export.ipc';
 import { registerFileIpc } from './ipc/file.ipc';
+import { registerHardwareIpc } from './ipc/hardware.ipc';
 import { registerProjectIpc } from './ipc/project.ipc';
 import { createAppMenu } from './menus/appMenu';
 
@@ -194,6 +195,7 @@ function shutdownServer() {
 
 registerProjectIpc();
 registerFileIpc();
+registerHardwareIpc();
 registerExportIpc();
 
 app.on('second-instance', () => {

@@ -5,6 +5,8 @@ import { AuditPanel } from '@/components/AuditPanel';
 import { AutonomyDecisionPanel } from '@/components/AutonomyDecisionPanel';
 import { AssetImportWizard } from '@/components/AssetImportWizard';
 import { LabConfigurator } from '@/components/LabConfigurator';
+import { RealHardwarePanel } from '@/components/RealHardwarePanel';
+import type { HardwareBridge } from '@/components/RealHardwarePanel';
 import type { UiLanguage } from '@/components/LabConfigurator';
 import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
 import { VirtualDeviceStage } from '@/components/VirtualDeviceStage';
@@ -112,6 +114,7 @@ declare global {
         deploymentPackage: (deploymentPackage: unknown) => Promise<{ canceled: boolean; filePath?: string }>;
       };
       onMenuAction: (callback: (action: OpenRealityMenuAction) => void) => () => void;
+      hardware?: HardwareBridge;
     };
   }
 }
@@ -2759,6 +2762,7 @@ export default function Home() {
               onExportLabReport={() => void exportCurrentLabReport()}
             />
           </div>
+          <RealHardwarePanel language={language} />
         </aside>
       </div>
       {assetImportOpen && (
