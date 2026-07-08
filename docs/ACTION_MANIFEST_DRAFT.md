@@ -1,7 +1,8 @@
 # Action Manifest — Design Draft (v0)
 
-Status: DRAFT for owner review (2026-07-08). Implementation targets v0.4 and
-does not start before real-device acceptance closes v0.2/v0.3.
+Status: APPROVED 2026-07-08 (all three decision points resolved; delegated to
+and decided by the assistant, confirmed by owner). Implementation targets
+v0.4 and does not start before real-device acceptance closes v0.2/v0.3.
 
 ## Goal
 
@@ -80,14 +81,14 @@ never clamped.
 3. Equivalence: a manifest reproducing an existing canonical task must yield
    the same decision as the keyword path.
 
-## Decision points for the owner
+## Decisions (confirmed 2026-07-08)
 
-1. **Where may manifests come from in v0.4?** Proposal: local creation +
-   file import only (marketplace distribution waits for v0.6 signing).
-2. **Can a custom action reference another custom action?** Proposal: NO in
-   v0 (no recursion/composition; flat primitives only) — simpler to audit.
-3. **Naming collisions with built-in intents:** proposal: reject at import
-   (never shadow a built-in).
+1. **Sources in v0.4: local creation + file import only.** Marketplace/URL
+   distribution waits for v0.6 signing. DECIDED.
+2. **No nesting.** A custom action may reference primitives only — no
+   recursion, no composition. Flat is auditable. DECIDED.
+3. **Name collisions with built-ins: reject at import.** A manifest never
+   shadows a built-in intent. DECIDED.
 
 ## Out of scope for v0
 
