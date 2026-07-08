@@ -2,6 +2,7 @@ export type RuntimeAuditLevel = 'info' | 'warn' | 'error';
 
 export type RuntimeAuditStage =
   | 'input'
+  | 'compiler'
   | 'runtime_kernel'
   | 'autonomy'
   | 'adapter_plan'

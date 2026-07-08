@@ -1,10 +1,13 @@
 # LLM Task Compiler — Design Draft (v0)
 
-Status: CORE IMPLEMENTED 2026-07-06 (`lib/compiler/llm/`, `tests/llm-compiler/`,
-`npm run test:llm-compiler` in the verify chain, `npm run llm:smoke` for manual
-Ollama runs). The cooperating-malicious-model release gate passes. UI wiring
-(status chip, async run flow) is intentionally deferred until after real-device
-acceptance.
+Status: IMPLEMENTED 2026-07-08. Core: `lib/compiler/llm/` + `tests/llm-compiler/`
+(15 tests, both release gates green). UI wiring shipped: status chip beside the
+prompt box, `[COMPILER]` provenance line per run, async compile state, explicit
+fallback badge. Integration: validated proposals are bridged
+(`lib/compiler/llm/proposalBridge.ts`) into the EXISTING kernel Goal + autonomy
+SemanticIntent inputs — every safety layer runs unchanged downstream; unmappable
+proposals fall back to the rules compiler with an `llm_compiler_fallback` audit
+entry. Real-device acceptance remains pending separately.
 
 ## Goal
 

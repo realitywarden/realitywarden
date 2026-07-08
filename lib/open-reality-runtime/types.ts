@@ -242,6 +242,12 @@ export interface OpenRealityRuntimeInput {
   manifest: DeviceManifest;
   worldModel: WorldModel;
   locale?: 'zh' | 'en';
+  /**
+   * Optional pre-compiled goal (e.g. bridged from a validated LLM proposal).
+   * Replaces ONLY the keyword goal compiler; every downstream check
+   * (world grounding, plan, SafetyGovernor) still runs unchanged on it.
+   */
+  goalOverride?: GoalCompileResult;
 }
 
 export interface OpenRealityRuntimeResult {

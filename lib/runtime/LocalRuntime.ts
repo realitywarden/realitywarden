@@ -1,6 +1,9 @@
 import { getSimulationAdapterForManifest } from '@/lib/adapter-sdk';
 import type { AutonomyResult } from '@/lib/autonomy-core/AutonomyResult';
 import { AutonomyCore } from '@/lib/autonomy-core/AutonomyCore';
+import type { CompileWithFallbackResult } from '@/lib/compiler/llm/compileWithFallback';
+import { bridgeProposalToRuntime } from '@/lib/compiler/llm/proposalBridge';
+import type { BridgedProposal } from '@/lib/compiler/llm/proposalBridge';
 import { buildManifestFromProfile } from '@/lib/open-reality-runtime/deviceManifests';
 import { compileOpenRealityRuntime } from '@/lib/open-reality-runtime/runtimeKernel';
 import type {
@@ -112,12 +115,21 @@ export class LocalRuntime {
     profile,
     prompt,
     locale,
-    deviceState
+    deviceState,
+    llmCompile
   }: {
     profile: DeviceProfile;
     prompt: string;
     locale: 'zh' | 'en';
     deviceState?: Record<string, unknown> | null;
+    /**
+     * Optional result of the LLM-first compile attempt. The proposal inside is
+     * UNTRUSTED: it is bridged to the structured inputs the existing pipelines
+     * consume, and every safety layer runs unchanged on the bridged values.
+     * If bridging declines or the LLM already fell back, the rules path runs
+     * exactly as before - explicitly audited, never silently.
+     */
+    llmCompile?: CompileWithFallbackResult;
   }): LocalRuntimeSession {
     const audit = new RuntimeAuditLog();
     const manifest = buildManifestFromProfile(profile);
@@ -133,12 +145,48 @@ export class LocalRuntime {
       prompt
     });
 
+    // -- Compiler provenance (honesty invariant: which layer produced the
+    // language understanding is always audited; fallback is never silent). --
+    let bridged: BridgedProposal | null = null;
+    let compilerUsed: 'llm' | 'rules' = 'rules';
+    let compilerDetail = 'rules engine';
+    if (llmCompile && llmCompile.compiler === 'llm' && llmCompile.taskDsl) {
+      bridged = profile.deviceMeta.device_type === 'robot_arm'
+        ? bridgeProposalToRuntime(prompt, llmCompile.taskDsl, profile.deviceMeta.device_id)
+        : null;
+      if (bridged) {
+        compilerUsed = 'llm';
+        compilerDetail = `llm(${llmCompile.model ?? 'unknown-model'}) in ${llmCompile.elapsedMs}ms`;
+        audit.info('compiler', 'llm_compiler_used', 'LLM proposal validated and bridged into the runtime pipelines.', {
+          model: llmCompile.model,
+          elapsedMs: llmCompile.elapsedMs,
+          compiler: 'llm'
+        });
+      } else {
+        compilerDetail = 'rules engine (llm proposal unmappable)';
+        audit.info('compiler', 'llm_compiler_fallback', 'LLM proposal did not map to a known goal shape; rules compiler used.', {
+          kind: 'proposal_unmappable',
+          model: llmCompile.model,
+          compiler: 'rules'
+        });
+      }
+    } else if (llmCompile && llmCompile.compiler === 'rules') {
+      compilerDetail = `rules engine (llm fallback: ${llmCompile.fallbackReason ?? 'unknown'})`;
+      audit.info('compiler', 'llm_compiler_fallback', 'LLM compile failed; rules compiler used.', {
+        kind: llmCompile.fallbackReason,
+        detail: llmCompile.fallbackDetail,
+        model: llmCompile.model,
+        compiler: 'rules'
+      });
+    }
+
     const runtimeResult = compileOpenRealityRuntime({
       userPrompt: prompt,
       targetDeviceId: profile.deviceMeta.device_id,
       manifest,
       worldModel,
-      locale
+      locale,
+      goalOverride: bridged?.goalOverride
     });
 
     audit.info(
@@ -165,7 +213,9 @@ export class LocalRuntime {
         adapterPlan: null,
         adapterPlanValidation: null,
         adapterDryRun: null,
-        auditLog: audit.list(),
+        compilerUsed,
+      compilerDetail,
+      auditLog: audit.list(),
         canExecute: false
       };
     }
@@ -181,7 +231,8 @@ export class LocalRuntime {
         profile,
         autonomy_level: 'L3_supervised_agent',
         mode: 'simulation',
-        device_state: deviceState ?? undefined
+        device_state: deviceState ?? undefined,
+        semantic_intent_override: bridged?.semanticIntentOverride
       });
 
       audit.info('autonomy', 'autonomy_decision', `AutonomyCore returned ${autonomyResult.status}.`, {
@@ -211,7 +262,9 @@ export class LocalRuntime {
           adapterPlan: null,
           adapterPlanValidation: null,
           adapterDryRun: null,
-          auditLog: audit.list(),
+          compilerUsed,
+      compilerDetail,
+      auditLog: audit.list(),
           canExecute: false
         };
       }
@@ -243,7 +296,9 @@ export class LocalRuntime {
         adapterPlan: null,
         adapterPlanValidation: null,
         adapterDryRun: null,
-        auditLog: audit.list(),
+        compilerUsed,
+      compilerDetail,
+      auditLog: audit.list(),
         canExecute: false
       };
     }
@@ -272,7 +327,9 @@ export class LocalRuntime {
         adapterPlan: null,
         adapterPlanValidation: null,
         adapterDryRun: null,
-        auditLog: audit.list(),
+        compilerUsed,
+      compilerDetail,
+      auditLog: audit.list(),
         canExecute: false
       };
     }
@@ -334,7 +391,9 @@ export class LocalRuntime {
         adapterPlan,
         adapterPlanValidation,
         adapterDryRun,
-        auditLog: audit.list(),
+        compilerUsed,
+      compilerDetail,
+      auditLog: audit.list(),
         canExecute: false
       };
     }
@@ -361,6 +420,8 @@ export class LocalRuntime {
       adapterPlan,
       adapterPlanValidation,
       adapterDryRun,
+      compilerUsed,
+      compilerDetail,
       auditLog: audit.list(),
       canExecute: true
     };

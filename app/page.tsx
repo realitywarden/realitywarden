@@ -21,6 +21,9 @@ import { PlaybackEngine } from '@/lib/action-runtime/PlaybackEngine';
 import type { PlaybackEvent } from '@/lib/action-runtime/PlaybackEngine';
 import { targetPosition } from '@/lib/action-runtime/TargetResolver';
 import { tryCompilePromptToTaskDSL } from '@/lib/compiler/mockTaskCompiler';
+import { LlmTaskCompiler } from '@/lib/compiler/llm/LlmTaskCompiler';
+import { compileTaskDslWithFallback } from '@/lib/compiler/llm/compileWithFallback';
+import type { CompileWithFallbackResult } from '@/lib/compiler/llm/compileWithFallback';
 import { deviceProfiles } from '@/lib/profiles/deviceProfiles';
 import { LocalRuntime } from '@/lib/runtime/LocalRuntime';
 import type { LabReport, TimelineStateSnapshot } from '@/lib/virtual-lab/LabReport';
@@ -293,6 +296,9 @@ function downloadJson(fileName: string, payload: unknown) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+const LLM_COMPILER_BASE_URL = 'http://127.0.0.1:11434';
+const LLM_COMPILER_MODEL = 'qwen2.5:3b';
 
 async function sha256Hex(payload: string) {
   const bytes = new TextEncoder().encode(payload);
@@ -708,6 +714,7 @@ function AICommandTerminal({
   starterPrompts,
   quickStartPaths,
   activeQuickStart,
+  llmChip,
   onPromptChange,
   onQuickStart,
   onRun,
@@ -723,6 +730,7 @@ function AICommandTerminal({
   starterPrompts: string[];
   quickStartPaths: QuickStartPath[];
   activeQuickStart: QuickStartPath | null;
+  llmChip: { state: 'checking' | 'online' | 'offline' | 'compiling'; model: string };
   onPromptChange: (prompt: string) => void;
   onQuickStart: (path: QuickStartPath) => void;
   onRun: () => void;
@@ -774,6 +782,15 @@ function AICommandTerminal({
         : status.kind === 'blocked' || status.kind === 'failed'
           ? t(language, 'command_observe_blocked')
           : t(language, 'command_observe_ready');
+
+  const llmChipText =
+    llmChip.state === 'online' ? `LLM: ${llmChip.model}`
+      : llmChip.state === 'compiling' ? (language === 'zh' ? 'LLM 编译中…' : 'LLM compiling…')
+        : llmChip.state === 'offline' ? (language === 'zh' ? '规则编译器（LLM 离线）' : 'rule compiler (LLM offline)')
+          : 'LLM …';
+  const llmChipTitle = language === 'zh'
+    ? '本地 LLM 编译器（Ollama）。启用：安装 Ollama，运行 ollama pull qwen2.5:3b 并保持 Ollama 运行。离线时显式回退到规则编译器，安全管线完全不变。'
+    : 'Local LLM compiler (Ollama). Enable: install Ollama, run `ollama pull qwen2.5:3b`, keep Ollama running. When offline the rule compiler runs instead — explicitly, with the safety pipeline unchanged.';
 
   const submit = () => {
     if (!running && runTargetRunnable) onRun();
@@ -827,6 +844,12 @@ function AICommandTerminal({
         <div className="min-w-[170px] max-w-[280px] shrink-0">
           <div className={`inline-flex h-6 items-center rounded-[3px] border px-2 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>{badgeText}</div>
           <div className="mt-0.5 truncate text-[11px] text-text-secondary" title={status.message}>{status.message}</div>
+          <div
+            className={`mt-0.5 inline-flex h-5 max-w-full items-center truncate rounded-[3px] border px-1.5 font-mono text-[11px] ${llmChip.state === 'online' || llmChip.state === 'compiling' ? 'border-status-running-edge text-status-running' : 'border-border-panel text-text-secondary'}`}
+            title={llmChipTitle}
+          >
+            {llmChipText}
+          </div>
             <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
               <span className="font-semibold text-text-secondary">{t(language, 'active_workspace_device')}:</span>
               <span className="truncate text-text-primary" title={runTargetLabel}>{runTargetLabel}</span>
@@ -1255,6 +1278,30 @@ export default function Home() {
   const [assetImportOpen, setAssetImportOpen] = useState(false);
   const [selectedWorkspaceDeviceId, setSelectedWorkspaceDeviceId] = useState<string | null>(defaultWorkspaceDevice.id);
   const [consoleLogs, setConsoleLogs] = useState<string[]>(startupLogs('en'));
+  const [llmChipState, setLlmChipState] = useState<'checking' | 'online' | 'offline' | 'compiling'>('checking');
+  const llmChipStateRef = useRef<'checking' | 'online' | 'offline' | 'compiling'>('checking');
+  const llmCompilerRef = useRef<LlmTaskCompiler | null>(null);
+  useEffect(() => {
+    llmChipStateRef.current = llmChipState;
+  }, [llmChipState]);
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    fetch(`${LLM_COMPILER_BASE_URL}/api/tags`, { signal: controller.signal })
+      .then((response) => {
+        if (!cancelled) setLlmChipState(response.ok ? 'online' : 'offline');
+      })
+      .catch(() => {
+        if (!cancelled) setLlmChipState('offline');
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, []);
   const [validationRunning, setValidationRunning] = useState(false);
   const [running, setRunning] = useState(false);
   const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
@@ -1879,11 +1926,25 @@ export default function Home() {
     const runTargetLabel = targetWorkspaceAsset
       ? localizeDisplayName(language, targetWorkspaceAsset.manifest.display_name)
       : localizeDeviceType(language, runProfile.deviceMeta.device_type);
+    let llmCompile: CompileWithFallbackResult | undefined;
+    if (runProfile.deviceMeta.device_type === 'robot_arm' && llmChipStateRef.current === 'online') {
+      if (!llmCompilerRef.current) {
+        llmCompilerRef.current = new LlmTaskCompiler({ baseUrl: LLM_COMPILER_BASE_URL, model: LLM_COMPILER_MODEL });
+      }
+      setLlmChipState('compiling');
+      try {
+        llmCompile = await compileTaskDslWithFallback(runPrompt, runProfile.deviceMeta, llmCompilerRef.current);
+      } catch {
+        llmCompile = undefined;
+      }
+      setLlmChipState(llmCompile && llmCompile.compiler === 'llm' ? 'online' : 'offline');
+    }
     const localRuntimeSession = new LocalRuntime().prepareSimulationSession({
       profile: runProfile,
       prompt: runPrompt,
       locale: language,
-      deviceState: targetWorkspaceDevice?.current_state ?? null
+      deviceState: targetWorkspaceDevice?.current_state ?? null,
+      llmCompile
     });
     const runtimeKernelResult = localRuntimeSession.runtimeResult;
     const visibleRuntimeDecision: OpenRealityRuntimeResult = localRuntimeSession.status === runtimeKernelResult.status
@@ -1901,6 +1962,7 @@ export default function Home() {
       targetDeviceType: runProfile.deviceMeta.device_type
     });
     const baseRunLogs = startupLogs(language);
+    const compilerLogLine = `[COMPILER] ${localRuntimeSession.compilerDetail}`;
     const runtimeAuditLogs = localRuntimeSession.auditLog.map((entry) =>
       `[${entry.level.toUpperCase()}] [${entry.stage}] ${entry.code}: ${entry.message} (hardwareSignalSent=${entry.hardwareSignalSent})`
     );
@@ -1946,6 +2008,7 @@ export default function Home() {
         language === 'zh'
           ? '[SIMULATION] 仿真运行 —— 未向真实硬件发送任何信号。'
           : '[SIMULATION] Simulated run — no signals were sent to real hardware.',
+        compilerLogLine,
         ...runtimeAuditLogs,
         ...baseRunLogs
       ]);
@@ -1970,6 +2033,7 @@ export default function Home() {
         language === 'zh'
           ? '[SIMULATION] 仿真运行 —— 未向真实硬件发送任何信号。'
           : '[SIMULATION] Simulated run — no signals were sent to real hardware.',
+        compilerLogLine,
         ...runtimeAuditLogs,
         ...baseRunLogs
       ]);
@@ -2617,6 +2681,7 @@ export default function Home() {
                       starterPrompts={currentRunStarterPrompts}
                       quickStartPaths={quickStartPaths}
                       activeQuickStart={activeQuickStart}
+                      llmChip={{ state: llmChipState, model: LLM_COMPILER_MODEL }}
                       onPromptChange={handlePromptChange}
                       onQuickStart={handleQuickStart}
                       onRun={runScenario}

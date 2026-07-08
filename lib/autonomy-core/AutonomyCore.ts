@@ -57,8 +57,18 @@ export class AutonomyCore {
   private readonly riskJudge = new RiskJudge();
   private readonly controller = new AutonomyController();
 
-  run(prompt: string, context: AutonomyContext & { profile: DeviceProfile; device_state?: Record<string, unknown> }): AutonomyResult {
-    const semanticIntent = this.semantic.parse(prompt);
+  run(prompt: string, context: AutonomyContext & {
+    profile: DeviceProfile;
+    device_state?: Record<string, unknown>;
+    /**
+     * Optional pre-parsed intent (e.g. bridged from a validated LLM proposal).
+     * Replaces ONLY the keyword SemanticCore parse; grounding, affordance,
+     * planning, consequence simulation, RiskJudge and the AutonomyController
+     * all run unchanged on it.
+     */
+    semantic_intent_override?: SemanticIntent;
+  }): AutonomyResult {
+    const semanticIntent = context.semantic_intent_override ?? this.semantic.parse(prompt);
     const world = this.worldBuilder.fromRobotArm(context.profile.deviceMeta, context.profile.geometry, context.device_state);
     const groundingResult = ground(semanticIntent, world);
     const affordanceResult = this.affordances.evaluate(semanticIntent, world, groundingResult);

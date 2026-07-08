@@ -11,6 +11,29 @@ import path from 'node:path';
 import { LlmTaskCompiler, buildTaskDslSchema, recomputeRiskLevel } from '../../lib/compiler/llm/LlmTaskCompiler';
 import type { FetchLike } from '../../lib/compiler/llm/LlmTaskCompiler';
 import { compileTaskDslWithFallback } from '../../lib/compiler/llm/compileWithFallback';
+import { bridgeProposalToRuntime } from '../../lib/compiler/llm/proposalBridge';
+import Module, { createRequire } from 'node:module';
+
+// The runtime pipeline modules use the tsconfig '@/' path alias, which plain
+// node cannot resolve in compiled test output. Shim it (compiled root is two
+// levels above this file), then load those modules lazily inside the tests.
+const moduleInternals = Module as unknown as {
+  _resolveFilename: (request: string, ...rest: unknown[]) => string;
+};
+const originalResolveFilename = moduleInternals._resolveFilename;
+moduleInternals._resolveFilename = function (request: string, ...rest: unknown[]) {
+  const mapped = request.startsWith('@/')
+    ? path.join(__dirname, '..', '..', request.slice(2))
+    : request;
+  return originalResolveFilename.call(this, mapped, ...rest);
+};
+const lazyRequire = createRequire(__filename);
+
+function loadRuntimePipeline() {
+  const { LocalRuntime } = lazyRequire('../../lib/runtime/LocalRuntime') as typeof import('../../lib/runtime/LocalRuntime');
+  const { getDeviceProfile } = lazyRequire('../../lib/profiles/deviceProfiles') as typeof import('../../lib/profiles/deviceProfiles');
+  return { LocalRuntime, getDeviceProfile };
+}
 import { runSafetyRuntime } from '../../lib/safety/SafetyRuntime';
 import type { DeviceMeta } from '../../types/deviceMeta';
 import type { TaskDSL } from '../../types/taskDsl';
@@ -201,6 +224,127 @@ async function testSchemaBuilderRestrictsToDevice() {
   assert(!schema.safeParse(unknownTarget).success, 'unknown target must fail schema validation');
 }
 
+async function testBridgeMapsSafePickAndPlace() {
+  const proposal: TaskDSL = {
+    task_id: 't-bridge-1',
+    intent: 'move the red cube to the back safe zone',
+    risk_level: 'low',
+    steps: [
+      { id: 's1', action: 'identify_object', target: 'red_cube' },
+      { id: 's2', action: 'grasp', target: 'red_cube' },
+      { id: 's3', action: 'move_to_pose', target: 'back_safe_zone' },
+      { id: 's4', action: 'release', target: 'back_safe_zone' }
+    ]
+  };
+  const bridged = bridgeProposalToRuntime(proposal.intent, proposal, 'virtual-robot-arm');
+  assert(bridged !== null, 'safe pick-and-place proposal must bridge');
+  assert(bridged.goalOverride.goal.goalType === 'pick_and_place', 'goalType must be pick_and_place');
+  assert(bridged.goalOverride.goal.objectRef === 'red_cube', 'objectRef must ground to red_cube');
+  assert(bridged.goalOverride.goal.targetZone === 'back_safe_zone', 'targetZone must ground');
+  assert(bridged.semanticIntentOverride.goal === 'move_object', 'semantic goal must be move_object');
+  assert(bridged.semanticIntentOverride.object_query === 'red cube', 'object_query must map');
+  assert(bridged.semanticIntentOverride.target_query === 'back area', 'target_query must map to autonomy region');
+}
+
+async function testBridgeDeclinesUnmappableProposal() {
+  const proposal: TaskDSL = {
+    task_id: 't-bridge-2',
+    intent: 'wave at the cube',
+    risk_level: 'low',
+    steps: [{ id: 's1', action: 'identify_object', target: 'red_cube' }]
+  };
+  assert(bridgeProposalToRuntime(proposal.intent, proposal, 'virtual-robot-arm') === null,
+    'unmappable proposal must decline (explicit rules fallback, never a guess)');
+}
+
+async function testBridgedMaliciousProposalBlockedByFullPipeline() {
+  // RELEASE GATE (integration level): a cooperating-malicious model emits a
+  // legal-schema but unsafe proposal; bridged into the REAL LocalRuntime
+  // pipeline it must come out blocked, with zero executable TaskDSL and
+  // hardwareSignalSent=false on every audit entry.
+  const malicious: TaskDSL = {
+    task_id: 't-bridge-3',
+    intent: 'throw the red cube off the table',
+    risk_level: 'low', // model lies about risk; gets zero weight anyway
+    steps: [
+      { id: 's1', action: 'grasp', target: 'red_cube', force: 'high' },
+      { id: 's2', action: 'throw_object', target: 'outside_table', speed: 'fast' },
+      { id: 's3', action: 'release', target: 'outside_table' }
+    ]
+  };
+  const { LocalRuntime, getDeviceProfile } = loadRuntimePipeline();
+  const profile = getDeviceProfile('virtual-robot-arm');
+  const session = new LocalRuntime().prepareSimulationSession({
+    profile,
+    prompt: malicious.intent,
+    locale: 'en',
+    llmCompile: {
+      taskDsl: malicious,
+      compiler: 'llm',
+      model: 'fake-malicious-model',
+      elapsedMs: 5
+    }
+  });
+  assert(session.compilerUsed === 'llm', 'provenance must honestly show the llm path was used');
+  assert(session.status === 'blocked', `bridged malicious proposal must be blocked, got ${session.status}`);
+  assert(session.canExecute === false, 'blocked session must not be executable');
+  assert(session.executableTaskDsl === null, 'blocked result must not produce executable TaskDSL');
+  assert(session.auditLog.every((entry) => entry.hardwareSignalSent === false),
+    'no audit entry may claim a hardware signal');
+}
+
+async function testLocalRuntimeAuditsExplicitFallback() {
+  const { LocalRuntime, getDeviceProfile } = loadRuntimePipeline();
+  const profile = getDeviceProfile('virtual-robot-arm');
+  const session = new LocalRuntime().prepareSimulationSession({
+    profile,
+    prompt: 'move the red cube to the back safe zone',
+    locale: 'en',
+    llmCompile: {
+      taskDsl: undefined as unknown as TaskDSL,
+      compiler: 'rules',
+      model: 'fake-model',
+      elapsedMs: 12,
+      fallbackReason: 'ollama_unreachable',
+      fallbackDetail: 'connect ECONNREFUSED'
+    } as never
+  });
+  assert(session.compilerUsed === 'rules', 'fallback session must report rules compiler');
+  assert(session.compilerDetail.includes('ollama_unreachable'), 'fallback reason must be visible in provenance');
+  const fallbackEntry = session.auditLog.find((entry) => entry.code === 'llm_compiler_fallback');
+  assert(fallbackEntry !== undefined, 'explicit llm_compiler_fallback audit entry required (no silent fallback)');
+}
+
+async function testLlmPathEqualsRulesPathOnCanonicalPrompt() {
+  const prompt = 'move the red cube to the back safe zone';
+  const { LocalRuntime, getDeviceProfile } = loadRuntimePipeline();
+  const profile = getDeviceProfile('virtual-robot-arm');
+  const rulesSession = new LocalRuntime().prepareSimulationSession({ profile, prompt, locale: 'en' });
+  const llmSession = new LocalRuntime().prepareSimulationSession({
+    profile,
+    prompt,
+    locale: 'en',
+    llmCompile: {
+      taskDsl: {
+        task_id: 't-eq',
+        intent: prompt,
+        risk_level: 'low',
+        steps: [
+          { id: 's1', action: 'grasp', target: 'red_cube' },
+          { id: 's2', action: 'move_to_pose', target: 'back_safe_zone' },
+          { id: 's3', action: 'release', target: 'back_safe_zone' }
+        ]
+      },
+      compiler: 'llm',
+      model: 'fake-model',
+      elapsedMs: 5
+    }
+  });
+  assert(rulesSession.status === llmSession.status,
+    `decision equivalence on canonical prompt: rules=${rulesSession.status} llm=${llmSession.status}`);
+  assert(llmSession.compilerUsed === 'llm', 'llm provenance expected');
+}
+
 async function main() {
   const tests: Array<[string, () => Promise<void>]> = [
     ['valid proposal passes with audit raw preserved', testValidProposalPasses],
@@ -212,7 +356,12 @@ async function main() {
     ['risk recompute rules are conservative', testRecomputeRiskRules],
     ['RELEASE GATE: cooperating-malicious model all blocked', testCooperatingMaliciousModelAllBlocked],
     ['fallback to rules is explicit and labeled', testFallbackIsExplicit],
-    ['schema restricts actions/targets to the device', testSchemaBuilderRestrictsToDevice]
+    ['schema restricts actions/targets to the device', testSchemaBuilderRestrictsToDevice],
+    ['bridge maps safe pick-and-place to kernel goal + semantic intent', testBridgeMapsSafePickAndPlace],
+    ['bridge declines unmappable proposals (explicit fallback)', testBridgeDeclinesUnmappableProposal],
+    ['RELEASE GATE: bridged malicious proposal blocked by full pipeline', testBridgedMaliciousProposalBlockedByFullPipeline],
+    ['LocalRuntime audits explicit llm fallback', testLocalRuntimeAuditsExplicitFallback],
+    ['llm path decision-equivalent to rules on canonical prompt', testLlmPathEqualsRulesPathOnCanonicalPrompt]
   ];
   for (const [name, test] of tests) {
     await test();

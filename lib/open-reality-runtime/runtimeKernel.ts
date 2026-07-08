@@ -63,7 +63,7 @@ export function compileOpenRealityRuntime(input: OpenRealityRuntimeInput): OpenR
     };
   }
 
-  const compiledGoal = compileGoal(input);
+  const compiledGoal = input.goalOverride ?? compileGoal(input);
   const goal = compiledGoal.goal;
 
   if (goal.goalType === 'unsupported_goal') {

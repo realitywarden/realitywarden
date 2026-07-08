@@ -15,6 +15,10 @@ export interface LocalRuntimeSession {
   adapterPlan: AdapterPlan | null;
   adapterPlanValidation: AdapterPlanValidationResult | null;
   adapterDryRun: AdapterDryRunResult | null;
+  /** Which compiler produced the language understanding for this session. */
+  compilerUsed: 'llm' | 'rules';
+  /** Human-readable provenance, e.g. "llm(qwen2.5:3b) in 1240ms". */
+  compilerDetail: string;
   auditLog: RuntimeAuditEntry[];
   canExecute: boolean;
 }
