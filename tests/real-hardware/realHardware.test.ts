@@ -17,7 +17,6 @@ import type { SerialPortLike } from '../../lib/hardware/SerialEsp32Transport';
 import type {
   HardwareCommand,
   SensorReading,
-  SensorSafetyPolicy,
   TransportFrame,
   TransportResponse
 } from '../../lib/hardware/types';
@@ -63,13 +62,10 @@ class SpyAdapter extends Esp32DeviceAdapter {
 
 const NOW = 1_750_000_000_000;
 
-const freshDistancePolicy: SensorSafetyPolicy = {
-  sensorId: 'hc-sr04',
-  maxAgeMs: 1000,
-  minPlausibleValue: 2,   // HC-SR04 physical range: 2cm..400cm
-  maxPlausibleValue: 400,
-  minSafeDistanceCm: 10
-};
+// Interlock requirements now live authoritatively in ESP32_SERVO_RIG_CAPABILITIES
+// (audit 2.1): hc-sr04, maxAgeMs 1500, plausible 2..400, baseline minSafe 10.
+// Tests therefore pass readings (and, where relevant, tightening overrides)
+// but never assemble the interlock policy themselves.
 
 function reading(value: number, ageMs = 0): SensorReading {
   return {
@@ -107,7 +103,6 @@ async function testBlockedNeverReachesHardware() {
     command: servoCommand(200),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -126,7 +121,6 @@ async function testBlockedNeverReachesHardware() {
     command: servoCommand(-5),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
   assert(negative.status === 'blocked', 'angle -5 must be blocked');
@@ -142,7 +136,6 @@ async function testSensorMissingDefaultBlocks() {
     command: servoCommand(45),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [], // no data at all
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -160,7 +153,6 @@ async function testSensorStaleDefaultBlocks() {
     command: servoCommand(45),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100, 5000)], // 5s old, maxAgeMs=1000
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -179,8 +171,7 @@ async function testSensorInvalidDefaultBlocks() {
       command: servoCommand(45),
       capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
       sensorReadings: [reading(badValue)],
-      sensorPolicies: [freshDistancePolicy],
-      nowMs: NOW
+        nowMs: NOW
     });
     assert(outcome.status === 'blocked', `implausible sensor value ${badValue} must default-block actuation`);
     assert(outcome.reason.indexOf('sensor_invalid') === 0, `reason must be sensor_invalid, got: ${outcome.reason}`);
@@ -198,7 +189,6 @@ async function testMinSafeDistanceInterlock() {
     command: servoCommand(45),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(5)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -219,7 +209,6 @@ async function testOfflineTransportNeverFakesSuccess() {
     command: servoCommand(45),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -244,7 +233,6 @@ async function testAllowedCommandExecutesAndAudits() {
     command: servoCommand(45),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -277,7 +265,6 @@ async function testReadsAllowedWhileActuationLockedOut() {
     },
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -298,7 +285,6 @@ async function testUnsupportedCapabilityFailsLoudly() {
     },
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
 
@@ -317,14 +303,12 @@ async function testEveryAuditEntryCarriesHardwareSignalSent() {
     command: servoCommand(45),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
   await gate.run({
     command: servoCommand(200),
     capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
     sensorReadings: [reading(100)],
-    sensorPolicies: [freshDistancePolicy],
     nowMs: NOW
   });
   audit.info('input', 'note', 'plain info entry');
@@ -482,6 +466,110 @@ async function testDistanceInterlockHysteresis() {
   assert(threw, 'releaseAboveCm <= lockBelowCm must be rejected at construction');
 }
 
+// -- audit 2.1 regression tests --------------------------------------------
+
+async function testEmptyOverridesStillEnforceDeviceInterlock() {
+  // THE audit 2.1 gate: the device capability declares a required hc-sr04
+  // interlock. The caller supplies NO interlock overrides and NO readings.
+  // The command must still be blocked (default-block), with zero hardware
+  // signal — the interlock cannot be skipped by omitting caller policy.
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, audit, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: []
+    // interlockOverrides intentionally omitted
+  });
+
+  assert(outcome.status === 'blocked', 'device-declared interlock must block even with no caller policy');
+  assert(outcome.reason.indexOf('sensor_missing') === 0, `reason must be sensor_missing, got: ${outcome.reason}`);
+  assert(adapter.executeCalls === 0, 'blocked interlock must not reach adapter.execute()');
+  assert(transport.sentFrames.length === 0, 'blocked interlock must put zero frames on the wire');
+  const blockedEntry = audit.list().find((entry) => entry.code === 'hardware_command_blocked');
+  assert(blockedEntry, 'block decision must be audited');
+  assert(blockedEntry.hardwareSignalSent === false, 'blocked audit entry must have hardwareSignalSent=false');
+}
+
+async function testBaselineInterlockEnforcedWithoutOverride() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  // 11cm > baseline 10cm, fresh + plausible, no override => executes.
+  const pass = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(11)],
+    nowMs: NOW
+  });
+  assert(pass.status === 'executed', `11cm above baseline must execute, got ${pass.status}:${pass.reason}`);
+  assert(adapter.executeCalls === 1, 'allowed command must reach adapter once');
+
+  // 9cm < baseline 10cm, no override => blocked by the capability baseline.
+  const block = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(9)],
+    nowMs: NOW
+  });
+  assert(block.status === 'blocked', 'below-baseline distance must block via capability baseline');
+  assert(block.reason.indexOf('min_safe_distance_violation') === 0, `reason must be min_safe_distance_violation, got: ${block.reason}`);
+  assert(adapter.executeCalls === 1, 'blocked command must not reach adapter again');
+}
+
+async function testInterlockOverrideCanOnlyTighten() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  // Tightening override (15 > baseline 10): 11cm now below the tightened
+  // threshold => blocked with min_safe_distance_violation at 15.
+  const tightened = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(11)],
+    interlockOverrides: [{ sensorId: 'hc-sr04', minSafeDistanceCm: 15 }],
+    nowMs: NOW
+  });
+  assert(tightened.status === 'blocked', 'tighter override must be able to block a reading that passes baseline');
+  assert(tightened.reason.indexOf('min_safe_distance_violation') === 0, `reason must be min_safe_distance_violation, got: ${tightened.reason}`);
+  assert(tightened.reason.indexOf('min=15') >= 0, `blocked at the tightened threshold, got: ${tightened.reason}`);
+
+  // Loosening override (5 < baseline 10): rejected explicitly, never applied
+  // (invariant 3: no silent correction). Caller's raw value preserved in reason.
+  const loosened = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(11)],
+    interlockOverrides: [{ sensorId: 'hc-sr04', minSafeDistanceCm: 5 }],
+    nowMs: NOW
+  });
+  assert(loosened.status === 'blocked', 'looser override must be rejected, not silently applied');
+  assert(loosened.reason.indexOf('invalid_interlock_override') === 0, `reason must be invalid_interlock_override, got: ${loosened.reason}`);
+  assert(loosened.reason.indexOf('requested=5') >= 0, `caller raw override value must be preserved in reason, got: ${loosened.reason}`);
+  assert(adapter.executeCalls === 0, 'no override case reached the adapter');
+}
+
+async function testOverrideForUndeclaredSensorRejected() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    interlockOverrides: [{ sensorId: 'phantom-lidar', minSafeDistanceCm: 50 }],
+    nowMs: NOW
+  });
+  assert(outcome.status === 'blocked', 'override for a sensor the capability does not declare must be rejected');
+  assert(outcome.reason.indexOf('invalid_interlock_override') === 0, `reason must be invalid_interlock_override, got: ${outcome.reason}`);
+  assert(adapter.executeCalls === 0, 'rejected override must not reach adapter.execute()');
+}
+
 async function main() {
   const tests: Array<[string, () => Promise<void>]> = [
     ['blocked command never reaches hardware', testBlockedNeverReachesHardware],
@@ -494,6 +582,10 @@ async function main() {
     ['reads stay available while actuation locked out', testReadsAllowedWhileActuationLockedOut],
     ['unsupported capability fails loudly', testUnsupportedCapabilityFailsLoudly],
     ['every audit entry carries hardwareSignalSent', testEveryAuditEntryCarriesHardwareSignalSent],
+    ['audit 2.1: empty caller policy + device interlock => blocked, zero signal', testEmptyOverridesStillEnforceDeviceInterlock],
+    ['audit 2.1: capability baseline interlock enforced without override', testBaselineInterlockEnforcedWithoutOverride],
+    ['audit 2.1: interlock override can only tighten, loosening rejected', testInterlockOverrideCanOnlyTighten],
+    ['audit 2.1: override for undeclared sensor rejected', testOverrideForUndeclaredSensorRejected],
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['median filter rejects noise, never fakes data', testMedianFilterRejectsNoise],
     ['distance interlock hysteresis stays conservative', testDistanceInterlockHysteresis]

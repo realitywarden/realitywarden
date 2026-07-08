@@ -5,8 +5,8 @@ import type {
   HardwareCapabilityLimit,
   HardwareCommand,
   HardwareExecuteResult,
-  SensorReading,
-  SensorSafetyPolicy
+  InterlockOverride,
+  SensorReading
 } from './types';
 
 export type HardwareGateStatus = 'executed' | 'failed' | 'blocked';
@@ -23,7 +23,13 @@ export interface HardwareGateRequest {
   command: HardwareCommand;
   capabilityLimits: HardwareCapabilityLimit[];
   sensorReadings: SensorReading[];
-  sensorPolicies: SensorSafetyPolicy[];
+  /**
+   * Optional per-call tightening of interlock thresholds (e.g. hysteresis).
+   * Interlock REQUIREMENTS are authoritative in the capability declaration,
+   * not here (audit 2.1); an override may only tighten, never introduce or
+   * loosen an interlock.
+   */
+  interlockOverrides?: InterlockOverride[];
   nowMs?: number;
 }
 
@@ -52,7 +58,7 @@ export class HardwareExecutionGate {
       command,
       capabilityLimits: request.capabilityLimits,
       sensorReadings: request.sensorReadings,
-      sensorPolicies: request.sensorPolicies,
+      interlockOverrides: request.interlockOverrides,
       nowMs: request.nowMs
     });
 

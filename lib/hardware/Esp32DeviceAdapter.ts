@@ -9,8 +9,33 @@ import type {
 } from './types';
 
 export const ESP32_SERVO_RIG_CAPABILITIES: HardwareCapabilityLimit[] = [
-  { capabilityId: 'move_to_angle', min: 0, max: 180, unit: 'deg', actuation: true },
-  { capabilityId: 'read_distance', unit: 'cm', actuation: false }
+  {
+    capabilityId: 'move_to_angle',
+    min: 0,
+    max: 180,
+    unit: 'deg',
+    actuation: true,
+    // Authoritative interlock (audit 2.1): the servo may not actuate unless a
+    // fresh, plausible HC-SR04 distance reading clears the safe threshold. This
+    // requirement lives here, not in the caller — a caller cannot omit it to
+    // skip the interlock.
+    requiredSensorInterlocks: [
+      {
+        sensorId: 'hc-sr04',
+        maxAgeMs: 1500,
+        minPlausibleValue: 2,   // HC-SR04 physical range: 2cm..400cm
+        maxPlausibleValue: 400,
+        minSafeDistanceCm: 10
+      }
+    ]
+  },
+  {
+    capabilityId: 'read_distance',
+    unit: 'cm',
+    actuation: false,
+    // Read-only capability: no actuation, therefore no interlock required.
+    requiredSensorInterlocks: []
+  }
 ];
 
 /**

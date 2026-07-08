@@ -3,8 +3,9 @@ export type {
   HardwareCapabilityLimit,
   HardwareCommand,
   HardwareExecuteResult,
+  InterlockOverride,
+  SensorInterlockRequirement,
   SensorReading,
-  SensorSafetyPolicy,
   TransportFrame,
   TransportResponse
 } from './types';

@@ -23,7 +23,7 @@ import {
   SerialEsp32Transport,
   createNodeSerialPort
 } from '../lib/hardware';
-import type { SensorReading, SensorSafetyPolicy } from '../lib/hardware/types';
+import type { InterlockOverride, SensorReading } from '../lib/hardware/types';
 
 function argValue(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);
@@ -47,12 +47,13 @@ async function main() {
     releaseAboveCm: minSafeDistanceCm + 2
   });
 
-  function policyFor(state: { effectiveMinSafeDistanceCm: number }): SensorSafetyPolicy {
+  // Interlock REQUIREMENTS (age/plausibility/baseline distance) are authoritative
+  // in ESP32_SERVO_RIG_CAPABILITIES (audit 2.1). The hysteresis state is only a
+  // per-call tightening override: it can raise the safe distance while locked,
+  // never lower it below the capability baseline.
+  function overrideFor(state: { effectiveMinSafeDistanceCm: number }): InterlockOverride {
     return {
       sensorId: 'hc-sr04',
-      maxAgeMs: 1500,
-      minPlausibleValue: 2,
-      maxPlausibleValue: 400,
       minSafeDistanceCm: state.effectiveMinSafeDistanceCm
     };
   }
@@ -68,7 +69,7 @@ async function main() {
   const adapter = new Esp32DeviceAdapter(transport, ESP32_SERVO_RIG_CAPABILITIES);
   const gate = new HardwareExecutionGate(adapter);
 
-  async function freshReadings(): Promise<{ readings: SensorReading[]; policy: SensorSafetyPolicy }> {
+  async function freshReadings(): Promise<{ readings: SensorReading[]; override: InterlockOverride }> {
     // Median of 5 samples rejects single-sample HC-SR04 noise spikes.
     const filter = new MedianFilter(5);
     let lastReading: SensorReading | null = null;
@@ -84,15 +85,15 @@ async function main() {
     const state = interlock.update(median);
     if (median === null || !lastReading) {
       console.log('[sensor] no distance data (missing/disconnected) — actuation will default-block');
-      return { readings: [], policy: policyFor(state) };
+      return { readings: [], override: overrideFor(state) };
     }
     console.log(`[sensor] median distance = ${median} cm (5 samples) | interlock ${state.locked ? 'LOCKED' : 'clear'} | effective min safe = ${state.effectiveMinSafeDistanceCm} cm`);
-    return { readings: [{ ...lastReading, value: median, timestampMs: Date.now() }], policy: policyFor(state) };
+    return { readings: [{ ...lastReading, value: median, timestampMs: Date.now() }], override: overrideFor(state) };
   }
 
   async function runScenario(label: string, angle: number) {
     console.log(`\n--- ${label} ---`);
-    const { readings, policy } = await freshReadings();
+    const { readings, override } = await freshReadings();
     const outcome = await gate.run({
       command: {
         id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -102,7 +103,7 @@ async function main() {
       },
       capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
       sensorReadings: readings,
-      sensorPolicies: [policy]
+      interlockOverrides: [override]
     });
     console.log(`[REAL HARDWARE] status=${outcome.status} reason=${outcome.reason}`);
     console.log(`[REAL HARDWARE] signalSent=${outcome.result.signalSent} detail=${outcome.result.detail}`);

@@ -57,7 +57,7 @@ export interface DistanceInterlockOptions {
 export interface DistanceInterlockState {
   locked: boolean;
   /**
-   * Threshold to feed into SensorSafetyPolicy.minSafeDistanceCm.
+   * Threshold to feed into an InterlockOverride.minSafeDistanceCm (tighten-only).
    * While locked this equals releaseAboveCm, so the SafetyMonitor keeps
    * blocking until the distance is clearly safe again. Never below lockBelowCm.
    */
