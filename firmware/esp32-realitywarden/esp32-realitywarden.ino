@@ -85,6 +85,10 @@ void handleReadDistance(const char* id) {
   doc["id"] = id;
   doc["ok"] = true;
   doc["data"]["distanceCm"] = distanceCm;
+  // Device-side monotonic timestamp (audit 2.2). The host uses this to judge
+  // freshness by the DEVICE clock, not host arrival time, and to detect a
+  // frozen firmware/sensor (value stuck while the device clock stops advancing).
+  doc["data"]["deviceMs"] = millis();
   serializeJson(doc, Serial);
   Serial.println();
 }

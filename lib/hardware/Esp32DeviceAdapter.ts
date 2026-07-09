@@ -140,12 +140,17 @@ export class Esp32DeviceAdapter {
       if (!response.ok || typeof value !== 'number' || Number.isNaN(value)) {
         return null;
       }
+      // Device-side monotonic clock at measurement (audit 2.2). Present only if
+      // the firmware reports it; absence makes the SafetyMonitor block actuation
+      // (device_timestamp_unavailable) — never a silent fallback to host time.
+      const deviceMs = response.data?.deviceMs;
       return {
         sensorId,
         capabilityId: 'read_distance',
         value,
         unit: 'cm',
-        timestampMs: Date.now()
+        timestampMs: Date.now(),
+        deviceTimestampMs: typeof deviceMs === 'number' && !Number.isNaN(deviceMs) ? deviceMs : undefined
       };
     } catch {
       return null;

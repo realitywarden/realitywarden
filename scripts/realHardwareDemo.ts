@@ -15,12 +15,14 @@
  * what it observed. Everything printed here is REAL HARDWARE, not simulation.
  */
 import {
+  DeviceClockBaseline,
   DistanceInterlock,
   ESP32_SERVO_RIG_CAPABILITIES,
   Esp32DeviceAdapter,
   HardwareExecutionGate,
   MedianFilter,
   SerialEsp32Transport,
+  StuckValueDetector,
   createNodeSerialPort
 } from '../lib/hardware';
 import type { InterlockOverride, SensorReading } from '../lib/hardware/types';
@@ -69,31 +71,48 @@ async function main() {
   const adapter = new Esp32DeviceAdapter(transport, ESP32_SERVO_RIG_CAPABILITIES);
   const gate = new HardwareExecutionGate(adapter);
 
-  async function freshReadings(): Promise<{ readings: SensorReading[]; override: InterlockOverride }> {
-    // Median of 5 samples rejects single-sample HC-SR04 noise spikes.
+  // audit 2.2: device-clock baseline + frozen-sensor detector (N=5). The
+  // detector only flags frozen when the value is stuck AND the device clock
+  // stops advancing; a real static object keeps a live clock and is not flagged.
+  const clockBaseline = new DeviceClockBaseline();
+  const stuckDetector = new StuckValueDetector({ sampleWindow: 5 });
+
+  async function freshReadings(): Promise<{ readings: SensorReading[]; override: InterlockOverride; frozenSensorIds: Set<string> }> {
+    // Median of 5 samples rejects single-sample HC-SR04 noise spikes; the same
+    // 5 raw samples feed the frozen-sensor detector (value + device clock).
     const filter = new MedianFilter(5);
     let lastReading: SensorReading | null = null;
+    let frozen = false;
     for (let i = 0; i < 5; i += 1) {
       const reading = await adapter.readDistance('hc-sr04');
       if (reading) {
         filter.push(reading.value);
         lastReading = reading;
+        if (typeof reading.deviceTimestampMs === 'number') {
+          if (!clockBaseline.established()) clockBaseline.establish(reading.deviceTimestampMs);
+          clockBaseline.update(reading.deviceTimestampMs);
+          frozen = stuckDetector.push(reading.value, reading.deviceTimestampMs);
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    const frozenSensorIds = frozen ? new Set<string>(['hc-sr04']) : new Set<string>();
+    if (frozen) {
+      console.log('[sensor] FROZEN — value stuck and device clock not advancing; actuation blocked until reset');
     }
     const median = filter.median();
     const state = interlock.update(median);
     if (median === null || !lastReading) {
       console.log('[sensor] no distance data (missing/disconnected) — actuation will default-block');
-      return { readings: [], override: overrideFor(state) };
+      return { readings: [], override: overrideFor(state), frozenSensorIds };
     }
     console.log(`[sensor] median distance = ${median} cm (5 samples) | interlock ${state.locked ? 'LOCKED' : 'clear'} | effective min safe = ${state.effectiveMinSafeDistanceCm} cm`);
-    return { readings: [{ ...lastReading, value: median, timestampMs: Date.now() }], override: overrideFor(state) };
+    return { readings: [{ ...lastReading, value: median, timestampMs: Date.now() }], override: overrideFor(state), frozenSensorIds };
   }
 
   async function runScenario(label: string, angle: number) {
     console.log(`\n--- ${label} ---`);
-    const { readings, override } = await freshReadings();
+    const { readings, override, frozenSensorIds } = await freshReadings();
     const outcome = await gate.run({
       command: {
         id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -103,7 +122,8 @@ async function main() {
       },
       capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
       sensorReadings: readings,
-      interlockOverrides: [override]
+      interlockOverrides: [override],
+      frozenSensorIds
     });
     console.log(`[REAL HARDWARE] status=${outcome.status} reason=${outcome.reason}`);
     console.log(`[REAL HARDWARE] signalSent=${outcome.result.signalSent} detail=${outcome.result.detail}`);

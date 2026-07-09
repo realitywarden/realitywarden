@@ -87,8 +87,16 @@ export interface SensorReading {
   capabilityId: HardwareCapabilityId;
   value: number;
   unit: string;
-  /** Epoch milliseconds when the reading was taken. */
+  /** Host epoch milliseconds when the reading was received. */
   timestampMs: number;
+  /**
+   * Device-side monotonic timestamp (ESP32 millis()) at measurement time
+   * (audit 2.2). REQUIRED for actuation-gating sensors: if absent, the
+   * SafetyMonitor blocks actuation (device_timestamp_unavailable) rather than
+   * silently falling back to the host arrival time (invariant 3). Absent only
+   * for legacy firmware that does not report it.
+   */
+  deviceTimestampMs?: number;
 }
 
 /** Wire frame sent to the ESP32 (newline-delimited JSON). */

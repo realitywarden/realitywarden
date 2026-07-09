@@ -100,3 +100,98 @@ export class DistanceInterlock {
     };
   }
 }
+
+
+/**
+ * Device-clock baseline (audit 2.2). Establishes the (host, device) time pair
+ * at handshake so freshness can be judged by the DEVICE clock, and tracks the
+ * last device timestamp to detect a clock that has stopped advancing.
+ */
+export class DeviceClockBaseline {
+  private deviceMs0: number | null = null;
+  private lastDeviceMs: number | null = null;
+
+  /** Establish the baseline at handshake. */
+  establish(deviceMs: number): void {
+    this.deviceMs0 = deviceMs;
+    this.lastDeviceMs = deviceMs;
+  }
+
+  established(): boolean {
+    return this.deviceMs0 !== null;
+  }
+
+  /** Device-side elapsed since baseline; null if not established. */
+  deviceElapsedMs(deviceMs: number): number | null {
+    return this.deviceMs0 === null ? null : deviceMs - this.deviceMs0;
+  }
+
+  /** True if this deviceMs strictly advanced past the last one seen. */
+  hasAdvanced(deviceMs: number): boolean {
+    return this.lastDeviceMs === null ? true : deviceMs > this.lastDeviceMs;
+  }
+
+  /** Record the latest device timestamp (monotonic; never moves backward). */
+  update(deviceMs: number): void {
+    if (this.lastDeviceMs === null || deviceMs > this.lastDeviceMs) {
+      this.lastDeviceMs = deviceMs;
+    }
+  }
+
+  reset(): void {
+    this.deviceMs0 = null;
+    this.lastDeviceMs = null;
+  }
+}
+
+export interface StuckValueDetectorOptions {
+  /**
+   * Consecutive identical samples (with a non-advancing device clock) that
+   * latch the frozen state. Default 5 (audit 2.2, matches the median window).
+   */
+  sampleWindow?: number;
+}
+
+/**
+ * Frozen-sensor detector (audit 2.2, auxiliary line). A run of identical
+ * distance values is frozen ONLY if the device clock also fails to advance
+ * across the window: a real static object keeps a live, advancing device clock
+ * and is never flagged. Frozen LATCHES — once true it stays true until reset()
+ * (decision 3: no automatic recovery).
+ */
+export class StuckValueDetector {
+  private readonly window: number;
+  private samples: Array<{ value: number; deviceMs: number }> = [];
+  private frozen = false;
+
+  constructor(options: StuckValueDetectorOptions = {}) {
+    this.window = options.sampleWindow ?? 5;
+  }
+
+  /** Feed one raw sample; returns whether the sensor is (now) frozen. */
+  push(value: number, deviceMs: number): boolean {
+    this.samples.push({ value, deviceMs });
+    if (this.samples.length > this.window) {
+      this.samples.shift();
+    }
+    if (!this.frozen && this.samples.length >= this.window) {
+      const first = this.samples[0];
+      const allSameValue = this.samples.every((sample) => sample.value === first.value);
+      const clockStuck = this.samples.every((sample) => sample.deviceMs === first.deviceMs);
+      if (allSameValue && clockStuck) {
+        this.frozen = true;
+      }
+    }
+    return this.frozen;
+  }
+
+  isFrozen(): boolean {
+    return this.frozen;
+  }
+
+  /** Explicit recovery only (decision 3): frozen never self-clears. */
+  reset(): void {
+    this.frozen = false;
+    this.samples = [];
+  }
+}

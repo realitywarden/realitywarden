@@ -15,6 +15,6 @@ export { SerialEsp32Transport, createNodeSerialPort } from './SerialEsp32Transpo
 export type { SerialPortLike, SerialEsp32TransportOptions } from './SerialEsp32Transport';
 export { Esp32DeviceAdapter, ESP32_SERVO_RIG_CAPABILITIES } from './Esp32DeviceAdapter';
 export { HardwareExecutionGate } from './HardwareExecutionGate';
-export { MedianFilter, DistanceInterlock } from './SensorConditioning';
-export type { DistanceInterlockOptions, DistanceInterlockState } from './SensorConditioning';
+export { MedianFilter, DistanceInterlock, DeviceClockBaseline, StuckValueDetector } from './SensorConditioning';
+export type { DistanceInterlockOptions, DistanceInterlockState, StuckValueDetectorOptions } from './SensorConditioning';
 export type { HardwareGateOutcome, HardwareGateRequest, HardwareGateStatus } from './HardwareExecutionGate';

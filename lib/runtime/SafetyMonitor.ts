@@ -24,6 +24,13 @@ export interface HardwareSafetyContext {
    * An override may only tighten; a looser one is rejected.
    */
   interlockOverrides?: InterlockOverride[];
+  /**
+   * Sensors currently latched as FROZEN by the host conditioning layer (audit
+   * 2.2): value stuck while the device clock stopped advancing. A frozen sensor
+   * blocks actuation and cannot be overridden; it clears only on explicit reset
+   * (re-handshake). Reads are unaffected.
+   */
+  frozenSensorIds?: ReadonlySet<string>;
   /** Injectable clock for tests. Defaults to Date.now(). */
   nowMs?: number;
 }
@@ -86,6 +93,7 @@ export class SafetyMonitor {
   evaluateHardwareCommand(context: HardwareSafetyContext): SafetyMonitorDecision {
     const { command, capabilityLimits, sensorReadings } = context;
     const interlockOverrides = context.interlockOverrides ?? [];
+    const frozenSensorIds = context.frozenSensorIds ?? new Set<string>();
     const nowMs = context.nowMs ?? Date.now();
 
     const capability = capabilityLimits.find(
@@ -133,6 +141,17 @@ export class SafetyMonitor {
         const reading = sensorReadings.find((entry) => entry.sensorId === requirement.sensorId);
         if (!reading) {
           return { ok: false, reason: `sensor_missing:${requirement.sensorId}` };
+        }
+        // Device-side timestamp is REQUIRED for actuation (audit 2.2, decision 2):
+        // without it we cannot judge real freshness, and falling back to host
+        // arrival time is a known-failed, silent substitution (invariant 3).
+        if (reading.deviceTimestampMs === undefined) {
+          return { ok: false, reason: `device_timestamp_unavailable:${requirement.sensorId}` };
+        }
+        // Frozen sensors block actuation and CANNOT be overridden (audit 2.2,
+        // decision 3); the latch clears only on explicit reset (re-handshake).
+        if (frozenSensorIds.has(requirement.sensorId)) {
+          return { ok: false, reason: `sensor_frozen:${requirement.sensorId}` };
         }
         const ageMs = nowMs - reading.timestampMs;
         if (ageMs > requirement.maxAgeMs) {

@@ -67,13 +67,28 @@ const NOW = 1_750_000_000_000;
 // Tests therefore pass readings (and, where relevant, tightening overrides)
 // but never assemble the interlock policy themselves.
 
-function reading(value: number, ageMs = 0): SensorReading {
+const DEVICE_MS = 500_000; // ESP32 millis() baseline for tests
+
+function reading(value: number, ageMs = 0, deviceMs: number = DEVICE_MS): SensorReading {
+  return {
+    sensorId: 'hc-sr04',
+    capabilityId: 'read_distance',
+    value,
+    unit: 'cm',
+    timestampMs: NOW - ageMs,
+    deviceTimestampMs: deviceMs
+  };
+}
+
+// A reading from legacy firmware that does not report a device-side timestamp.
+function readingNoDeviceTs(value: number, ageMs = 0): SensorReading {
   return {
     sensorId: 'hc-sr04',
     capabilityId: 'read_distance',
     value,
     unit: 'cm',
     timestampMs: NOW - ageMs
+    // deviceTimestampMs intentionally omitted
   };
 }
 
@@ -570,6 +585,109 @@ async function testOverrideForUndeclaredSensorRejected() {
   assert(adapter.executeCalls === 0, 'rejected override must not reach adapter.execute()');
 }
 
+// -- audit 2.2 regression tests --------------------------------------------
+
+async function testActuationRequiresDeviceTimestamp() {
+  // Decision 2: no device-side timestamp => actuation blocked (never a silent
+  // fallback to host arrival time). Reads are unaffected (see next test).
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, audit, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [readingNoDeviceTs(100)],
+    nowMs: NOW
+  });
+  assert(outcome.status === 'blocked', 'actuation without device timestamp must be blocked');
+  assert(outcome.reason.indexOf('device_timestamp_unavailable') === 0, `reason must be device_timestamp_unavailable, got: ${outcome.reason}`);
+  assert(adapter.executeCalls === 0, 'device_timestamp_unavailable block must not reach adapter.execute()');
+  const blockedEntry = audit.list().find((entry) => entry.code === 'hardware_command_blocked');
+  assert(blockedEntry && blockedEntry.hardwareSignalSent === false, 'block must be audited with hardwareSignalSent=false');
+}
+
+async function testReadsAllowedWithoutDeviceTimestamp() {
+  // Reads never actuate, so the device-timestamp requirement does not gate them.
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: { id: 'read-x', deviceId: 'esp32-servo-rig', capabilityId: 'read_distance', args: {} },
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [readingNoDeviceTs(100)],
+    nowMs: NOW
+  });
+  assert(outcome.status === 'executed', 'read_distance must stay available even without a device timestamp');
+}
+
+async function testFrozenSensorBlocksActuationNotOverridable() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+
+  // Healthy-looking reading, but the sensor is latched frozen by the host.
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    frozenSensorIds: new Set(['hc-sr04']),
+    nowMs: NOW
+  });
+  assert(outcome.status === 'blocked', 'frozen sensor must block actuation');
+  assert(outcome.reason.indexOf('sensor_frozen') === 0, `reason must be sensor_frozen, got: ${outcome.reason}`);
+  assert(adapter.executeCalls === 0, 'frozen block must not reach adapter.execute()');
+
+  // An override cannot un-freeze: sensor_frozen still wins.
+  const withOverride = await gate.run({
+    command: servoCommand(45),
+    capabilityLimits: ESP32_SERVO_RIG_CAPABILITIES,
+    sensorReadings: [reading(100)],
+    interlockOverrides: [{ sensorId: 'hc-sr04', minSafeDistanceCm: 10 }],
+    frozenSensorIds: new Set(['hc-sr04']),
+    nowMs: NOW
+  });
+  assert(withOverride.status === 'blocked' && withOverride.reason.indexOf('sensor_frozen') === 0, 'frozen must not be overridable');
+  assert(adapter.executeCalls === 0, 'frozen-with-override must still not reach adapter.execute()');
+}
+
+async function testStuckValueDetectorFrozenSemantics() {
+  const { StuckValueDetector } = await import('../../lib/hardware/SensorConditioning');
+
+  // Value stuck AND device clock stuck across 5 samples => frozen (latched).
+  const stuck = new StuckValueDetector({ sampleWindow: 5 });
+  let frozen = false;
+  for (let i = 0; i < 5; i += 1) frozen = stuck.push(42, 1000);
+  assert(frozen === true, 'identical value + non-advancing clock over the window must latch frozen');
+  // Latch persists even when a healthy advancing sample arrives.
+  assert(stuck.push(50, 2000) === true, 'frozen must latch until reset, not self-clear');
+  stuck.reset();
+  assert(stuck.isFrozen() === false, 'reset must clear the frozen latch');
+
+  // Value identical but device clock ADVANCING => a real static object, never frozen.
+  const moving = new StuckValueDetector({ sampleWindow: 5 });
+  let movingFrozen = false;
+  for (let i = 0; i < 6; i += 1) movingFrozen = moving.push(42, 1000 + i * 60);
+  assert(movingFrozen === false, 'identical value with a live advancing clock must NOT be flagged frozen');
+}
+
+async function testDeviceClockBaseline() {
+  const { DeviceClockBaseline } = await import('../../lib/hardware/SensorConditioning');
+  const baseline = new DeviceClockBaseline();
+  assert(baseline.established() === false, 'baseline starts unestablished');
+  assert(baseline.hasAdvanced(1000) === true, 'first sample counts as advanced');
+  baseline.establish(1000);
+  assert(baseline.established() === true, 'establish sets the baseline');
+  assert(baseline.deviceElapsedMs(1300) === 300, 'device elapsed measured from baseline');
+  assert(baseline.hasAdvanced(1000) === false, 'a non-advancing device clock is detected');
+  baseline.update(1300);
+  assert(baseline.hasAdvanced(1300) === false, 'equal timestamp is not an advance');
+  assert(baseline.hasAdvanced(1400) === true, 'a larger timestamp is an advance');
+  baseline.reset();
+  assert(baseline.established() === false, 'reset clears the baseline');
+}
+
 async function main() {
   const tests: Array<[string, () => Promise<void>]> = [
     ['blocked command never reaches hardware', testBlockedNeverReachesHardware],
@@ -586,6 +704,11 @@ async function main() {
     ['audit 2.1: capability baseline interlock enforced without override', testBaselineInterlockEnforcedWithoutOverride],
     ['audit 2.1: interlock override can only tighten, loosening rejected', testInterlockOverrideCanOnlyTighten],
     ['audit 2.1: override for undeclared sensor rejected', testOverrideForUndeclaredSensorRejected],
+    ['audit 2.2: actuation requires a device-side timestamp', testActuationRequiresDeviceTimestamp],
+    ['audit 2.2: reads allowed without a device timestamp', testReadsAllowedWithoutDeviceTimestamp],
+    ['audit 2.2: frozen sensor blocks actuation and is not overridable', testFrozenSensorBlocksActuationNotOverridable],
+    ['audit 2.2: stuck-value detector frozen semantics (value+clock)', testStuckValueDetectorFrozenSemantics],
+    ['audit 2.2: device clock baseline advance/elapsed/reset', testDeviceClockBaseline],
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['median filter rejects noise, never fakes data', testMedianFilterRejectsNoise],
     ['distance interlock hysteresis stays conservative', testDistanceInterlockHysteresis]

@@ -30,6 +30,12 @@ export interface HardwareGateRequest {
    * loosen an interlock.
    */
   interlockOverrides?: InterlockOverride[];
+  /**
+   * Sensors latched frozen by the host conditioning layer (audit 2.2). Blocks
+   * actuation with sensor_frozen; not overridable; clears only on explicit
+   * reset. Reads are unaffected.
+   */
+  frozenSensorIds?: ReadonlySet<string>;
   nowMs?: number;
 }
 
@@ -59,6 +65,7 @@ export class HardwareExecutionGate {
       capabilityLimits: request.capabilityLimits,
       sensorReadings: request.sensorReadings,
       interlockOverrides: request.interlockOverrides,
+      frozenSensorIds: request.frozenSensorIds,
       nowMs: request.nowMs
     });
 
