@@ -53,6 +53,10 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
   through an audited safety gate, and blocked commands can never reach the wire
 - no production hardware control, no industrial safety certification
 
+![Real hardware safety invariants — 17/17 passing](./docs/assets/verify-17-invariants.png)
+
+Real hardware safety invariants — 17/17 passing. Run `npm run verify` to reproduce.
+
 **Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 
 ## Runtime Architecture
