@@ -167,7 +167,6 @@ export function createNodeSerialPort(portPath: string, baudRate = 115200): Seria
     isOpen: boolean;
   };
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const nodeRequire = eval('require') as (id: string) => { SerialPort: typeof SerialPortCtor };
     SerialPortCtor = nodeRequire('serialport').SerialPort;
   } catch {

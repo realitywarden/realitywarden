@@ -87,7 +87,7 @@ export function RealityAssetCatalog({
   const catalogAssets = useMemo(() => {
     void refreshToken;
     return getAllRealityAssets();
-  }, [assets, refreshToken]);
+  }, [refreshToken]);
   const importedIds = useMemo(() => {
     void refreshToken;
     return new Set(getImportedRealityAssets().map((asset) => asset.assetId));

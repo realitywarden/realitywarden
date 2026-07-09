@@ -15,7 +15,10 @@ function resolvePosition(state: Record<string, unknown>): [number, number, numbe
 export function SemanticMobileRobot({ state }: { state: Record<string, unknown> }) {
   const position = useMemo(() => resolvePosition(state), [state]);
   const visual = state.visual_state as Record<string, unknown> | undefined;
-  const path = Array.isArray(visual?.path) ? visual.path as [number, number, number][] : [];
+  const path = useMemo(
+    () => Array.isArray(visual?.path) ? visual.path as [number, number, number][] : [],
+    [visual?.path]
+  );
   const pathLine = useMemo(() => {
     if (path.length < 2) return null;
     const geometry = new THREE.BufferGeometry().setFromPoints(path.map((point) => new THREE.Vector3(point[0], 0.035, point[2])));

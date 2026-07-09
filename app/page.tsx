@@ -2259,7 +2259,7 @@ export default function Home() {
       noticeMessage(language, `\u5de5\u4f5c\u533a\u9a8c\u8bc1\u5b8c\u6210\uff1a${localResult(validation.result, language)}`, `Workspace validation finished: ${localResult(validation.result, language)}`)
     );
     setValidationRunning(false);
-  }, [language, showNotice, workspaceDevices]);
+  }, [availableAssets, language, showNotice, workspaceDevices]);
 
   const newProject = useCallback(() => {
     consoleLogSessionRef.current += 1;
@@ -2416,7 +2416,7 @@ export default function Home() {
       workspaceBlocked ? 'warning' : 'success',
       noticeMessage(language, workspaceBlocked ? '\u914d\u7f6e\u5305\u5df2\u5bfc\u51fa\uff0c\u4f46\u9884\u68c0\u4ecd\u6709\u963b\u65ad\u9879\u3002' : '\u914d\u7f6e\u5305\u5df2\u5bfc\u51fa\u3002', workspaceBlocked ? 'Package exported with blocking preflight issues.' : 'Adapter package exported.')
     );
-  }, [effectiveSelectedProfile.deviceMeta, labReport, language, prompt, selectedScenario.id, showNotice, workspaceBlocked, workspaceDevices, workspaceIssues, workspaceValidation, workspaceWarnings]);
+  }, [availableAssets, effectiveSelectedProfile.deviceMeta, labReport, language, prompt, selectedScenario.id, showNotice, workspaceBlocked, workspaceDevices, workspaceIssues, workspaceValidation, workspaceWarnings]);
 
   const exportCurrentLabReport = useCallback(async () => {
     if (!labReport) return;
@@ -2774,4 +2774,3 @@ export default function Home() {
     </div>
   );
 }
-

@@ -143,7 +143,10 @@ export function SemanticRobotArm({ state, ...props }: { state: Record<string, un
   const attachProgress = typeof visual?.attach_progress === 'number' ? Math.min(1, Math.max(0, visual.attach_progress)) : 0;
   const attached = Boolean(visual?.attached_object || state.holding_object || state.held_object);
   const contactHighlight = Boolean(visual?.contact_highlight);
-  const attachOffset: [number, number, number] = Array.isArray(visual?.attach_offset) ? visual.attach_offset as [number, number, number] : [0.14, -0.14, 0];
+  const attachOffset = useMemo<[number, number, number]>(
+    () => Array.isArray(visual?.attach_offset) ? visual.attach_offset as [number, number, number] : [0.14, -0.14, 0],
+    [visual?.attach_offset]
+  );
   const cubeSize = useMemo(() => {
     const candidate = visual?.grasp_candidate as Record<string, unknown> | undefined;
     const closeWidth = typeof candidate?.closeWidth === 'number' ? candidate.closeWidth : gripperWidth;
