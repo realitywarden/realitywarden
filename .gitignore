@@ -25,3 +25,10 @@ demo/
 .tmp-real-hardware-demo/
 .tmp-llm-compiler-test/
 .tmp-llm-smoke/
+.tmp-hardware-diagnose/
+.tmp-esp32-*-build/
+.tmp-serial-ultrasonic-docx/
+.tmp-serial-ultrasonic-docx.zip
+.tmp-reality-asset-devkit-fixtures/
+.next-dev/
+.next-verification/

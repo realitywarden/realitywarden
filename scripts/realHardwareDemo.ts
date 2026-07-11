@@ -1,5 +1,5 @@
 /**
- * REAL HARDWARE demo / acceptance runner (ESP32 DevKit + SG90 + HC-SR04).
+ * REAL HARDWARE demo / acceptance runner (ESP32 DevKit + SG90 + HC-SR04-compatible sensor).
  *
  * Runs the four Definition-of-Done scenarios against a real serial port:
  *   1. move_to_angle 45  -> allowed, servo moves, audit hardwareSignalSent=true
@@ -20,9 +20,9 @@ import {
   ESP32_SERVO_RIG_CAPABILITIES,
   Esp32DeviceAdapter,
   HardwareExecutionGate,
-  MedianFilter,
   SerialEsp32Transport,
   StuckValueDetector,
+  buildConservativeMedianReading,
   createNodeSerialPort
 } from '../lib/hardware';
 import type { InterlockOverride, SensorReading } from '../lib/hardware/types';
@@ -80,14 +80,15 @@ async function main() {
   async function freshReadings(): Promise<{ readings: SensorReading[]; override: InterlockOverride; frozenSensorIds: Set<string> }> {
     // Median of 5 samples rejects single-sample HC-SR04 noise spikes; the same
     // 5 raw samples feed the frozen-sensor detector (value + device clock).
-    const filter = new MedianFilter(5);
-    let lastReading: SensorReading | null = null;
+    const validReadings: SensorReading[] = [];
     let frozen = false;
+    const readErrors = new Set<string>();
     for (let i = 0; i < 5; i += 1) {
-      const reading = await adapter.readDistance('hc-sr04');
+      const result = await adapter.readDistanceDetailed('hc-sr04');
+      const reading = result.reading;
+      if (result.error) readErrors.add(result.error);
       if (reading) {
-        filter.push(reading.value);
-        lastReading = reading;
+        validReadings.push(reading);
         if (typeof reading.deviceTimestampMs === 'number') {
           if (!clockBaseline.established()) clockBaseline.establish(reading.deviceTimestampMs);
           clockBaseline.update(reading.deviceTimestampMs);
@@ -100,14 +101,18 @@ async function main() {
     if (frozen) {
       console.log('[sensor] FROZEN — value stuck and device clock not advancing; actuation blocked until reset');
     }
-    const median = filter.median();
+    const conditionedReading = buildConservativeMedianReading(validReadings);
+    const median = conditionedReading?.value ?? null;
     const state = interlock.update(median);
-    if (median === null || !lastReading) {
-      console.log('[sensor] no distance data (missing/disconnected) — actuation will default-block');
+    if (median === null || !conditionedReading) {
+      const diagnostic = readErrors.size > 0 ? Array.from(readErrors).join('; ') : 'no valid samples';
+      console.log(`[sensor] no distance data: ${diagnostic}`);
+      console.log('[sensor] check HC-SR04 5V/GND, shared ESP32 ground, TRIG GPIO 5, ECHO GPIO 4 through a voltage divider, and place a target 2–400 cm away');
+      console.log('[sensor] actuation will default-block until a valid reading is received');
       return { readings: [], override: overrideFor(state), frozenSensorIds };
     }
     console.log(`[sensor] median distance = ${median} cm (5 samples) | interlock ${state.locked ? 'LOCKED' : 'clear'} | effective min safe = ${state.effectiveMinSafeDistanceCm} cm`);
-    return { readings: [{ ...lastReading, value: median, timestampMs: Date.now() }], override: overrideFor(state), frozenSensorIds };
+    return { readings: [conditionedReading], override: overrideFor(state), frozenSensorIds };
   }
 
   async function runScenario(label: string, angle: number) {
