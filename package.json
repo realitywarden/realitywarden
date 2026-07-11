@@ -6,7 +6,7 @@
   "author": "ZqiEE",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/start-next-dev.cjs",
     "desktop": "node scripts/start-electron.cjs",
     "desktop:start": "node scripts/start-electron.cjs",
     "desktop:dev": "node scripts/build-electron.cjs && electron dist-electron/main.js",

@@ -12,6 +12,8 @@
     "**/*.ts",
     "**/*.tsx",
     ".next-build/types/**/*.ts",
-    ".next-desktop-3100/types/**/*.ts"
+    ".next-desktop-3100/types/**/*.ts",
+    ".next-dev/types/**/*.ts",
+    ".next-verification/types/**/*.ts"
   ]
 }
