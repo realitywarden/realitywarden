@@ -32,3 +32,4 @@ demo/
 .tmp-reality-asset-devkit-fixtures/
 .next-dev/
 .next-verification/
+.next-browser/
