@@ -1323,6 +1323,7 @@ export default function Home() {
   const playbackTimersRef = useRef<number[]>([]);
   const liveRunTokenRef = useRef(0);
   const liveRunActiveRef = useRef(false);
+  const validationRunTokenRef = useRef(0);
   const consoleLogSessionRef = useRef(0);
   const workspaceIssues = useMemo(() => getWorkspaceIssues(workspaceDevices, labReport, language), [labReport, language, workspaceDevices]);
   const availableAssets = useMemo(() => [...builtInDeviceAssets, ...importedAssets], [importedAssets]);
@@ -1411,6 +1412,17 @@ export default function Home() {
     setReplayPlaying(false);
   }, []);
 
+  const cancelActiveWork = useCallback(() => {
+    liveRunTokenRef.current += 1;
+    liveRunActiveRef.current = false;
+    validationRunTokenRef.current += 1;
+    clearPlaybackTimers();
+    setRunning(false);
+    setReplayPlaying(false);
+    setValidationRunning(false);
+    setCurrentActionFrame(null);
+  }, [clearPlaybackTimers]);
+
   const reportPlaybackEvents = useMemo<PlaybackEvent[]>(() => {
     if (!labReport) return [];
     return new PlaybackEngine().createEvents(labReport, effectiveSelectedProfile.deviceMeta, effectiveSelectedProfile.geometry);
@@ -1478,6 +1490,8 @@ export default function Home() {
   }, [applyReplayEvent, clearPlaybackTimers, playbackEvents]);
 
   const selectProfileAndScenario = useCallback((profileId: string, nextLanguage = language) => {
+    cancelActiveWork();
+    clearRuntimeDecision();
     const nextProfile = deviceProfiles.find((profile) => profile.id === profileId) ?? deviceProfiles[0];
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
     const nextPrompt = isRunnableDeviceV01(nextProfile.deviceMeta.device_type)
@@ -1501,7 +1515,7 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(nextLanguage));
-  }, [language]);
+  }, [cancelActiveWork, clearRuntimeDecision, language]);
 
   const buildWorkspaceFile = useCallback((): LabWorkspaceFile => ({
     file_type: 'open_reality_lab_workspace',
@@ -1544,6 +1558,8 @@ export default function Home() {
 
   const applyWorkspaceFile = useCallback((workspace: LabWorkspaceFile) => {
     if (workspace.file_type !== 'open_reality_lab_workspace' || workspace.version !== 1) return;
+    cancelActiveWork();
+    clearRuntimeDecision();
     const nextProfile = deviceProfiles.find((profile) => profile.id === workspace.selected_profile_id) ?? deviceProfiles[0];
     const nextScenario = deviceScenarios.find((scenario) => scenario.id === workspace.selected_scenario_id) ?? getScenarioForProfile(nextProfile.id, 'safe');
     const nextRunnable = isRunnableDeviceV01(nextProfile.deviceMeta.device_type);
@@ -1580,7 +1596,7 @@ export default function Home() {
     setWorkspaceValidation(null);
     setSelectedSnapshot(null);
     setCurrentActionFrame(null);
-  }, []);
+  }, [cancelActiveWork, clearRuntimeDecision]);
 
   const applyProjectFile = useCallback((project: OpenRealityProjectFile, filePath?: string | null) => {
     applyWorkspaceFile(project.workspace);
@@ -1645,6 +1661,8 @@ export default function Home() {
   const handleAddAsset = useCallback((assetId: string) => {
     const asset = availableAssets.find((item) => item.manifest.asset_id === assetId);
     if (!asset) return;
+    cancelActiveWork();
+    clearRuntimeDecision();
     const nextDevice = createWorkspaceDevice(asset.manifest.device_type, workspaceDevices.length, language, asset);
     const baseProfile = getFirstProfileForType(asset.manifest.device_type);
     const baseScenario = getScenarioForProfile(baseProfile.id, 'safe');
@@ -1673,7 +1691,7 @@ export default function Home() {
     setReplayIndex(0);
     setConsoleLogs((logs) => [`[INFO] Added ${nextDevice.label} to workspace.`, ...logs]);
     showNotice('info', noticeMessage(language, `\u5df2\u6dfb\u52a0\u8d44\u4ea7\uff1a${nextDevice.label}`, `Asset added: ${nextDevice.label}`));
-  }, [availableAssets, language, showNotice, workspaceDevices.length]);
+  }, [availableAssets, cancelActiveWork, clearRuntimeDecision, language, showNotice, workspaceDevices.length]);
 
   const handleImportedAsset = useCallback((asset: DeviceAsset) => {
     setImportedAssets((assets) => [...assets.filter((item) => item.manifest.asset_id !== asset.manifest.asset_id), asset]);
@@ -1741,6 +1759,7 @@ export default function Home() {
 
   const handleLanguageChange = useCallback((nextLanguage: UiLanguage) => {
     consoleLogSessionRef.current += 1;
+    cancelActiveWork();
     setLanguage(nextLanguage);
     clearRuntimeDecision();
     setOperatorNotice(null);
@@ -1765,7 +1784,7 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(nextLanguage));
-  }, [clearRuntimeDecision, selectedProfile.deviceMeta.device_type, selectedScenario]);
+  }, [cancelActiveWork, clearRuntimeDecision, selectedProfile.deviceMeta.device_type, selectedScenario]);
 
   const syncWorkspaceSelectionForType = useCallback((nextType: DeviceType, preferredProfileId?: string) => {
     const exactMatch = preferredProfileId
@@ -1779,6 +1798,7 @@ export default function Home() {
 
   const handleDeviceTypeChange = useCallback((nextType: DeviceType) => {
     consoleLogSessionRef.current += 1;
+    cancelActiveWork();
     const nextProfile = getFirstProfileForType(nextType);
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
     clearRuntimeDecision();
@@ -1800,10 +1820,11 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
+  }, [cancelActiveWork, clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
 
   const handleProfileChange = useCallback((profileId: string) => {
     consoleLogSessionRef.current += 1;
+    cancelActiveWork();
     const nextProfile = deviceProfiles.find((profile) => profile.id === profileId) ?? deviceProfiles[0];
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
     clearRuntimeDecision();
@@ -1825,10 +1846,11 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
+  }, [cancelActiveWork, clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
 
   const handleScenarioChange = useCallback((nextScenarioId: string) => {
     consoleLogSessionRef.current += 1;
+    cancelActiveWork();
     const nextScenario = deviceScenarios.find((scenario) => scenario.id === nextScenarioId) ?? selectedScenario;
     clearRuntimeDecision();
     setOperatorNotice(null);
@@ -1846,10 +1868,11 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [clearRuntimeDecision, language, selectedProfile.deviceMeta.device_type, selectedScenario]);
+  }, [cancelActiveWork, clearRuntimeDecision, language, selectedProfile.deviceMeta.device_type, selectedScenario]);
 
   const handleQuickStart = useCallback((path: QuickStartPath) => {
     consoleLogSessionRef.current += 1;
+    cancelActiveWork();
     const nextProfile = getFirstProfileForType(path.deviceType);
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
     clearRuntimeDecision();
@@ -1873,12 +1896,13 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
+  }, [cancelActiveWork, clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
 
   const handlePromptChange = useCallback((nextPrompt: string) => {
+    if (liveRunActiveRef.current) cancelActiveWork();
     clearRuntimeDecision();
     setPrompt(nextPrompt);
-  }, [clearRuntimeDecision]);
+  }, [cancelActiveWork, clearRuntimeDecision]);
 
   const runScenario = useCallback(async () => {
     if (liveRunActiveRef.current) {
@@ -1942,13 +1966,22 @@ export default function Home() {
       }
       setLlmChipState(llmCompile && llmCompile.compiler === 'llm' ? 'online' : 'offline');
     }
-    const localRuntimeSession = new LocalRuntime().prepareSimulationSession({
-      profile: runProfile,
-      prompt: runPrompt,
-      locale: language,
-      deviceState: targetWorkspaceDevice?.current_state ?? null,
-      llmCompile
-    });
+    let localRuntimeSession: ReturnType<LocalRuntime['prepareSimulationSession']>;
+    try {
+      localRuntimeSession = new LocalRuntime().prepareSimulationSession({
+        profile: runProfile,
+        prompt: runPrompt,
+        locale: language,
+        deviceState: targetWorkspaceDevice?.current_state ?? null,
+        llmCompile
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : localUnknownError(language);
+      setCommandStatus({ kind: 'failed', message });
+      showNotice('error', noticeMessage(language, `运行准备失败：${message}`, `Run preparation failed: ${message}`));
+      liveRunActiveRef.current = false;
+      return;
+    }
     const runtimeKernelResult = localRuntimeSession.runtimeResult;
     const visibleRuntimeDecision: OpenRealityRuntimeResult = localRuntimeSession.status === runtimeKernelResult.status
       ? runtimeKernelResult
@@ -2178,18 +2211,23 @@ export default function Home() {
   // repeats after the first launch (persisted flag).
   const autoDemoTriggeredRef = useRef(false);
   useEffect(() => {
-    if (autoDemoTriggeredRef.current || typeof window === 'undefined') return;
-    if (window.localStorage.getItem(firstRunDemoStorageKey)) return;
-    autoDemoTriggeredRef.current = true;
-    window.localStorage.setItem(firstRunDemoStorageKey, '1');
-    const demoPrompt = getLocalizedPrompt(getScenarioForProfile('virtual-robot-arm', 'unsafe'), language);
-    setPrompt(demoPrompt);
-    setConsoleLogs((logs) => [
-      language === 'zh'
-        ? '[DEMO] 首次启动演示：即将发送一条不安全指令（把方块扔出桌面），观察安全层如何拦截它。'
-        : '[DEMO] First-run demo: sending an unsafe command (throw the cube off the table) so you can watch the safety layer block it.',
-      ...logs
-    ]);
+    if (typeof window === 'undefined') return;
+    if (!autoDemoTriggeredRef.current) {
+      if (window.localStorage.getItem(firstRunDemoStorageKey)) return;
+      autoDemoTriggeredRef.current = true;
+      window.localStorage.setItem(firstRunDemoStorageKey, '1');
+      const demoPrompt = getLocalizedPrompt(getScenarioForProfile('virtual-robot-arm', 'unsafe'), language);
+      setPrompt(demoPrompt);
+      setCommandStatus({ kind: 'ready', message: t(language, 'command_waiting') });
+      setConsoleLogs((logs) => [
+        language === 'zh'
+          ? '[DEMO] 首次启动演示：即将发送一条不安全指令（把方块扔出桌面），观察安全层如何拦截它。'
+          : '[DEMO] First-run demo: sending an unsafe command (throw the cube off the table) so you can watch the safety layer block it.',
+        ...logs
+      ]);
+    }
+    // React Strict Mode cleans up and re-runs effects in development. The
+    // initialization above stays one-shot, while each mount gets a live timer.
     const timer = window.setTimeout(() => {
       void runScenarioRef.current();
     }, 1600);
@@ -2198,6 +2236,8 @@ export default function Home() {
   }, []);
 
   const runFullValidation = useCallback(async () => {
+    const validationToken = validationRunTokenRef.current + 1;
+    validationRunTokenRef.current = validationToken;
     setValidationRunning(true);
     const enabledDevices = workspaceDevices.filter((device) => device.config.enabled);
     if (enabledDevices.length === 0) {
@@ -2210,6 +2250,7 @@ export default function Home() {
 
     try {
       for (const device of enabledDevices) {
+        if (validationRunTokenRef.current !== validationToken) return;
         const asset = assetForId(availableAssets, device.assetId);
         const baseProfile = asset ? profileFromAsset(asset) : deviceProfiles.find((profile) => profile.id === device.profileId) ?? getFirstProfileForType(device.deviceType);
         const effectiveProfile = applyWorkspaceDeviceConfig(baseProfile, device);
@@ -2235,6 +2276,7 @@ export default function Home() {
         setSelectedSnapshot(report.state_snapshots?.[report.state_snapshots.length - 1] ?? null);
         setCurrentActionFrame(report.state_snapshots?.[report.state_snapshots.length - 1]?.action_frame ?? null);
         await new Promise((resolve) => window.setTimeout(resolve, 350));
+        if (validationRunTokenRef.current !== validationToken) return;
       }
     } catch (error) {
       showNotice('error', noticeMessage(language, `\u5de5\u4f5c\u533a\u9a8c\u8bc1\u5931\u8d25\uff1a${error instanceof Error ? error.message : localUnknownError(language)}`, `Workspace validation failed: ${error instanceof Error ? error.message : localUnknownError(language)}`));
@@ -2262,6 +2304,8 @@ export default function Home() {
   }, [availableAssets, language, showNotice, workspaceDevices]);
 
   const newProject = useCallback(() => {
+    cancelActiveWork();
+    clearRuntimeDecision();
     consoleLogSessionRef.current += 1;
     const nextScenario = getScenarioForProfile('virtual-robot-arm', 'safe');
     const nextDefaultDevice = createDefaultWorkspaceDevice(language);
@@ -2285,7 +2329,7 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     showNotice('info', noticeMessage(language, '\u5df2\u65b0\u5efa\u672a\u547d\u540d\u5de5\u7a0b\u3002', 'Created a new untitled project.'));
-  }, [language, showNotice]);
+  }, [cancelActiveWork, clearRuntimeDecision, language, showNotice]);
 
   const saveWorkspace = useCallback(async (saveAs = false) => {
     const project = buildProjectFile();
@@ -2429,19 +2473,13 @@ export default function Home() {
   }, [labReport, language, showNotice]);
 
   const stopRun = useCallback(() => {
-    liveRunTokenRef.current += 1;
-    liveRunActiveRef.current = false;
-    clearPlaybackTimers();
-    setRunning(false);
-    setReplayPlaying(false);
-    setValidationRunning(false);
-    setCurrentActionFrame(null);
+    cancelActiveWork();
     setCommandStatus({
       kind: 'ready',
       message: t(language, 'command_stopped')
     });
     showNotice('warning', noticeMessage(language, '\u5df2\u505c\u6b62\u5f53\u524d\u6267\u884c\u3002', 'Current run stopped.'));
-  }, [clearPlaybackTimers, language, showNotice]);
+  }, [cancelActiveWork, language, showNotice]);
 
   const replayRun = useCallback(() => {
     if (replayPlaying) {

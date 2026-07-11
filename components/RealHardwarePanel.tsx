@@ -37,6 +37,10 @@ function bridge(): HardwareBridge | null {
   return host.openReality?.hardware ?? null;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
 
 export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
@@ -48,17 +52,30 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
   const [lastError, setLastError] = useState<string | null>(null);
   const [distanceCm, setDistanceCm] = useState<number | null>(null);
   const [listing, setListing] = useState(false);
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollGeneration = useRef(0);
+  const mounted = useRef(true);
   const available = bridge() !== null;
 
   const stopPolling = useCallback(() => {
-    if (pollTimer.current) {
-      clearInterval(pollTimer.current);
+    pollGeneration.current += 1;
+    if (pollTimer.current !== null) {
+      clearTimeout(pollTimer.current);
       pollTimer.current = null;
     }
   }, []);
 
-  useEffect(() => () => stopPolling(), [stopPolling]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      stopPolling();
+      // The main process owns the serial handle. Closing it on unmount avoids
+      // leaving the device locked when navigation destroys this panel.
+      const api = bridge();
+      if (api) void api.disconnect().catch(() => undefined);
+    };
+  }, [stopPolling]);
 
   const refreshPorts = useCallback(async () => {
     const api = bridge();
@@ -67,6 +84,7 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
     setLastError(null);
     try {
       const result = await api.listPorts();
+      if (!mounted.current) return;
       if (result.ok && result.ports) {
         setPorts(result.ports);
         if (result.ports.length > 0 && !result.ports.some((port) => port.path === selectedPort)) {
@@ -76,8 +94,13 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
         setPorts([]);
         setLastError(result.error ?? 'list ports failed');
       }
+    } catch (error) {
+      if (mounted.current) {
+        setPorts([]);
+        setLastError(`list ports failed: ${errorMessage(error)}`);
+      }
     } finally {
-      setListing(false);
+      if (mounted.current) setListing(false);
     }
   }, [selectedPort]);
 
@@ -86,23 +109,42 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
     setDistanceCm(null);
     setStatus('disconnected');
     const api = bridge();
-    if (api) await api.disconnect();
+    if (api) {
+      try {
+        const result = await api.disconnect();
+        if (!result.ok && mounted.current) setLastError(result.error ?? 'disconnect failed');
+      } catch (error) {
+        if (mounted.current) setLastError(`disconnect failed: ${errorMessage(error)}`);
+      }
+    }
   }, [stopPolling]);
 
   const startPolling = useCallback(() => {
     stopPolling();
-    pollTimer.current = setInterval(async () => {
+    const generation = pollGeneration.current;
+    const poll = async () => {
       const api = bridge();
-      if (!api) return;
-      const reading = await api.readDistance();
+      if (!api || generation !== pollGeneration.current || !mounted.current) return;
+      let reading: HardwareBridgeResult;
+      try {
+        reading = await api.readDistance();
+      } catch (error) {
+        reading = { ok: false, error: `read failed: ${errorMessage(error)}` };
+      }
+      if (generation !== pollGeneration.current || !mounted.current) return;
       if (reading.ok && typeof reading.distanceCm === 'number') {
         setDistanceCm(reading.distanceCm);
+        setLastError(null);
       } else {
         // An unreadable sensor is shown as exactly that - never a stale value.
         setDistanceCm(null);
         setLastError(reading.error ?? (language === 'zh' ? '读取失败' : 'read failed'));
       }
-    }, 2000);
+      // Schedule only after the current read completes. setInterval allowed a
+      // slow 3s request to overlap the next 2s poll and race stale UI updates.
+      pollTimer.current = setTimeout(() => void poll(), 2000);
+    };
+    pollTimer.current = setTimeout(() => void poll(), 2000);
   }, [language, stopPolling]);
 
   const connect = useCallback(async () => {
@@ -111,7 +153,13 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
     setStatus('connecting');
     setLastError(null);
     setDistanceCm(null);
-    const result = await api.connect(selectedPort);
+    let result: HardwareBridgeResult;
+    try {
+      result = await api.connect(selectedPort);
+    } catch (error) {
+      result = { ok: false, error: `connect failed: ${errorMessage(error)}` };
+    }
+    if (!mounted.current) return;
     if (result.ok) {
       setStatus('connected');
       if (typeof result.distanceCm === 'number') setDistanceCm(result.distanceCm);

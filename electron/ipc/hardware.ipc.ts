@@ -56,6 +56,13 @@ class HardwareConnection {
   private buffer = '';
   private requestSeq = 0;
   private readonly pending = new Map<string, PendingRequest>();
+  private operationQueue: Promise<void> = Promise.resolve();
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationQueue.then(operation, operation);
+    this.operationQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   async listPorts() {
     const loaded = loadSerialPortModule();
@@ -71,10 +78,17 @@ class HardwareConnection {
     }
   }
 
-  async connect(portPath: string) {
+  connect(portPath: string) {
+    return this.enqueue(() => this.connectExclusive(portPath));
+  }
+
+  private async connectExclusive(portPath: string) {
+    if (typeof portPath !== 'string' || portPath.trim().length === 0) {
+      return { ok: false, error: 'invalid serial port path' };
+    }
     const loaded = loadSerialPortModule();
     if ('error' in loaded) return { ok: false, error: loaded.error };
-    await this.disconnect();
+    await this.disconnectExclusive();
     const port = new loaded.SerialPort({ path: portPath, baudRate: 115200, autoOpen: false });
     try {
       await new Promise<void>((resolve, reject) => {
@@ -83,16 +97,20 @@ class HardwareConnection {
     } catch (error) {
       return { ok: false, error: `open failed: ${error instanceof Error ? error.message : String(error)}` };
     }
-    port.on('data', (chunk) => this.handleData(chunk.toString('utf8')));
-    port.on('close', () => this.failAllPending('port closed'));
-    port.on('error', () => this.failAllPending('port error'));
     this.port = port;
+    port.on('data', (chunk) => {
+      if (this.port === port) this.handleData(chunk.toString('utf8'));
+    });
+    port.on('close', () => this.handlePortClosed(port, 'port closed'));
+    port.on('error', () => {
+      if (this.port === port) this.failAllPending('port error');
+    });
     // Opening the port toggles DTR and resets the ESP32; give the firmware
     // time to boot before the handshake instead of reporting a false timeout.
     await new Promise((resolve) => setTimeout(resolve, 1800));
     const handshake = await this.request('read_distance', 3000);
     if (!handshake.ok) {
-      await this.disconnect();
+      await this.disconnectExclusive();
       return { ok: false, error: `handshake failed: ${handshake.error ?? 'no valid response'}` };
     }
     const distance = handshake.data?.distanceCm;
@@ -112,7 +130,11 @@ class HardwareConnection {
     return { ok: true, distanceCm: distance };
   }
 
-  async disconnect() {
+  disconnect() {
+    return this.enqueue(() => this.disconnectExclusive());
+  }
+
+  private async disconnectExclusive() {
     this.failAllPending('disconnected');
     const port = this.port;
     this.port = null;
@@ -123,6 +145,15 @@ class HardwareConnection {
       });
     }
     return { ok: true };
+  }
+
+  private handlePortClosed(port: SerialPortInstanceLike, reason: string) {
+    // Events from a previously disconnected port must never tear down a newer
+    // connection or reject that connection's pending requests.
+    if (this.port !== port) return;
+    this.port = null;
+    this.buffer = '';
+    this.failAllPending(reason);
   }
 
   private request(cmd: string, timeoutMs: number) {
