@@ -25,6 +25,9 @@ export type HardwareCapabilityId = 'move_to_angle' | 'read_distance';
  */
 export interface SensorInterlockRequirement {
   sensorId: string;
+  /** Capability and unit expected from this safety-linked sensor. */
+  capabilityId: HardwareCapabilityId;
+  unit: string;
   /** Reading older than this is stale => default-block. */
   maxAgeMs: number;
   /** Physically plausible range; outside => invalid => default-block. */

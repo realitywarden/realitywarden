@@ -102,6 +102,9 @@ export class SafetyMonitor {
     if (!capability) {
       return { ok: false, reason: `unsupported_capability:${command.capabilityId}` };
     }
+    if (capability.actuation && !Number.isFinite(nowMs)) {
+      return { ok: false, reason: 'invalid_safety_clock:now_ms_not_finite' };
+    }
 
     if (command.capabilityId === 'move_to_angle') {
       const angle = command.args.angle;
@@ -123,11 +126,22 @@ export class SafetyMonitor {
     const declaredSensorIds = new Set(
       capability.requiredSensorInterlocks.map((requirement) => requirement.sensorId)
     );
+    const seenOverrideSensorIds = new Set<string>();
     for (const override of interlockOverrides) {
       if (!declaredSensorIds.has(override.sensorId)) {
         return {
           ok: false,
           reason: `invalid_interlock_override:${override.sensorId}:no_declared_interlock_for_sensor`
+        };
+      }
+      if (seenOverrideSensorIds.has(override.sensorId)) {
+        return { ok: false, reason: `invalid_interlock_override:${override.sensorId}:duplicate` };
+      }
+      seenOverrideSensorIds.add(override.sensorId);
+      if (!Number.isFinite(override.minSafeDistanceCm) || override.minSafeDistanceCm < 0) {
+        return {
+          ok: false,
+          reason: `invalid_interlock_override:${override.sensorId}:threshold_not_finite_nonnegative`
         };
       }
     }
@@ -142,18 +156,33 @@ export class SafetyMonitor {
         if (!reading) {
           return { ok: false, reason: `sensor_missing:${requirement.sensorId}` };
         }
+        if (reading.capabilityId !== requirement.capabilityId || reading.unit !== requirement.unit) {
+          return {
+            ok: false,
+            reason: `sensor_type_mismatch:${requirement.sensorId}:expected=${requirement.capabilityId}/${requirement.unit}:actual=${reading.capabilityId}/${reading.unit}`
+          };
+        }
         // Device-side timestamp is REQUIRED for actuation (audit 2.2, decision 2):
         // without it we cannot judge real freshness, and falling back to host
         // arrival time is a known-failed, silent substitution (invariant 3).
         if (reading.deviceTimestampMs === undefined) {
           return { ok: false, reason: `device_timestamp_unavailable:${requirement.sensorId}` };
         }
+        if (!Number.isFinite(reading.deviceTimestampMs) || reading.deviceTimestampMs < 0) {
+          return { ok: false, reason: `device_timestamp_invalid:${requirement.sensorId}` };
+        }
         // Frozen sensors block actuation and CANNOT be overridden (audit 2.2,
         // decision 3); the latch clears only on explicit reset (re-handshake).
         if (frozenSensorIds.has(requirement.sensorId)) {
           return { ok: false, reason: `sensor_frozen:${requirement.sensorId}` };
         }
+        if (!Number.isFinite(reading.timestampMs)) {
+          return { ok: false, reason: `sensor_timestamp_invalid:${requirement.sensorId}` };
+        }
         const ageMs = nowMs - reading.timestampMs;
+        if (ageMs < 0) {
+          return { ok: false, reason: `sensor_timestamp_future:${requirement.sensorId}:age_ms=${ageMs}` };
+        }
         if (ageMs > requirement.maxAgeMs) {
           return {
             ok: false,
@@ -161,7 +190,7 @@ export class SafetyMonitor {
           };
         }
         if (
-          Number.isNaN(reading.value)
+          !Number.isFinite(reading.value)
           || reading.value < requirement.minPlausibleValue
           || reading.value > requirement.maxPlausibleValue
         ) {

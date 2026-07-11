@@ -1,3 +1,5 @@
+import { ACTUATION_TICKET } from './internal/actuation';
+import type { ActuationTicket } from './internal/actuation';
 import { TransportOfflineError } from './RealDeviceTransport';
 import type { RealDeviceTransport } from './RealDeviceTransport';
 import type {
@@ -8,6 +10,11 @@ import type {
   SensorReading
 } from './types';
 
+export interface DistanceReadResult {
+  reading: SensorReading | null;
+  error?: string;
+}
+
 export const ESP32_SERVO_RIG_CAPABILITIES: HardwareCapabilityLimit[] = [
   {
     capabilityId: 'move_to_angle',
@@ -16,12 +23,14 @@ export const ESP32_SERVO_RIG_CAPABILITIES: HardwareCapabilityLimit[] = [
     unit: 'deg',
     actuation: true,
     // Authoritative interlock (audit 2.1): the servo may not actuate unless a
-    // fresh, plausible HC-SR04 distance reading clears the safe threshold. This
+    // fresh, plausible ultrasonic distance reading clears the safe threshold.
     // requirement lives here, not in the caller — a caller cannot omit it to
     // skip the interlock.
     requiredSensorInterlocks: [
       {
         sensorId: 'hc-sr04',
+        capabilityId: 'read_distance',
+        unit: 'cm',
         maxAgeMs: 1500,
         minPlausibleValue: 2,   // HC-SR04 physical range: 2cm..400cm
         maxPlausibleValue: 400,
@@ -39,7 +48,7 @@ export const ESP32_SERVO_RIG_CAPABILITIES: HardwareCapabilityLimit[] = [
 ];
 
 /**
- * Adapter for the ESP32 DevKit rig (SG90 servo + HC-SR04 ultrasonic sensor).
+ * Adapter for the ESP32 DevKit rig (SG90 servo + HC-SR04-compatible pulse sensor).
  *
  * IMPORTANT: this adapter performs NO safety policy decisions. Safety lives in
  * the SafetyMonitor and the execution gate; by the time execute() is called
@@ -48,10 +57,26 @@ export const ESP32_SERVO_RIG_CAPABILITIES: HardwareCapabilityLimit[] = [
  * is refused WITHOUT sending a signal, never clamped or "fixed" silently.
  */
 export class Esp32DeviceAdapter {
+  private readonly capabilities: HardwareCapabilityLimit[];
+
   constructor(
     private readonly transport: RealDeviceTransport,
-    private readonly capabilities: HardwareCapabilityLimit[] = ESP32_SERVO_RIG_CAPABILITIES
-  ) {}
+    capabilities: HardwareCapabilityLimit[] = ESP32_SERVO_RIG_CAPABILITIES
+  ) {
+    // Snapshot device policy at construction. Callers must not be able to
+    // mutate the source array later and silently loosen a live safety gate.
+    this.capabilities = capabilities.map((capability) => ({
+      ...capability,
+      requiredSensorInterlocks: capability.requiredSensorInterlocks.map((requirement) => ({ ...requirement }))
+    }));
+  }
+
+  getCapabilities(): HardwareCapabilityLimit[] {
+    return this.capabilities.map((capability) => ({
+      ...capability,
+      requiredSensorInterlocks: capability.requiredSensorInterlocks.map((requirement) => ({ ...requirement }))
+    }));
+  }
 
   supportedCapabilities(): HardwareCapabilityId[] {
     return this.capabilities.map((capability) => capability.capabilityId);
@@ -61,7 +86,15 @@ export class Esp32DeviceAdapter {
     return this.transport.isConnected();
   }
 
-  async execute(command: HardwareCommand): Promise<HardwareExecuteResult> {
+  /**
+   * Execute a command that has ALREADY been allowed by the SafetyMonitor.
+   *
+   * Audit 1.1: `ticket` must be the gate-private ACTUATION_TICKET. The type is
+   * only satisfiable by importing `internal/actuation`, which is lint-banned
+   * outside the gate; at runtime the transport independently re-checks the
+   * ticket, so even untyped JS holding an adapter reference cannot actuate.
+   */
+  async execute(command: HardwareCommand, ticket: ActuationTicket): Promise<HardwareExecuteResult> {
     const capability = this.capabilities.find(
       (entry) => entry.capabilityId === command.capabilityId
     );
@@ -71,6 +104,16 @@ export class Esp32DeviceAdapter {
         ok: false,
         signalSent: false,
         detail: `unsupported capability: ${command.capabilityId}`
+      };
+    }
+
+    if (capability.actuation && ticket !== ACTUATION_TICKET) {
+      // Defense-in-depth twin of the transport-level check: refuse before
+      // building a frame. signalSent=false is honest — nothing left the host.
+      return {
+        ok: false,
+        signalSent: false,
+        detail: 'invalid_actuation_ticket: actuation requires the HardwareExecutionGate'
       };
     }
 
@@ -95,11 +138,16 @@ export class Esp32DeviceAdapter {
     }
 
     try {
-      const response = await this.transport.send({
+      const frame = {
         id: command.id,
         cmd: command.capabilityId,
         args: command.args
-      });
+      };
+      // Actuation frames must travel the ticketed path; read-only frames use
+      // plain send() (which itself refuses actuation cmds — audit 1.1).
+      const response = capability.actuation
+        ? await this.transport.sendActuation(frame, ticket)
+        : await this.transport.send(frame);
       return {
         ok: response.ok,
         // The frame left the host and the device answered => signal was sent,
@@ -124,12 +172,21 @@ export class Esp32DeviceAdapter {
   }
 
   /**
-   * Read the HC-SR04 distance sensor. Returns null (with no fake value) when
+   * Read the ultrasonic distance sensor. Returns null (with no fake value) when
    * the transport is offline or the device fails to answer.
    */
   async readDistance(sensorId = 'hc-sr04'): Promise<SensorReading | null> {
+    return (await this.readDistanceDetailed(sensorId)).reading;
+  }
+
+  /**
+   * Read the distance sensor while preserving the device/transport failure
+   * reason for operator diagnostics. Safety callers can keep using
+   * readDistance(), whose fail-closed null behavior is unchanged.
+   */
+  async readDistanceDetailed(sensorId = 'hc-sr04'): Promise<DistanceReadResult> {
     if (!this.transport.isConnected()) {
-      return null;
+      return { reading: null, error: 'hardware offline' };
     }
     try {
       const response = await this.transport.send({
@@ -137,23 +194,33 @@ export class Esp32DeviceAdapter {
         cmd: 'read_distance'
       });
       const value = response.data?.distanceCm;
-      if (!response.ok || typeof value !== 'number' || Number.isNaN(value)) {
-        return null;
+      if (!response.ok) {
+        return { reading: null, error: response.detail ?? 'device reported read_distance failure' };
+      }
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return { reading: null, error: 'device response missing numeric data.distanceCm' };
       }
       // Device-side monotonic clock at measurement (audit 2.2). Present only if
       // the firmware reports it; absence makes the SafetyMonitor block actuation
       // (device_timestamp_unavailable) — never a silent fallback to host time.
       const deviceMs = response.data?.deviceMs;
       return {
-        sensorId,
-        capabilityId: 'read_distance',
-        value,
-        unit: 'cm',
-        timestampMs: Date.now(),
-        deviceTimestampMs: typeof deviceMs === 'number' && !Number.isNaN(deviceMs) ? deviceMs : undefined
+        reading: {
+          sensorId,
+          capabilityId: 'read_distance',
+          value,
+          unit: 'cm',
+          timestampMs: Date.now(),
+          deviceTimestampMs: typeof deviceMs === 'number' && Number.isFinite(deviceMs) && deviceMs >= 0
+            ? deviceMs
+            : undefined
+        }
       };
-    } catch {
-      return null;
+    } catch (error) {
+      return {
+        reading: null,
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
 }

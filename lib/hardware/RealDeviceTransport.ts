@@ -1,3 +1,4 @@
+import type { ActuationTicket } from './internal/actuation';
 import type { TransportFrame, TransportResponse } from './types';
 
 /**
@@ -12,10 +13,19 @@ export interface RealDeviceTransport {
   disconnect(): Promise<void>;
   isConnected(): boolean;
   /**
-   * Send one frame and wait for the matching response.
+   * Send one READ-ONLY frame and wait for the matching response.
    * Throws TransportOfflineError when the transport is not connected.
+   * MUST refuse actuation commands (audit 1.1): an actuation frame may only
+   * travel via sendActuation(), which requires the gate-private ticket.
    */
   send(frame: TransportFrame): Promise<TransportResponse>;
+  /**
+   * Send one ACTUATION frame. Rejects unless `ticket` is the gate-private
+   * ACTUATION_TICKET — this is what makes "blocked => zero frames" structural
+   * rather than conventional: holding a transport reference is not enough to
+   * actuate.
+   */
+  sendActuation(frame: TransportFrame, ticket: ActuationTicket): Promise<TransportResponse>;
 }
 
 export class TransportOfflineError extends Error {

@@ -1,3 +1,5 @@
+import { ACTUATION_TICKET, isActuationCommand } from './internal/actuation';
+import type { ActuationTicket } from './internal/actuation';
 import { TransportOfflineError } from './RealDeviceTransport';
 import type { RealDeviceTransport } from './RealDeviceTransport';
 import type { TransportFrame, TransportResponse } from './types';
@@ -32,6 +34,7 @@ export interface SerialEsp32TransportOptions {
  * success.
  */
 export class SerialEsp32Transport implements RealDeviceTransport {
+  private static readonly MAX_LINE_LENGTH = 4096;
   private buffer = '';
   private connected = false;
   private lastProtocolError: string | null = null;
@@ -46,11 +49,17 @@ export class SerialEsp32Transport implements RealDeviceTransport {
     options: SerialEsp32TransportOptions = {}
   ) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 2000;
+    if (!Number.isFinite(this.requestTimeoutMs) || this.requestTimeoutMs <= 0) {
+      throw new Error(`requestTimeoutMs must be a finite positive number, got ${this.requestTimeoutMs}`);
+    }
     this.port.onData((chunk) => this.handleData(chunk));
     this.port.onClose(() => this.handleClose());
   }
 
   async connect(): Promise<void> {
+    if (this.isConnected()) return;
+    this.buffer = '';
+    this.lastProtocolError = null;
     await this.port.open();
     this.connected = true;
   }
@@ -58,7 +67,10 @@ export class SerialEsp32Transport implements RealDeviceTransport {
   async disconnect(): Promise<void> {
     this.connected = false;
     this.failAllPending(new TransportOfflineError('transport disconnected'));
-    await this.port.close();
+    this.buffer = '';
+    if (this.port.isOpen()) {
+      await this.port.close();
+    }
   }
 
   isConnected(): boolean {
@@ -70,42 +82,97 @@ export class SerialEsp32Transport implements RealDeviceTransport {
   }
 
   async send(frame: TransportFrame): Promise<TransportResponse> {
-    if (!this.isConnected()) {
-      throw new TransportOfflineError();
+    // Structural single-path enforcement (audit 1.1): the plain send() surface
+    // refuses actuation frames BEFORE anything can reach the wire. Only the
+    // execution gate, holding the private ticket, may actuate via
+    // sendActuation(). Refused, never rerouted — no silent fallback.
+    if (isActuationCommand(frame.cmd)) {
+      throw new Error(
+        `actuation_requires_gate: refusing to send actuation command "${frame.cmd}" via send(); `
+        + 'actuation frames may only travel through HardwareExecutionGate'
+      );
     }
-    const line = `${JSON.stringify(frame)}\n`;
-    const responsePromise = new Promise<TransportResponse>((resolve, reject) => {
+    return this.dispatch(frame);
+  }
+
+  async sendActuation(frame: TransportFrame, ticket: ActuationTicket): Promise<TransportResponse> {
+    if (ticket !== ACTUATION_TICKET) {
+      // Wrong or forged ticket: refuse before the frame exists on any buffer.
+      throw new Error(
+        'invalid_actuation_ticket: sendActuation() requires the gate-private actuation ticket'
+      );
+    }
+    return this.dispatch(frame);
+  }
+
+  private dispatch(frame: TransportFrame): Promise<TransportResponse> {
+    if (!this.isConnected()) {
+      return Promise.reject(new TransportOfflineError());
+    }
+    if (frame.id.length === 0) {
+      return Promise.reject(new Error('invalid_request_id: frame id must not be empty'));
+    }
+    if (this.pending.has(frame.id)) {
+      return Promise.reject(new Error(`duplicate_request_id: request id already pending (id=${frame.id})`));
+    }
+    let line: string;
+    try {
+      line = `${JSON.stringify(frame)}\n`;
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+
+    return new Promise<TransportResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(frame.id);
         reject(new Error(`device response timeout after ${this.requestTimeoutMs}ms (id=${frame.id})`));
       }, this.requestTimeoutMs);
       this.pending.set(frame.id, { resolve, reject, timer });
-    });
-    try {
-      await this.port.write(line);
-    } catch (error) {
-      const entry = this.pending.get(frame.id);
-      if (entry) {
-        clearTimeout(entry.timer);
+
+      try {
+        void this.port.write(line).catch((error: unknown) => {
+          const entry = this.pending.get(frame.id);
+          if (entry) {
+            clearTimeout(entry.timer);
+            this.pending.delete(frame.id);
+            reject(new TransportOfflineError(
+              `serial write failed: ${error instanceof Error ? error.message : String(error)}`
+            ));
+          }
+        });
+      } catch (error) {
+        clearTimeout(timer);
         this.pending.delete(frame.id);
+        reject(new TransportOfflineError(
+          `serial write failed: ${error instanceof Error ? error.message : String(error)}`
+        ));
       }
-      throw new TransportOfflineError(
-        `serial write failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    return responsePromise;
+    });
   }
 
   private handleData(chunk: string) {
     this.buffer += chunk;
+    if (this.buffer.length > SerialEsp32Transport.MAX_LINE_LENGTH && !this.buffer.includes('\n')) {
+      this.lastProtocolError = `oversized device line discarded (>${SerialEsp32Transport.MAX_LINE_LENGTH} chars)`;
+      this.buffer = '';
+      return;
+    }
     let newlineIndex = this.buffer.indexOf('\n');
     while (newlineIndex >= 0) {
       const line = this.buffer.slice(0, newlineIndex).trim();
       this.buffer = this.buffer.slice(newlineIndex + 1);
       if (line.length > 0) {
-        this.handleLine(line);
+        if (line.length > SerialEsp32Transport.MAX_LINE_LENGTH) {
+          this.lastProtocolError = `oversized device line discarded (>${SerialEsp32Transport.MAX_LINE_LENGTH} chars)`;
+        } else {
+          this.handleLine(line);
+        }
       }
       newlineIndex = this.buffer.indexOf('\n');
+    }
+    if (this.buffer.length > SerialEsp32Transport.MAX_LINE_LENGTH) {
+      this.lastProtocolError = `oversized device line discarded (>${SerialEsp32Transport.MAX_LINE_LENGTH} chars)`;
+      this.buffer = '';
     }
   }
 
@@ -139,6 +206,7 @@ export class SerialEsp32Transport implements RealDeviceTransport {
 
   private handleClose() {
     this.connected = false;
+    this.buffer = '';
     this.failAllPending(new TransportOfflineError('serial port closed'));
   }
 

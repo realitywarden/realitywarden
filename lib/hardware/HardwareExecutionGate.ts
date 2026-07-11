@@ -1,5 +1,8 @@
 import { RuntimeAuditLog } from '../runtime/RuntimeAuditLog';
 import { SafetyMonitor } from '../runtime/SafetyMonitor';
+// The gate is the ONLY sanctioned importer of the actuation ticket (audit 1.1).
+// This import is lint-banned everywhere else; do not re-export the value.
+import { ACTUATION_TICKET } from './internal/actuation';
 import type { Esp32DeviceAdapter } from './Esp32DeviceAdapter';
 import type {
   HardwareCapabilityLimit,
@@ -21,7 +24,11 @@ export interface HardwareGateOutcome {
 
 export interface HardwareGateRequest {
   command: HardwareCommand;
-  capabilityLimits: HardwareCapabilityLimit[];
+  /**
+   * @deprecated Ignored for safety. Capability policy is owned by the adapter
+   * snapshot; accepting caller policy here previously allowed interlock bypass.
+   */
+  capabilityLimits?: HardwareCapabilityLimit[];
   sensorReadings: SensorReading[];
   /**
    * Optional per-call tightening of interlock thresholds (e.g. hysteresis).
@@ -62,7 +69,7 @@ export class HardwareExecutionGate {
     const { command } = request;
     const decision = this.safetyMonitor.evaluateHardwareCommand({
       command,
-      capabilityLimits: request.capabilityLimits,
+      capabilityLimits: this.adapter.getCapabilities(),
       sensorReadings: request.sensorReadings,
       interlockOverrides: request.interlockOverrides,
       frozenSensorIds: request.frozenSensorIds,
@@ -94,7 +101,7 @@ export class HardwareExecutionGate {
       };
     }
 
-    const result = await this.adapter.execute(command);
+    const result = await this.adapter.execute(command, ACTUATION_TICKET);
     this.audit.decision(
       'hardware',
       result.ok ? 'info' : 'error',

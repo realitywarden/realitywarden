@@ -1,3 +1,5 @@
+import type { SensorReading } from './types';
+
 /**
  * Sensor conditioning for real hardware: median filtering + hysteresis
  * interlock for the distance sensor.
@@ -45,6 +47,43 @@ export class MedianFilter {
   reset() {
     this.values = [];
   }
+}
+
+/**
+ * Build one conservative reading from a sampling window. The median value is
+ * paired with the OLDEST host/device timestamps in the window: refreshing the
+ * timestamp after later failed reads would make stale sensor data look fresh.
+ */
+export function buildConservativeMedianReading(
+  readings: readonly SensorReading[]
+): SensorReading | null {
+  if (readings.length === 0) return null;
+  const first = readings[0];
+  if (readings.some((reading) =>
+    reading.sensorId !== first.sensorId
+    || reading.capabilityId !== first.capabilityId
+    || reading.unit !== first.unit
+    || !Number.isFinite(reading.value)
+    || !Number.isFinite(reading.timestampMs))) {
+    return null;
+  }
+
+  const sortedValues = readings.map((reading) => reading.value).sort((a, b) => a - b);
+  const mid = Math.floor(sortedValues.length / 2);
+  const value = sortedValues.length % 2 === 1
+    ? sortedValues[mid]
+    : (sortedValues[mid - 1] + sortedValues[mid]) / 2;
+  const deviceTimestamps = readings.map((reading) => reading.deviceTimestampMs);
+  const allDeviceTimestampsValid = deviceTimestamps.every(
+    (timestamp): timestamp is number => typeof timestamp === 'number' && Number.isFinite(timestamp) && timestamp >= 0
+  );
+
+  return {
+    ...first,
+    value,
+    timestampMs: Math.min(...readings.map((reading) => reading.timestampMs)),
+    deviceTimestampMs: allDeviceTimestampsValid ? Math.min(...deviceTimestamps) : undefined
+  };
 }
 
 export interface DistanceInterlockOptions {
@@ -166,6 +205,9 @@ export class StuckValueDetector {
 
   constructor(options: StuckValueDetectorOptions = {}) {
     this.window = options.sampleWindow ?? 5;
+    if (!Number.isInteger(this.window) || this.window < 1) {
+      throw new Error(`StuckValueDetector sampleWindow must be a positive integer, got ${this.window}`);
+    }
   }
 
   /** Feed one raw sample; returns whether the sensor is (now) frozen. */
