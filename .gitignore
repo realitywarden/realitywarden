@@ -33,3 +33,4 @@ demo/
 .next-dev/
 .next-verification/
 .next-browser/
+.tmp-virtual-loopback-test/
