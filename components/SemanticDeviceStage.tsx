@@ -423,7 +423,7 @@ function CommandOutcomeGhost({
       : 'Read state';
 
   const label = deviceType === 'robot_arm'
-    ? (language === 'zh' ? '\u7ed3\u679c\u843d\u70b9' : 'Result Target')
+    ? null // one-line card for robot_arm: header said the same thing (UI audit A5)
     : deviceType === 'smart_light'
       ? `${language === 'zh' ? '\u706f\u5149\u7ed3\u679c' : 'Light Result'} | ${smartLightColor} / ${Math.round(smartLightBrightness * 100)}%`
       : `${language === 'zh' ? '\u6444\u50cf\u53cd\u9988' : 'Camera Result'} | ${cameraAction}`;
@@ -450,8 +450,8 @@ function CommandOutcomeGhost({
       </mesh>
       <Html center position={[0, 0.82, 0]}>
         <div className="pointer-events-none whitespace-nowrap rounded-[3px] border border-white/10 bg-[#101114]/75 px-2 py-1 font-mono text-[8px] font-semibold leading-3 text-[#E6EAF0] backdrop-blur-sm">
-          <div className="text-[#9AA3AF]">{language === 'zh' ? '\u9884\u671f\u7ed3\u679c' : 'Expected Result'}</div>
-          <div>{label}</div>
+          <div className="text-[#9AA3AF]">{language === 'zh' ? '\u9884\u671f\u7ed3\u679c\u843d\u70b9' : 'Expected Result Target'}</div>
+          {label && <div>{label}</div>}
         </div>
       </Html>
     </group>

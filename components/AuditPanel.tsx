@@ -751,12 +751,14 @@ function DeviceInspector({
 
       <div className="mt-3 border border-border-panel bg-bg-panel">
         <InspectorGroup title={ti(language, 'inspector_overview')} defaultOpen>
+          {/* Device name/type/model already live in the panel header directly
+              above - repeating them here was pure noise (UI audit B4). The run
+              target row survives only when it differs from the shown device. */}
           <KeyValueGrid rows={[
-            [ti(language, 'device'), localizeDisplayName(language, selectedWorkspaceDevice?.label ?? localProfileName(profile, language))],
-            [ti(language, 'current_run_target'), currentRunTargetLabel],
-            [ti(language, 'device_type'), meta.device_type],
+            ...(currentRunTargetLabel !== localizeDisplayName(language, selectedWorkspaceDevice?.label ?? localProfileName(profile, language))
+              ? [[ti(language, 'current_run_target'), currentRunTargetLabel] as [string, string]]
+              : []),
             [ti(language, 'device_profile'), meta.profile_id],
-            [ti(language, 'model'), meta.model],
             [ti(language, 'run_status'), isRunnable ? ti(language, 'runnable') : ti(language, 'not_runnable')],
             [t.layoutPosition, `X ${currentPosition[0].toFixed(1)} / Z ${currentPosition[2].toFixed(1)}`],
             [ti(language, 'asset'), selectedAsset?.manifest.asset_id ?? 'virtual-profile']

@@ -775,7 +775,7 @@ function AICommandTerminal({
     : null;
   const primaryStarter = starterPrompts[0] ?? '';
   const guidedPlaceholder = primaryStarter
-    ? `${primaryStarter} ${language === 'zh' ? '·' : '·'} ${t(language, 'command_result_workspace_above')}`
+    ? `${primaryStarter} · ${t(language, 'command_result_workspace_above')}`
     : labels.placeholder;
   const observationHint =
     status.kind === 'running'
@@ -840,6 +840,7 @@ function AICommandTerminal({
         <button
           type="button"
           disabled
+          title={language === 'zh' ? '\u591a\u8def\u5f84\u9a8c\u8bc1\u5c06\u5728\u540e\u7eed\u7248\u672c\u63d0\u4f9b\u3002' : 'Multi-path validation ships in a later version.'}
           className="h-9 rounded-[3px] border border-border-panel px-3 text-[13px] font-medium text-text-secondary opacity-40"
         >
           {labels.validate}
@@ -896,12 +897,12 @@ function AICommandTerminal({
         <span>{t(language, 'command_target_notice')}</span>
         <span className="text-[#4B5563]">|</span>
         <span>{t(language, 'command_safe_blocked_notice')}</span>
-        <span className="text-[#4B5563]">|</span>
-        <span>{t(language, 'simulation_only')}</span>
+        {/* "Simulation only" already lives on the viewport badge + Governor header (UI audit B3). */}
       </div>
       <div className="ml-20 flex min-h-5 items-center gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'starter_commands')}</div>
-        <div className="custom-scrollbar flex flex-1 items-center gap-1.5 overflow-x-auto overflow-y-hidden whitespace-nowrap">
+        {/* Wrap instead of a hidden horizontal scrollbar (UI audit A4). */}
+        <div className="flex flex-1 flex-wrap items-center gap-1.5">
           {primaryStarter && (
             <span className="shrink-0 text-[11px] text-[#5F6670]">{t(language, 'command_try_first')}</span>
           )}
@@ -911,7 +912,7 @@ function AICommandTerminal({
               type="button"
               onClick={() => onPromptChange(starter)}
               title={starter}
-              className="max-w-[320px] shrink-0 truncate rounded-[3px] border border-border-panel bg-[#232529] px-2 py-[3px] text-[11px] font-medium text-text-primary hover:bg-[#2B2D31]"
+              className="max-w-[420px] truncate rounded-[3px] border border-border-panel bg-[#232529] px-2 py-[3px] text-[11px] font-medium text-text-primary hover:bg-[#2B2D31]"
             >
               {starter}
             </button>
@@ -2622,7 +2623,7 @@ export default function Home() {
           <button type="button" title={!currentRunTargetRunnable ? t(language, 'select_runnable_target_hint') : undefined} onClick={() => void runScenario()} disabled={running || !currentRunTargetRunnable} className="h-7 rounded-[3px] border border-[#075985] bg-[#0284C7] px-3 text-[13px] font-bold text-white hover:bg-[#0369A1] disabled:cursor-not-allowed disabled:opacity-40">
             {t(language, 'app_run')}
           </button>
-          <span className={`h-7 rounded-[3px] border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${labReport?.result === 'blocked' ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : replayPlaying ? 'border-status-running-edge bg-status-warning-surface text-status-running' : labReport?.result === 'pass' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-border-panel bg-[#232529] text-text-secondary'}`}>
+          <span title={language === 'zh' ? '\u4e0a\u6b21\u8fd0\u884c\u7684\u6700\u7ec8\u7ed3\u679c\uff1b\u7ec8\u7aef\u5fbd\u7ae0\u663e\u793a\u547d\u4ee4\u6d41\u72b6\u6001\uff0cGovernor \u663e\u793a\u7f16\u8bd1\u51b3\u7b56\u3002' : 'Final result of the last run; the terminal badge shows command-flow state, the Governor shows the compile decision.'} className={`h-7 rounded-[3px] border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${labReport?.result === 'blocked' ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : replayPlaying ? 'border-status-running-edge bg-status-warning-surface text-status-running' : labReport?.result === 'pass' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-border-panel bg-[#232529] text-text-secondary'}`}>
             {labReport?.result === 'blocked' ? t(language, 'status_safety_blocked') : replayPlaying ? t(language, 'status_playing_motion') : labReport?.result === 'pass' ? t(language, 'status_executed') : t(language, 'status_idle')}
           </span>
           <button type="button" onClick={stopRun} className="h-7 rounded-[3px] border border-[#4C1D1D] bg-[#25191B] px-3 text-[13px] font-semibold text-status-blocked-soft hover:bg-[#3A2020]">

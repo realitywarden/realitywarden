@@ -12,8 +12,29 @@ import { SemanticDeviceStage } from './SemanticDeviceStage';
 import { StageErrorBoundary } from './StageErrorBoundary';
 import type { UiLanguage } from './LabConfigurator';
 
+// Structured reason codes first (safety layers emit `code:detail` strings);
+// keyword matching only as a legacy fallback. Unknown codes fall through to
+// the raw reason - untranslated beats mistranslated (UI audit D3).
+const BLOCKED_REASON_CODES_ZH: Array<[string, string]> = [
+  ['sensor_missing', '\u5b89\u5168\u4f20\u611f\u5668\u65e0\u6570\u636e\uff0c\u9ed8\u8ba4\u62e6\u622a\u3002'],
+  ['sensor_stale', '\u4f20\u611f\u5668\u8bfb\u6570\u8fc7\u671f\uff0c\u9ed8\u8ba4\u62e6\u622a\u3002'],
+  ['sensor_invalid', '\u4f20\u611f\u5668\u8bfb\u6570\u8d85\u51fa\u7269\u7406\u5408\u7406\u8303\u56f4\uff0c\u9ed8\u8ba4\u62e6\u622a\u3002'],
+  ['sensor_frozen', '\u4f20\u611f\u5668\u8bfb\u6570\u7591\u4f3c\u51bb\u7ed3\uff0c\u9ed8\u8ba4\u62e6\u622a\uff08\u9700\u663e\u5f0f\u590d\u4f4d\uff09\u3002'],
+  ['sensor_type_mismatch', '\u4f20\u611f\u5668\u7c7b\u578b/\u5355\u4f4d\u4e0e\u5b89\u5168\u58f0\u660e\u4e0d\u7b26\uff0c\u9ed8\u8ba4\u62e6\u622a\u3002'],
+  ['sensor_timestamp', '\u4f20\u611f\u5668\u65f6\u95f4\u6233\u975e\u6cd5\uff0c\u9ed8\u8ba4\u62e6\u622a\u3002'],
+  ['device_timestamp', '\u7f3a\u5c11\u6216\u975e\u6cd5\u7684\u8bbe\u5907\u4fa7\u65f6\u95f4\u6233\uff0c\u9ed8\u8ba4\u62e6\u622a\u3002'],
+  ['interlock_distance', '\u8ddd\u79bb\u4e92\u9501\u89e6\u53d1\uff1a\u76ee\u6807\u8fc7\u8fd1\u3002'],
+  ['invalid_interlock_override', '\u4e92\u9501\u8986\u76d6\u975e\u6cd5\uff08\u53ea\u5141\u8bb8\u6536\u7d27\uff09\u3002'],
+  ['invalid_safety_clock', '\u5b89\u5168\u65f6\u949f\u975e\u6cd5\uff0c\u9ed8\u8ba4\u62e6\u622a\u3002'],
+  ['actuation_requires_gate', '\u6267\u884c\u547d\u4ee4\u53ea\u80fd\u7ecf\u5b89\u5168\u95e8\u4e0b\u53d1\u3002'],
+  ['unsupported_capability', '\u8bbe\u5907\u4e0d\u652f\u6301\u8be5\u80fd\u529b\u3002']
+];
+
 function localBlockedReason(reason: string | undefined, language: UiLanguage) {
   if (!reason || language === 'en') return reason;
+  for (const [prefix, label] of BLOCKED_REASON_CODES_ZH) {
+    if (reason.startsWith(prefix)) return `${label}\uff08${reason}\uff09`;
+  }
   if (reason.includes('Unsupported action')) return '\u8bbe\u5907\u4e0d\u652f\u6301\u8be5\u52a8\u4f5c\u3002';
   if (reason.includes('Forbidden zone') || reason.includes('forbidden')) return '\u547d\u4ee4\u89e6\u53d1\u4e86\u7981\u6b62\u533a\u89c4\u5219\u3002';
   if (reason.includes('outside workspace')) return '\u76ee\u6807\u8d85\u51fa\u8bbe\u5907\u5de5\u4f5c\u7a7a\u95f4\u3002';
@@ -99,10 +120,21 @@ export function VirtualDeviceStage({
       }}
     >
       <div className="relative min-h-0 flex-1">
-        <div className="pointer-events-none absolute inset-2 z-20 border border-[#FACC15]/10">
-          <div className="absolute left-2 top-2 rounded-[3px] border border-[#FACC15]/20 bg-black/30 px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-status-warning/75 backdrop-blur-sm">
+        {/* Single top-left stack (UI audit A1/A3): each viewport corner owns
+            exactly one overlay stack so absolutely-positioned layers can no
+            longer collide. The badge text stays English in both locales - it
+            is a safety stamp matching the Runtime Governor boundary label. */}
+        <div className="pointer-events-none absolute left-3 top-3 z-20 flex max-w-[42%] flex-col items-start gap-1">
+          <div className="rounded-[3px] border border-[#FACC15]/20 bg-black/30 px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-status-warning/75 backdrop-blur-sm">
             Airgapped · Simulation Only
           </div>
+          {!compactSingleDeviceView && (
+            <div className="max-w-full truncate rounded-[3px] border border-white/5 bg-black/28 px-2 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md" title={t(language, 'workspace_drop_hint')}>
+              <span className="font-semibold text-[#E6EAF0]">{language === 'zh' ? '\u5de5\u4f5c\u533a' : 'Workspace'}</span>
+              <span className="mx-2 text-[#4B5563]">|</span>
+              <span>{t(language, 'workspace_drop_hint')}</span>
+            </div>
+          )}
         </div>
         <StageErrorBoundary language={language}>
         <SemanticDeviceStage
@@ -136,35 +168,22 @@ export function VirtualDeviceStage({
             </div>
           </div>
         )}
-        {!compactSingleDeviceView && (
-          <div className="pointer-events-none absolute left-3 top-10 max-w-[46%] rounded-[3px] border border-white/5 bg-black/28 px-2 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md">
-            <span className="font-semibold text-[#E6EAF0]">{language === 'zh' ? '\u5de5\u4f5c\u533a' : 'Workspace'}</span>
-            <span className="mx-2 text-[#4B5563]">|</span>
-            <span>{t(language, 'workspace_drop_hint')}</span>
-          </div>
-        )}
         {compactSingleDeviceView && (
-          <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/26 px-2.5 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md">
+          <div className="pointer-events-none absolute left-1/2 top-3 z-10 max-w-[50%] -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/26 px-2.5 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md">
             <div>{t(language, 'workspace_drop_hint')}</div>
             <div className="text-[#7E8791]">{t(language, 'workspace_drag_hint')}</div>
           </div>
         )}
-        <div className="pointer-events-none absolute left-1/2 top-12 -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/24 px-2 py-1 text-[11px] leading-4 text-[#A7B0BA] backdrop-blur-md">
-          <span className="font-semibold text-[#E6EAF0]">{t(language, 'active_workspace_device')}</span>
-          <span className="mx-1 text-[#4B5563]">-&gt;</span>
-          <span>{displayName}</span>
-          <span className="mx-2 text-[#4B5563]">|</span>
-          <span className="font-semibold text-[#E6EAF0]">{t(language, 'current_run_target')}</span>
-          <span className="mx-1 text-[#4B5563]">-&gt;</span>
-          <span>{displayName}</span>
-          <span className="mx-2 text-[#4B5563]">|</span>
-          <span className="font-semibold text-[#E6EAF0]">{t(language, 'workspace_observe_here')}</span>
-        </div>
+        {/* Consolidated focus panel (UI audit A1/A2/B4): the former centered
+            strip duplicated the device name and collided with this panel below
+            ~1500px viewport width. Solid panel styling so it does not read as
+            a stuck tooltip. */}
         {!compactSingleDeviceView && (
-          <div className="pointer-events-none absolute right-3 top-12 min-w-[210px] max-w-[280px] rounded-[3px] border border-white/5 bg-black/32 px-2 py-1 text-[11px] leading-4 text-[#A7B0BA] backdrop-blur-md">
-            <div>
+          <div className="pointer-events-none absolute right-3 top-12 z-20 min-w-[210px] max-w-[280px] rounded-[3px] border border-border-panel bg-[#15171A]/95 px-2 py-1.5 text-[11px] leading-4 text-[#A7B0BA]">
+            <div className="truncate" title={displayName}>
               <span className="font-semibold text-[#E6EAF0]">{t(language, 'active_workspace_device')}</span>: {displayName}
             </div>
+            <div className="mt-0.5 text-[#7E8791]">{t(language, 'current_run_target')} · {t(language, 'workspace_observe_here')}</div>
             <div className="mt-0.5 text-[#7E8791]">{t(language, 'workspace_drag_snap_precision')}</div>
             {scenarioPreview && !running && (
               <div className="mt-0.5 text-[#7E8791]">{t(language, 'workspace_preview_hint')}</div>
@@ -203,8 +222,6 @@ export function VirtualDeviceStage({
           <span className="text-[#E6EAF0]">{t(language, 'adapter')}</span>: {t(language, 'simulator_adapter_short')}
           <span className="mx-2 text-[#4B5563]">|</span>
           <span className="text-[#E6EAF0]">{t(language, 'fidelity')}</span>: {localizeFidelity(language, fidelity.level)}
-          <span className="mx-2 text-[#4B5563]">|</span>
-          <span className="text-[#E6EAF0]">{t(language, 'simulation_only')}</span>
         </div>
         {!compactSingleDeviceView && (
           <div className="pointer-events-none absolute bottom-3 right-3 rounded-[3px] border border-white/5 bg-black/35 px-2 py-1 text-[11px] leading-4 text-[#8A8F98] opacity-80 backdrop-blur-md">
