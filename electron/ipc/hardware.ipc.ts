@@ -134,6 +134,80 @@ class HardwareConnection {
     return this.enqueue(() => this.disconnectExclusive());
   }
 
+  /**
+   * Read-only device probe: open -> boot wait -> diagnose_hardware (with a
+   * read_distance fallback for legacy firmware) -> close. Never actuates.
+   * The renderer interprets the raw result via lib/hardware/SetupAdvisor.
+   */
+  probe(portPath: string) {
+    return this.enqueue(() => this.probeExclusive(portPath));
+  }
+
+  private async probeExclusive(portPath: string) {
+    if (typeof portPath !== 'string' || portPath.trim().length === 0) {
+      return { ok: false as const, error: 'invalid serial port path' };
+    }
+    const loaded = loadSerialPortModule();
+    if ('error' in loaded) return { ok: false as const, error: loaded.error };
+    await this.disconnectExclusive();
+    const port = new loaded.SerialPort({ path: portPath, baudRate: 115200, autoOpen: false });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        port.open((error) => (error ? reject(error) : resolve()));
+      });
+    } catch (error) {
+      return { ok: false as const, error: `open failed: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    this.port = port;
+    port.on('data', (chunk) => {
+      if (this.port === port) this.handleData(chunk.toString('utf8'));
+    });
+    port.on('close', () => this.handlePortClosed(port, 'port closed'));
+    port.on('error', () => {
+      if (this.port === port) this.failAllPending('port error');
+    });
+    try {
+      // DTR toggle resets the ESP32; wait for the firmware to boot.
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      const diagnose = await this.request('diagnose_hardware', 3000);
+      if (diagnose.ok) {
+        return { ok: true as const, diagnoseOk: true as const, diagnoseData: diagnose.data };
+      }
+      // Legacy firmware (pre-diagnostics) answers read_distance but not
+      // diagnose_hardware. Distinguish that from plain silence.
+      const legacyRead = await this.request('read_distance', 3000);
+      if (!legacyRead.ok && (diagnose.error ?? '').includes('timeout')) {
+        return { ok: false as const, error: diagnose.error ?? 'no valid response' };
+      }
+      return {
+        ok: true as const,
+        diagnoseOk: false as const,
+        diagnoseError: diagnose.error,
+        legacyReadOk: legacyRead.ok,
+        legacyDeviceMs: typeof legacyRead.data?.deviceMs === 'number'
+      };
+    } finally {
+      await this.disconnectExclusive();
+    }
+  }
+
+  /** Probe every listed port sequentially; stop at the first identified device. */
+  autoDetect() {
+    return this.enqueue(async () => {
+      const listed = await this.listPorts();
+      if (!listed.ok || !('ports' in listed) || !listed.ports) {
+        return { ok: false as const, error: 'error' in listed && listed.error ? listed.error : 'list ports failed' };
+      }
+      const results: Array<Record<string, unknown>> = [];
+      for (const port of listed.ports) {
+        const probe = await this.probeExclusive(port.path);
+        results.push({ path: port.path, label: port.label, ...probe });
+        if ('diagnoseOk' in probe && probe.diagnoseOk === true) break;
+      }
+      return { ok: true as const, results };
+    });
+  }
+
   private async disconnectExclusive() {
     this.failAllPending('disconnected');
     const port = this.port;
@@ -226,4 +300,7 @@ export function registerHardwareIpc() {
     connection.connect(payload.portPath));
   ipcMain.handle('hardware:readDistance', () => connection.readDistance());
   ipcMain.handle('hardware:disconnect', () => connection.disconnect());
+  ipcMain.handle('hardware:probe', (_event, payload: { portPath: string }) =>
+    connection.probe(payload.portPath));
+  ipcMain.handle('hardware:autoDetect', () => connection.autoDetect());
 }

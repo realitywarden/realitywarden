@@ -16,6 +16,8 @@
  * a read_distance request.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { adviceForFailure, interpretProbe } from '@/lib/hardware/SetupAdvisor';
+import type { FirmwareIdentity, SetupAdvice } from '@/lib/hardware/SetupAdvisor';
 
 export interface HardwareBridgeResult {
   ok: boolean;
@@ -24,11 +26,30 @@ export interface HardwareBridgeResult {
   ports?: Array<{ path: string; label?: string }>;
 }
 
+export interface HardwareProbeResult {
+  ok: boolean;
+  error?: string;
+  diagnoseOk?: boolean;
+  diagnoseData?: Record<string, unknown>;
+  diagnoseError?: string;
+  legacyReadOk?: boolean;
+  legacyDeviceMs?: boolean;
+}
+
+export interface HardwareAutoDetectResult {
+  ok: boolean;
+  error?: string;
+  results?: Array<HardwareProbeResult & { path: string; label?: string }>;
+}
+
 export interface HardwareBridge {
   listPorts: () => Promise<HardwareBridgeResult>;
   connect: (portPath: string) => Promise<HardwareBridgeResult>;
   readDistance: () => Promise<HardwareBridgeResult>;
   disconnect: () => Promise<HardwareBridgeResult>;
+  /** Optional (older desktop builds): read-only probe / auto-detect. */
+  probe?: (portPath: string) => Promise<HardwareProbeResult>;
+  autoDetect?: () => Promise<HardwareAutoDetectResult>;
 }
 
 function bridge(): HardwareBridge | null {
@@ -52,6 +73,9 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
   const [lastError, setLastError] = useState<string | null>(null);
   const [distanceCm, setDistanceCm] = useState<number | null>(null);
   const [listing, setListing] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [identity, setIdentity] = useState<FirmwareIdentity | null>(null);
+  const [advice, setAdvice] = useState<SetupAdvice[]>([]);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollGeneration = useRef(0);
   const mounted = useRef(true);
@@ -147,15 +171,16 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
     pollTimer.current = setTimeout(() => void poll(), 2000);
   }, [language, stopPolling]);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (portOverride?: string) => {
+    const target = portOverride ?? selectedPort;
     const api = bridge();
-    if (!api || !selectedPort) return;
+    if (!api || !target) return;
     setStatus('connecting');
     setLastError(null);
     setDistanceCm(null);
     let result: HardwareBridgeResult;
     try {
-      result = await api.connect(selectedPort);
+      result = await api.connect(target);
     } catch (error) {
       result = { ok: false, error: `connect failed: ${errorMessage(error)}` };
     }
@@ -169,6 +194,66 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
       setLastError(result.error ?? (zh ? '连接失败' : 'connect failed'));
     }
   }, [selectedPort, startPolling, zh]);
+
+  /** Zero-config path: scan every port, identify the firmware, connect. */
+  const autoDetect = useCallback(async () => {
+    const api = bridge();
+    if (!api?.autoDetect) return;
+    setDetecting(true);
+    setLastError(null);
+    setAdvice([]);
+    setIdentity(null);
+    try {
+      const result = await api.autoDetect();
+      if (!mounted.current) return;
+      if (!result.ok || !result.results) {
+        setLastError(result.error ?? 'auto-detect failed');
+        setAdvice([adviceForFailure(result.error ?? 'auto-detect failed')]);
+        return;
+      }
+      setPorts(result.results.map((entry) => ({ path: entry.path, label: entry.label })));
+      const hit = result.results.find((entry) => entry.ok && entry.diagnoseOk)
+        ?? result.results.find((entry) => entry.ok);
+      if (!hit) {
+        const firstError = result.results[0]?.error;
+        setLastError(zh ? '未发现 RealityWarden 设备' : 'No RealityWarden device found');
+        setAdvice([adviceForFailure(firstError ?? (result.results.length === 0 ? 'not found' : 'no valid response'))]);
+        return;
+      }
+      const interpreted = interpretProbe({
+        diagnoseOk: hit.diagnoseOk === true,
+        diagnoseData: hit.diagnoseData,
+        diagnoseError: hit.diagnoseError,
+        legacyReadOk: hit.legacyReadOk,
+        legacyDeviceMs: hit.legacyDeviceMs
+      });
+      setIdentity(interpreted.identity);
+      setAdvice(interpreted.advice);
+      setSelectedPort(hit.path);
+      // Auto-connect unless the advisor found a blocker (e.g. no device clock:
+      // the gate would refuse everything anyway - surface the fix first).
+      if (interpreted.identity && !interpreted.advice.some((item) => item.severity === 'error')) {
+        await connect(hit.path);
+      }
+    } catch (error) {
+      if (mounted.current) {
+        setLastError(errorMessage(error));
+        setAdvice([adviceForFailure(errorMessage(error))]);
+      }
+    } finally {
+      if (mounted.current) setDetecting(false);
+    }
+  }, [connect, zh]);
+
+
+
+  // Advice shown to the operator: structured probe advice wins; otherwise the
+  // last raw error is classified on the fly so no failure is ever unexplained.
+  const shownAdvice: SetupAdvice[] = advice.length > 0
+    ? advice
+    : lastError
+      ? [adviceForFailure(lastError)]
+      : [];
 
   const statusText = !available
     ? (zh ? '不可用（仅桌面版）' : 'unavailable (desktop app only)')
@@ -226,6 +311,17 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
                 </select>
                 <button
                   type="button"
+                  onClick={() => void autoDetect()}
+                  disabled={detecting || status !== 'disconnected' || !bridge()?.autoDetect}
+                  title={zh
+                    ? '扫描所有串口，自动识别 RealityWarden 固件并连接（只读探测，不会驱动舵机）。'
+                    : 'Scan every serial port, identify RealityWarden firmware and connect (read-only probe, never actuates).'}
+                  className="h-7 rounded-[3px] border border-status-warning-edge px-2 text-[12px] font-semibold text-status-warning hover:bg-status-warning-surface disabled:opacity-40"
+                >
+                  {detecting ? (zh ? '检测中…' : 'Detecting…') : (zh ? '自动检测' : 'Auto-detect')}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void refreshPorts()}
                   disabled={listing || status !== 'disconnected'}
                   className="h-7 rounded-[3px] border border-border-panel px-2 text-[12px] text-text-secondary hover:bg-[#232736] disabled:opacity-40"
@@ -261,8 +357,39 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
                       : `${distanceCm.toFixed(1)} cm`}
                 </span>
               </div>
+              {identity && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 font-semibold text-[#38BDF8]">
+                    {identity.legacy
+                      ? (zh ? 'RealityWarden（旧版固件）' : 'RealityWarden (legacy firmware)')
+                      : `RealityWarden v${identity.firmwareVersion ?? '?'}`}
+                  </span>
+                  {identity.sensorModel && (
+                    <span className="rounded-[3px] border border-border-panel bg-[#232529] px-1.5 py-0.5 text-text-secondary">
+                      {identity.sensorModel} · {identity.sensorInterface ?? '?'}
+                    </span>
+                  )}
+                  <span className={`rounded-[3px] border px-1.5 py-0.5 font-semibold ${identity.reportsDeviceMs ? 'border-status-executed-edge text-status-executed-soft' : 'border-status-blocked-edge text-status-blocked-soft'}`}>
+                    {identity.reportsDeviceMs
+                      ? (zh ? '设备时钟正常' : 'device clock OK')
+                      : (zh ? '缺设备时钟（会被安全门拦截）' : 'no device clock (gate will block)')}
+                  </span>
+                </div>
+              )}
               {lastError && (
                 <div className="break-all font-mono text-[11px] text-status-blocked-soft">{lastError}</div>
+              )}
+              {shownAdvice.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {shownAdvice.map((item) => (
+                    <div
+                      key={item.code}
+                      className={`rounded-[3px] border px-2 py-1 text-[11px] leading-4 ${item.severity === 'ok' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : item.severity === 'warning' ? 'border-status-warning-edge bg-status-warning-surface text-status-warning' : 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'}`}
+                    >
+                      {zh ? item.zh : item.en}
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}
