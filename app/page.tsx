@@ -11,6 +11,8 @@ import { LabConfigurator } from '@/components/LabConfigurator';
 import { RealHardwarePanel } from '@/components/RealHardwarePanel';
 import { EvidenceSidebar } from '@/components/EvidenceSidebar';
 import { AppHeader } from '@/components/AppHeader';
+import { ManualImportWizard } from '@/components/ManualImportWizard';
+import { validateStoredManualImport, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
 import type { UiLanguage } from '@/components/LabConfigurator';
 import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
@@ -72,6 +74,8 @@ interface LabWorkspaceFile {
   devices: WorkspaceDeviceRecord[];
   /** v0.4 custom actions (untrusted on load; revalidated per manifest). */
   custom_actions?: unknown[];
+  /** v0.5 reviewed, simulation-only manual import proposals. */
+  manual_imports?: unknown[];
 }
 
 interface OpenRealityProjectFile {
@@ -1238,7 +1242,9 @@ export default function Home() {
   const [importedAssets, setImportedAssets] = useState<DeviceAsset[]>([]);
   const [assetImportOpen, setAssetImportOpen] = useState(false);
   const [actionComposerOpen, setActionComposerOpen] = useState(false);
+  const [manualImportOpen, setManualImportOpen] = useState(false);
   const [customActions, setCustomActions] = useState<ActionManifest[]>([]);
+  const [manualImports, setManualImports] = useState<ManualImportRecord[]>([]);
   const [selectedWorkspaceDeviceId, setSelectedWorkspaceDeviceId] = useState<string | null>(defaultWorkspaceDevice.id);
   const [consoleLogs, setConsoleLogs] = useState<string[]>(startupLogs('en'));
   const [llmChipState, setLlmChipState] = useState<'checking' | 'online' | 'offline' | 'compiling'>('checking');
@@ -1490,8 +1496,9 @@ export default function Home() {
     selected_workspace_device_id: selectedWorkspaceDeviceId,
     prompt,
     devices: workspaceDevices,
-    custom_actions: customActions
-  }), [customActions, language, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
+    custom_actions: customActions,
+    manual_imports: manualImports
+  }), [customActions, language, manualImports, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
 
   const buildProjectFile = useCallback((): OpenRealityProjectFile => ({
     project: {
@@ -1552,6 +1559,13 @@ export default function Home() {
       else showNotice('warning', noticeMessage(workspace.language, `自定义动作被拒绝（${checked.code}）：${checked.detail}`, `Custom action rejected (${checked.code}): ${checked.detail}`));
     }
     setCustomActions(loadedActions);
+    const loadedManualImports: ManualImportRecord[] = [];
+    for (const raw of workspace.manual_imports ?? []) {
+      const checked = validateStoredManualImport(raw, BUILTIN_INTENT_IDS);
+      if (checked.ok) loadedManualImports.push(checked.record);
+      else showNotice('warning', noticeMessage(workspace.language, `手册导入记录被拒绝：${checked.detail}`, `Manual import record rejected: ${checked.detail}`));
+    }
+    setManualImports(loadedManualImports);
     setSelectedProfileId(nextProfile.id);
     setDeviceType(nextProfile.deviceMeta.device_type);
     setScenarioId(nextScenario.id);
@@ -2344,6 +2358,8 @@ export default function Home() {
     setCurrentActionFrame(null);
     setLivePlaybackEvents([]);
     setLiveAdapterCommands([]);
+    setCustomActions([]);
+    setManualImports([]);
     setReplayIndex(0);
     showNotice('info', noticeMessage(language, '\u5df2\u65b0\u5efa\u672a\u547d\u540d\u5de5\u7a0b\u3002', 'Created a new untitled project.'));
   }, [cancelActiveWork, clearRuntimeDecision, language, showNotice]);
@@ -2608,6 +2624,7 @@ export default function Home() {
         onNew={newProject}
         onOpen={() => void openProject()}
         onImportAsset={() => setAssetImportOpen(true)}
+        onImportManual={() => setManualImportOpen(true)}
         onSave={() => void saveWorkspace(false)}
         onSaveAs={() => void saveWorkspace(true)}
         onRestore={restoreLastWorkspace}
@@ -2832,6 +2849,18 @@ export default function Home() {
             });
           }}
           onClose={() => setActionComposerOpen(false)}
+        />
+      )}
+      {manualImportOpen && (
+        <ManualImportWizard
+          language={language}
+          builtinIntentIds={BUILTIN_INTENT_IDS}
+          existingRecords={manualImports}
+          onSave={(record) => {
+            setManualImports((current) => [...current.filter((item) => item.device_meta.profile_id !== record.device_meta.profile_id), record]);
+            showNotice('success', noticeMessage(language, '已保存仅仿真的手册提案；真实硬件保持禁用。', 'Saved simulation-only manual proposal; real hardware remains disabled.'));
+          }}
+          onClose={() => setManualImportOpen(false)}
         />
       )}
     </div>

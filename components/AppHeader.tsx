@@ -8,16 +8,18 @@ interface FileMenuProps {
   onNew: () => void;
   onOpen: () => void;
   onImportAsset: () => void;
+  onImportManual: () => void;
   onSave: () => void;
   onSaveAs: () => void;
   onRestore: () => void;
 }
 
-export function FileMenu({ language, onNew, onOpen, onImportAsset, onSave, onSaveAs, onRestore }: FileMenuProps) {
+export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore }: FileMenuProps) {
   const items: Array<[string, () => void]> = [
     [t(language, 'app_new'), onNew],
     [t(language, 'app_open'), onOpen],
     [t(language, 'app_import_asset'), onImportAsset],
+    [language === 'zh' ? '导入设备手册…' : 'Import Device Manual…', onImportManual],
     [t(language, 'app_save_project'), onSave],
     [t(language, 'app_save_as'), onSaveAs],
     [t(language, 'app_restore'), onRestore]

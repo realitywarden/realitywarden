@@ -25,6 +25,7 @@
 - **v0.4 动作库 JSON ✅**：Action Composer 支持严格版本化的 `realitywarden.action-library` 导入/导出。导入逐条重新执行权威 `validateActionManifest`，任一非法动作整包原子拒绝；重复 ID、已有动作覆盖、未知包字段均显式拒绝，不做静默覆盖或收窄放行。
 - **v0.4 三设备参考 recipe ✅**：Robot Arm / Smart Light / Camera Sensor 各有可载入参考动作；Action Composer 按当前 profile 初始化基元并一键载入匹配 recipe，载入前仍执行权威校验。Manifest 新增精确 `device_type` 匹配与 `value` 默认拒绝策略；智能灯仅允许 boolean 开关、0–100 有限亮度及声明颜色，参数完整保留到 TaskDSL/语义执行。Action Manifest 套件由 15 项增至 **18 项**，覆盖跨设备导入、恶意参数及三 recipe 安全/语义执行。
 - **v0.4 3D 禁区编辑 ✅**：3D Workspace 将选中设备的 `forbidden_zones` 渲染为红色空间标记；编辑模式基于 profile `known_targets` 显示候选区，可点击 3D 标记或列表切换。修改复用 `updateWorkspaceDevice`，立即废弃旧报告、回放和 Workspace Validation；Runtime/Safety 仍消费同一份 constraints，未增加执行旁路。
+- **v0.5 手册/PDF 本地提案闭环 ✅**：File → Import Device Manual 支持文本层 PDF/Markdown/文本，经本地 Ollama 生成严格 DeviceProfile + Action Manifest 草案；原文、SHA-256、模型与原始输出随项目保留。编辑后必须重新勾选人工确认，保存与项目加载均重新严格校验；跨设备幻觉能力、未知字段/动作/目标/值及越界包络整包拒绝。记录结构性固定 `profile_source: manual_import`、`simulation_only: true`、`supported_adapters: ['simulator']`，不注册真实 adapter、不触碰证据锁或执行通路。恶意提取回归 **7/7**。
 - **旧 Adapter 清理 ✅**：确认 `RealDeviceAdapter.ts`、`MockDeviceTransport.ts`、`DeviceTransport.ts` 零生产引用后删除。Virtual Lab 继续由 `SimulatorAdapter + AdapterInterface` 承载；真机契约升级为 `HardwareExecutionGate` 唯一签发私有 ticket、`Esp32DeviceAdapter` 强制验票、`RealDeviceTransport.sendActuation` 分离裸发送，相关源码断言同步收紧，文档不再宣传可自由调用的通用真机 AdapterInterface。
 - 零配置接入：REAL HARDWARE 面板新增“自动检测”——扫描全部串口→只读探测识别固件（diagnose_hardware，旧固件回退 read_distance）→显示版本/传感器/设备时钟状态→给出中文修复建议（`lib/hardware/SetupAdvisor.ts`，与排障文档同源）→无阻断项自动连接。
 - 一键烧录：`npm run hardware:flash -- --port COMx`。预编译 ESP32-S3 镜像入库（`firmware/prebuilt/`，sha256 校验后才写入）；esptool 自动发现（PATH/python -m/Arduino15），找不到给安装与 IDE 回退指引。
@@ -56,7 +57,7 @@
 
 ## 下一步
 
-1. **v0.5 主线**：手册/PDF → 本地 LLM 草拟 DeviceProfile + Action Manifest，必须保留原始提取、人工复核且默认 simulation-only。
+1. **v0.5 深化**：为已复核 simulation-only 提案补语义几何预览、差异视图与显式启用到 Virtual Lab 的二次门；仍不得自动启用或关联真实 adapter。
 2. **成品化持续项**：继续清理评估文档陈旧语义、安装包验包与可访问性/错误恢复细节。
 3. **发布操作（所有者）**：可选代码签名、tag、上传安装包与 SHA256；这些外部动作不改变软件完成状态。
 

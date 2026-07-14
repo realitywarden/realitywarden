@@ -61,6 +61,7 @@ npm run verify                           # 全量(慢,提交前跑一次)
 3. v0.4 深化:动作库导入/导出(JSON,已有 schema)、禁区(forbidden_zones)在 3D 工作区可视化编辑。
 4. **v0.3.0 发布收口 ✅**:版本、发布说明、试用/评估文档与路线图已对齐；`RealityWarden-0.3.0-Setup.exe` 已通过包内容、版本资源与安装态 smoke。
 5. **v0.4 传感器 polling/subscription ✅**:每个真实硬件基元动作前取得新一代传感器证据；读失败立即清空证据，设备时钟倒退/冻结显式锁存；多步动作首个 blocked/failed/cancelled 后零后续帧。
-6. **v0.4 三设备参考 recipe ✅**:Robot Arm / Smart Light / Camera Sensor recipe 经同一 Manifest validator 与仿真安全链；智能灯 typed value 不再丢参，跨设备/无策略参数默认拒绝；Action Composer 可载入匹配 recipe。下一步进入 v0.5 手册/PDF 本地提取草案，不等待真机验收。
+6. **v0.4 三设备参考 recipe ✅**:Robot Arm / Smart Light / Camera Sensor recipe 经同一 Manifest validator 与仿真安全链；智能灯 typed value 不再丢参，跨设备/无策略参数默认拒绝；Action Composer 可载入匹配 recipe。
+7. **v0.5 手册/PDF simulation-only 提案 ✅**:File 菜单导入文本层 PDF/Markdown/文本，本地 Ollama 只生成不可信草案；原文/SHA256/原始输出保留，人工逐项确认且保存/加载双重严格校验。DeviceProfile 固定 simulator-only，Action Manifest 继续走权威 validator，绝不注册真实 adapter。下一步补已复核提案的语义几何预览、差异视图及启用到 Virtual Lab 的第二道明确确认。
 
 git:提交按功能单元、message 说明验证结果;所有者本机负责 push。
