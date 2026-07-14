@@ -7,12 +7,12 @@
 
 | # | 动作 | 通过标准 |
 |---|------|----------|
-| 1 | Arduino IDE 烧录 `firmware/esp32-realitywarden/esp32-realitywarden.ino` | 上传成功。**必须重刷**：旧固件不发 deviceMs，场景 1 会被 `device_timestamp_unavailable` 拦（这是预期防护，不是硬件坏了） |
+| 1 | 一键烧录：`npm run hardware:flash -- --port COMx`（S3 用 “COM/UART” 烧录口；无 esptool 时脚本给出安装/回退指引，回退 = Arduino IDE 烧 `.ino`） | 上传成功。**必须重刷**：旧固件不发 deviceMs，场景 1 会被 `device_timestamp_unavailable` 拦（这是预期防护，不是硬件坏了） |
 | 2 | ESP32-S3 注意双串口 | 烧录用 UART0/"COM" 口；运行用固件实际打印的口（`USB CDC On Boot: Enabled` 时是原生 USB 口）。设备管理器确认 COM 号 |
 | 3 | 供电 | 用电脑 USB 或插墙充电头。**不要用普通充电宝**（低负载自动断电） |
 | 4 | 接线 | SG90→GPIO18；HC-SR04 VCC→5V、TRIG→GPIO5、ECHO→**1kΩ+2kΩ 分压**→GPIO4；外部供电必须与 ESP32 **共地** |
 | 5 | `npm install`（含 serialport） | 无报错 |
-| 6 | `npm run hardware:diagnose -- --port COMx` | 结尾 PASS：有效读数 + deviceMs 正常。FAIL 则按输出的分类结论排查（可加 `--loopback` 做 GPIO5→GPIO4 接线自检） |
+| 6 | 桌面版可先点 REAL HARDWARE 面板“自动检测”（扫描全部串口、识别固件版本、给出人话修复建议、自动连接）；或命令行 `npm run hardware:diagnose -- --port COMx` | 结尾 PASS：有效读数 + deviceMs 正常。FAIL 则按输出的分类结论排查（可加 `--loopback` 做 GPIO5→GPIO4 接线自检） |
 
 ## 1. 四场景执行（按顺序）
 

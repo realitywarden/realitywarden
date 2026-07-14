@@ -17,8 +17,16 @@ execution is always labeled `real_hardware`.
 
 ## 1. Flash the firmware
 
-Open `firmware/esp32-realitywarden/esp32-realitywarden.ino` in the Arduino IDE,
-pick your ESP32 board and port, and upload. The firmware speaks
+One-click (recommended): a prebuilt, sha256-verified ESP32-S3 image ships in
+`firmware/prebuilt/`. With esptool available (pip, or the Arduino IDE ESP32
+core installs it automatically - the script finds that copy):
+
+```bash
+npm run hardware:flash -- --port COM3   # ESP32-S3: use the "COM/UART" flashing port
+```
+
+Fallback: open `firmware/esp32-realitywarden/esp32-realitywarden.ino` in the
+Arduino IDE, pick your ESP32 board and port, and upload. The firmware speaks
 newline-delimited JSON at 115200 baud and refuses (never clamps) angles
 outside 0-180.
 

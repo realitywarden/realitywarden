@@ -22,9 +22,13 @@
 ## 当前状态（2026-07-11 更新）
 
 - 版本：v0.2 close-out。v0.3 软件项已完成（LLM 编译器接线、REAL HARDWARE 只读面板、一键烧录待硬件）。
+- **冻结令修订（2026-07-11，所有者指示）**：真机接入易用性（零配置检测/一键烧录/诊断建议）纳入允许范围；六条安全不变量与验收 DoD 不变。
+- 零配置接入：REAL HARDWARE 面板新增“自动检测”——扫描全部串口→只读探测识别固件（diagnose_hardware，旧固件回退 read_distance）→显示版本/传感器/设备时钟状态→给出中文修复建议（`lib/hardware/SetupAdvisor.ts`，与排障文档同源）→无阻断项自动连接。
+- 一键烧录：`npm run hardware:flash -- --port COMx`。预编译 ESP32-S3 镜像入库（`firmware/prebuilt/`，sha256 校验后才写入）；esptool 自动发现（PATH/python -m/Arduino15），找不到给安装与 IDE 回退指引。
+- audit 3.1 ✅：transport 协议级错因（malformed/unmatched/oversized）随通信失败进入 adapter 失败详情与审计，超时不再无差别。
 - 新增：`npm run test:virtual-loopback` — 虚拟串口全链路 e2e（真 transport/真协议/真 ticket → 固件仿真器），覆盖四场景 + legacy 固件无 deviceMs，已接入 verify 链。host 侧验收路径已预先证明，真机失败可直接归因固件/接线/供电。
 - 新增：验收操作卡 `docs/acceptance/OPERATOR_CARD.md`（单页，前置检查/命令/判定/存证/速查）。
-- verify 链：全绿。real-hardware 安全不变量测试 **31/31**（audit 2.1 四条 + 2.2 五条 + 1.1 两条 + transport 硬化三条 + 诊断/安全元数据若干）；app + electron typecheck 绿；全部 runner/编译型套件绿。（沙盒内 Next 生产构建因 powershell 清理脚本跳过，本机 `npm run build` 补认一次。）
+- verify 链：全绿。real-hardware 安全不变量测试 **37/37**（audit 2.1 四条 + 2.2 五条 + 1.1 两条 + transport 硬化三条 + 诊断/安全元数据若干）；app + electron typecheck 绿；全部 runner/编译型套件绿。（沙盒内 Next 生产构建因 powershell 清理脚本跳过，本机 `npm run build` 补认一次。）
 - 固件：`firmware/esp32-realitywarden/esp32-realitywarden.ino` v0.1.4 / 协议 4：`deviceMs`（audit 2.2）+ 只读诊断命令 `diagnose_hardware` / `diagnose_gpio_loopback` + `echoDurationUs`。**验收前必须重刷此版**，否则旧固件不发 deviceMs，actuation 被 `device_timestamp_unavailable` 拦（预期行为）。
 - 新增只读诊断 CLI：`npm run hardware:diagnose -- --port COMx`（永不驱动舵机；`--loopback` 可做 GPIO5→GPIO4 接线自检）。排障见 `docs/REAL_HARDWARE_ESP32.md` Troubleshooting（充电宝休眠/共地/S3 双串口/毛刺读数/分压等 6 类实测故障）。
 
