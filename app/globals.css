@@ -4,38 +4,57 @@
 
 @layer base {
   :root {
-    --color-background: #0F111A;
-    --color-panel: #181B26;
-    --color-panel-border: #2A2E3D;
-    --color-text-main: #E2E8F0;
-    --color-text-muted: #64748B;
-    --color-console-blue: #0284C7;
-    --color-pass-green: #10B981;
-    --color-blocked-red: #E11D48;
+    /* RealityWarden desktop design tokens. New UI must consume these semantic
+       names; legacy aliases below remain only while older panels migrate. */
+    --color-background: #090A0C;
+    --color-surface: #121418;
+    --color-surface-raised: #1C1E24;
+    --color-surface-overlay: rgba(18, 20, 24, 0.96);
+    --color-border: #2A2D35;
+    --color-border-strong: #3A3F4A;
+    --color-text-primary: #E5E7EB;
+    --color-text-secondary: #9CA3AF;
+    --color-text-muted: #6B7280;
+    --color-accent: #38BDF8;
+    --color-success: #22C55E;
+    --color-warning: #FACC15;
+    --color-danger: #F43F5E;
+    --color-simulation: #38BDF8;
+    --color-real-hardware: #F59E0B;
+    --focus-ring: 0 0 0 2px rgba(56, 189, 248, 0.72);
+    --shadow-floating: 0 10px 30px rgba(0, 0, 0, 0.42);
+    --radius-control: 4px;
+    --radius-panel: 6px;
+
+    /* Transitional aliases used by the existing workbench. */
+    --color-panel: var(--color-surface);
+    --color-panel-border: var(--color-border);
+    --color-text-main: var(--color-text-primary);
+    --color-console-blue: var(--color-accent);
+    --color-pass-green: var(--color-success);
+    --color-blocked-red: var(--color-danger);
     --color-code-dark: #111827;
-    --color-code-light: #2B2D31;
-    --color-bg-app: #0F111A;
-    --color-bg-panel: #181B26;
-    --color-bg-workspace: #0F111A;
-    --color-border-panel: #2A2E3D;
-    --color-text-primary: #DBDEE1;
-    --color-text-secondary: #949BA4;
-    --color-text-muted-strong: #6B7280;
+    --color-code-light: var(--color-surface-raised);
+    --color-bg-app: var(--color-background);
+    --color-bg-panel: var(--color-surface);
+    --color-bg-workspace: var(--color-background);
+    --color-border-panel: var(--color-border);
+    --color-text-muted-strong: var(--color-text-muted);
     /* STATUS COLORS - single source of truth. Rule: red = blocked, green =
        executed, orange = running, yellow = warning. Status colors are for
        status badges/labels ONLY, never for object bodies or decoration.
        Mirrored in lib/ui/statusColors.ts for three.js materials. */
-    --color-status-blocked: #E11D48;
+    --color-status-blocked: var(--color-danger);
     --color-status-blocked-soft: #FCA5A5;
     --color-status-blocked-edge: #7F1D1D;
     --color-status-blocked-surface: #2B1116;
-    --color-status-executed: #10B981;
+    --color-status-executed: var(--color-success);
     --color-status-executed-soft: #34D399;
     --color-status-executed-edge: #064E3B;
     --color-status-executed-surface: #10251D;
     --color-status-running: #F59E0B;
     --color-status-running-edge: #92400E;
-    --color-status-warning: #FACC15;
+    --color-status-warning: var(--color-warning);
     --color-status-warning-edge: #713F12;
     --color-status-warning-surface: #2A2112;
     --color-grid-main: #3E4045;
@@ -43,9 +62,8 @@
     --color-axis-x: #E11D48;
     --color-axis-y: #059669;
     --color-axis-z: #0284C7;
-    --color-selected: #3B82F6;
+    --color-selected: var(--color-accent);
     --color-running: #F59E0B;
-    --color-warning: #EAB308;
   }
 
   body {
@@ -102,21 +120,31 @@
   .industrial-workbench select,
   .industrial-workbench input,
   .industrial-workbench textarea {
-    background: #181B26 !important;
+    background: var(--color-surface) !important;
     border-color: var(--color-border-panel) !important;
     color: var(--color-text-primary) !important;
   }
 
   .industrial-workbench button:hover,
   .industrial-workbench select:hover {
-    background: #232736 !important;
+    background: var(--color-surface-raised) !important;
+  }
+
+  .industrial-workbench button:focus-visible,
+  .industrial-workbench select:focus-visible,
+  .industrial-workbench input:focus-visible,
+  .industrial-workbench textarea:focus-visible,
+  .industrial-workbench [role='tab']:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring) !important;
   }
 
   .ors-panel {
     border: 1px solid var(--color-border-panel);
-    background: rgba(24, 27, 38, 0.94);
+    background: var(--color-surface-overlay);
     color: var(--color-text-primary);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-floating) !important;
   }
 
   .ors-section-title {
@@ -168,5 +196,20 @@
 
   .industrial-workbench .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgba(148, 155, 164, 0.32);
+  }
+
+  /* Shared hierarchy: 11 is metadata only; controls/body start at 12/13. */
+  .rw-text-meta { font-size: 11px; line-height: 16px; }
+  .rw-text-label { font-size: 12px; line-height: 16px; }
+  .rw-text-body { font-size: 13px; line-height: 20px; }
+  .rw-text-title { font-size: 15px; line-height: 20px; font-weight: 600; }
+  .rw-text-heading { font-size: 18px; line-height: 24px; font-weight: 600; }
+
+  .rw-floating-panel {
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-panel) !important;
+    background: var(--color-surface-overlay);
+    box-shadow: var(--shadow-floating) !important;
+    backdrop-filter: blur(8px);
   }
 }

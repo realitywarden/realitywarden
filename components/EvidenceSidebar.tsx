@@ -45,8 +45,8 @@ export function EvidenceSidebar({
     : { evidence: 'Audit & Governor', inspector: 'Device Inspector' };
 
   return (
-    <aside className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border-panel bg-bg-panel">
-      <div className="grid h-10 shrink-0 grid-cols-2 border-b border-border-panel bg-[#121418] p-1" role="tablist" aria-label={language === 'zh' ? '证据侧栏' : 'Evidence sidebar'}>
+    <aside className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface">
+      <div className="grid h-10 shrink-0 grid-cols-2 border-b border-border bg-surface p-1" role="tablist" aria-label={language === 'zh' ? '证据侧栏' : 'Evidence sidebar'}>
         {(['evidence', 'inspector'] as EvidenceTab[]).map((tab) => {
           const selected = activeTab === tab;
           return (
@@ -56,7 +56,7 @@ export function EvidenceSidebar({
               role="tab"
               aria-selected={selected}
               onClick={() => setActiveTab(tab)}
-              className={`min-w-0 border px-2 text-[13px] font-semibold transition-colors focus:outline-none focus:ring-1 focus:ring-[#38BDF8] ${selected ? 'border-[#3A3F4A] bg-[#262931] text-[#E5E7EB]' : 'border-transparent text-[#9CA3AF] hover:bg-[#1C1E24] hover:text-[#E5E7EB]'}`}
+              className={`min-w-0 border px-2 text-[13px] font-semibold transition-colors focus:outline-none ${selected ? 'border-border-strong bg-surface-raised text-text-primary' : 'border-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary'}`}
             >
               <span className="truncate">{labels[tab]}</span>
             </button>
@@ -68,7 +68,7 @@ export function EvidenceSidebar({
         {activeTab === 'evidence' ? evidence : inspector}
       </div>
 
-      <div className="shrink-0 border-t-4 border-[#EAB308] [border-image:repeating-linear-gradient(135deg,#EAB308_0_10px,#171717_10px_20px)_1]">
+      <div className="shrink-0 border-t-4 border-real-hardware [border-image:repeating-linear-gradient(135deg,var(--color-real-hardware)_0_10px,#090A0C_10px_20px)_1]">
         {hardware}
       </div>
     </aside>

@@ -10,6 +10,16 @@ const config: Config = {
     extend: {
       colors: {
         background: 'var(--color-background)',
+        surface: 'var(--color-surface)',
+        'surface-raised': 'var(--color-surface-raised)',
+        'surface-overlay': 'var(--color-surface-overlay)',
+        border: 'var(--color-border)',
+        'border-strong': 'var(--color-border-strong)',
+        accent: 'var(--color-accent)',
+        success: 'var(--color-success)',
+        danger: 'var(--color-danger)',
+        simulation: 'var(--color-simulation)',
+        'real-hardware': 'var(--color-real-hardware)',
         panel: 'var(--color-panel)',
         'panel-border': 'var(--color-panel-border)',
         'text-main': 'var(--color-text-main)',
