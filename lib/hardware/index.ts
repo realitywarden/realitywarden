@@ -13,12 +13,14 @@ export type {
 // Only the ActuationTicket TYPE is public (needed to implement
 // RealDeviceTransport); the ticket VALUE stays gate-private.
 export type { ActuationTicket } from './internal/actuation';
-export { TransportOfflineError } from './RealDeviceTransport';
+export { TransportFrameRejectedError, TransportOfflineError } from './RealDeviceTransport';
 export type { RealDeviceTransport } from './RealDeviceTransport';
 export { SerialEsp32Transport, createNodeSerialPort } from './SerialEsp32Transport';
 export type { SerialPortLike, SerialEsp32TransportOptions } from './SerialEsp32Transport';
 export { Esp32DeviceAdapter, ESP32_SERVO_RIG_CAPABILITIES } from './Esp32DeviceAdapter';
 export { HardwareExecutionGate } from './HardwareExecutionGate';
+export { adviceForFailure, interpretProbe, EXPECTED_FIRMWARE, EXPECTED_FIRMWARE_VERSION } from './SetupAdvisor';
+export type { FirmwareIdentity, SetupAdvice, AdviceSeverity } from './SetupAdvisor';
 export {
   MedianFilter,
   DistanceInterlock,

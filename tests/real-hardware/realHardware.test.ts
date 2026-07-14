@@ -14,7 +14,7 @@ import { HardwareExecutionGate } from '../../lib/hardware/HardwareExecutionGate'
 // structural single-path contract itself (audit 1.1).
 import { ACTUATION_TICKET, isActuationCommand } from '../../lib/hardware/internal/actuation';
 import type { ActuationTicket } from '../../lib/hardware/internal/actuation';
-import { TransportOfflineError } from '../../lib/hardware/RealDeviceTransport';
+import { TransportFrameRejectedError, TransportOfflineError } from '../../lib/hardware/RealDeviceTransport';
 import type { RealDeviceTransport } from '../../lib/hardware/RealDeviceTransport';
 import { SerialEsp32Transport } from '../../lib/hardware/SerialEsp32Transport';
 import type { SerialPortLike } from '../../lib/hardware/SerialEsp32Transport';
@@ -388,13 +388,18 @@ async function testEveryAuditEntryCarriesHardwareSignalSent() {
 /** Fake serial port for SerialEsp32Transport protocol tests. */
 class FakeSerialPort implements SerialPortLike {
   written: string[] = [];
+  openCalls = 0;
   closeCalls = 0;
   private opened = false;
   private dataListeners: Array<(chunk: string) => void> = [];
   private closeListeners: Array<() => void> = [];
   autoRespond: ((line: string) => string | null) | null = null;
 
-  async open() { this.opened = true; }
+  async open() {
+    this.openCalls += 1;
+    if (this.opened) throw new Error('port already open');
+    this.opened = true;
+  }
   async close() {
     this.closeCalls += 1;
     if (!this.opened) throw new Error('port not open');
@@ -551,6 +556,66 @@ async function testAdapterExecuteRequiresGateTicket() {
   assert(outcome.status === 'executed', `gate path must still execute, got: ${outcome.status} (${outcome.reason})`);
 }
 
+async function testProtocolErrorSurfacesInFailureDetails() {
+  // Audit 3.1: a timeout caused by garbled device output must carry the
+  // protocol-level cause in the failure detail, not just "timeout".
+  const port = new FakeSerialPort();
+  const transport = new SerialEsp32Transport(port, { requestTimeoutMs: 300 });
+  await transport.connect();
+  const adapter = new Esp32DeviceAdapter(transport, ESP32_SERVO_RIG_CAPABILITIES);
+
+  const pending = adapter.readDistanceDetailed('hc-sr04');
+  port.emitData('not-json\n');
+  const detailed = await pending;
+  assert(detailed.reading === null, 'garbled response must not produce a reading');
+  assert(
+    (detailed.error ?? '').indexOf('last protocol error:') >= 0
+      && (detailed.error ?? '').indexOf('malformed') >= 0,
+    `failure detail must carry the protocol error, got: ${detailed.error}`
+  );
+  await transport.disconnect();
+}
+
+async function testSetupAdvisorClassifications() {
+  const { adviceForFailure, interpretProbe } = await import('../../lib/hardware/SetupAdvisor');
+
+  assert(adviceForFailure('Access denied').code === 'port_busy', 'busy port must classify as port_busy');
+  assert(adviceForFailure('device response timeout after 3000ms').code === 'no_response', 'timeout must classify as no_response');
+  assert(adviceForFailure('serialport_not_installed: ...').code === 'serialport_missing', 'missing serialport must classify');
+  assert(adviceForFailure('no echo pulse (sensor disconnected)').code === 'sensor_no_echo', 'no echo must classify');
+  assert(adviceForFailure('???').code === 'unknown_failure', 'unknown failures surface verbatim');
+  assert(adviceForFailure('???').zh.indexOf('???') >= 0, 'unknown failure advice must include the raw error');
+
+  const ready = interpretProbe({
+    diagnoseOk: true,
+    diagnoseData: { firmware: 'realitywarden-esp32', firmwareVersion: '0.1.4', protocolVersion: 4, sensorInterface: 'pulse_width', sensorModel: 'HC-SR04-compatible', successfulEchoes: 3, deviceMs: 1234 }
+  });
+  assert(ready.identity?.firmwareVersion === '0.1.4' && ready.identity.reportsDeviceMs, 'ready probe must yield identity');
+  assert(ready.advice.length === 1 && ready.advice[0].code === 'ready', 'healthy device must yield a single ready advice');
+
+  const outdated = interpretProbe({
+    diagnoseOk: true,
+    diagnoseData: { firmware: 'realitywarden-esp32', firmwareVersion: '0.1.2', sensorInterface: 'pulse_width', successfulEchoes: 3, deviceMs: 5 }
+  });
+  assert(outdated.advice.some((item) => item.code === 'firmware_outdated'), 'old firmware must advise upgrade');
+
+  const noClock = interpretProbe({
+    diagnoseOk: true,
+    diagnoseData: { firmware: 'realitywarden-esp32', firmwareVersion: '0.1.4', sensorInterface: 'pulse_width', successfulEchoes: 3 }
+  });
+  assert(noClock.advice.some((item) => item.code === 'no_device_clock' && item.severity === 'error'), 'missing deviceMs must be an error (gate will block)');
+
+  const legacyNoClock = interpretProbe({ diagnoseOk: false, diagnoseError: 'unsupported cmd', legacyReadOk: true, legacyDeviceMs: false });
+  assert(legacyNoClock.identity?.legacy === true, 'unsupported diagnose + working reads = legacy identity');
+  assert(legacyNoClock.advice.some((item) => item.code === 'legacy_no_clock' && item.severity === 'error'), 'legacy without clock must demand reflash');
+
+  const deadEcho = interpretProbe({
+    diagnoseOk: true,
+    diagnoseData: { firmware: 'realitywarden-esp32', firmwareVersion: '0.1.4', sensorInterface: 'pulse_width', successfulEchoes: 0, deviceMs: 5 }
+  });
+  assert(deadEcho.advice.some((item) => item.code === 'sensor_no_echo'), 'zero echoes must surface sensor wiring advice');
+}
+
 async function testSerialTransportRejectsDuplicatePendingIds() {
   const port = new FakeSerialPort();
   const transport = new SerialEsp32Transport(port, { requestTimeoutMs: 500 });
@@ -567,6 +632,81 @@ async function testSerialTransportRejectsDuplicatePendingIds() {
   port.emitData(`${JSON.stringify({ id: 'duplicate', ok: true, data: { distanceCm: 42 } })}\n`);
   const response = await first;
   assert(response.ok === true, 'the original request must retain ownership of its response id');
+  await transport.disconnect();
+}
+
+async function testSerialTransportSerializesLifecycle() {
+  const port = new FakeSerialPort();
+  const transport = new SerialEsp32Transport(port, { requestTimeoutMs: 500 });
+
+  // Two renderer/runtime callers can race connect(). The physical port must be
+  // opened once; a second open on serialport fails with "already open".
+  await Promise.all([transport.connect(), transport.connect()]);
+  assert(transport.isConnected() === true, 'concurrent connect calls must leave the transport connected');
+  assert(port.openCalls === 1, 'concurrent connect calls must open the physical port exactly once');
+
+  // Lifecycle calls are applied in invocation order. Reconnect must wait for
+  // the close to finish instead of racing open against an in-progress close.
+  await Promise.all([transport.disconnect(), transport.connect()]);
+  assert(transport.isConnected() === true, 'disconnect followed by connect must finish connected');
+  const closeCallsAfterReconnect: number = port.closeCalls;
+  const openCallsAfterReconnect: number = port.openCalls;
+  assert(closeCallsAfterReconnect === 1 && openCallsAfterReconnect === 2,
+    'ordered reconnect must perform exactly one close and one new open');
+  await transport.disconnect();
+}
+
+async function testSerialTransportRetiresAmbiguousRequestIds() {
+  const port = new FakeSerialPort();
+  const transport = new SerialEsp32Transport(port, { requestTimeoutMs: 20 });
+  await transport.connect();
+
+  const timeout = await transport.send({ id: 'late-id', cmd: 'read_distance' }).then(
+    () => { throw new Error('timeout expected'); },
+    (error: Error) => error
+  );
+  assert(timeout.message.indexOf('timeout') >= 0, 'first request must time out');
+
+  const reused = await transport.send({ id: 'late-id', cmd: 'read_distance' }).then(
+    () => { throw new Error('retired request id must be rejected'); },
+    (error: Error) => error
+  );
+  assert(reused instanceof TransportFrameRejectedError, 'retired id rejection must be known pre-wire failure');
+  assert(reused.message.indexOf('reused_request_id') === 0, 'ambiguous timed-out id must not be reused');
+  assert(port.written.length === 1, 'retired id retry must put zero additional frames on the wire');
+
+  // A late response remains unmatched; it can never claim ownership of a new
+  // request with the same logical id.
+  port.emitData(`${JSON.stringify({ id: 'late-id', ok: true, data: { distanceCm: 42 } })}\n`);
+  assert((transport.getLastProtocolError() ?? '').indexOf('unmatched') >= 0, 'late response must be surfaced as unmatched');
+  await transport.disconnect();
+}
+
+async function testRejectedFramesReportZeroSignal() {
+  const port = new FakeSerialPort();
+  const transport = new SerialEsp32Transport(port, { requestTimeoutMs: 500 });
+  await transport.connect();
+  const adapter = new Esp32DeviceAdapter(transport, ESP32_SERVO_RIG_CAPABILITIES);
+  const gate = new HardwareExecutionGate(adapter, new SafetyMonitor(), new RuntimeAuditLog());
+
+  const emptyId = await gate.run({
+    command: { ...servoCommand(45), id: '' },
+    sensorReadings: [reading(100)],
+    nowMs: NOW
+  });
+  assert(emptyId.status === 'failed', 'invalid request id must fail before the wire');
+  assert(emptyId.result.signalSent === false, 'pre-wire id rejection must report signalSent=false');
+  assert(port.written.length === 0, 'invalid request id must emit zero bytes');
+
+  const oversized = await gate.run({
+    command: { ...servoCommand(45), id: `huge-${'界'.repeat(600)}` },
+    sensorReadings: [reading(100)],
+    nowMs: NOW
+  });
+  assert(oversized.status === 'failed', 'frame larger than firmware input buffer must fail locally');
+  assert(oversized.reason.indexOf('outgoing_frame_too_large') === 0, 'oversized frame must have an explicit reason');
+  assert(oversized.result.signalSent === false, 'oversized pre-wire rejection must report signalSent=false');
+  assert(port.written.length === 0, 'oversized request must emit zero bytes');
   await transport.disconnect();
 }
 
@@ -590,10 +730,20 @@ async function testSerialTransportBoundsMalformedInput() {
   const port = new FakeSerialPort();
   const transport = new SerialEsp32Transport(port, { requestTimeoutMs: 500 });
   await transport.connect();
+  const pending = transport.send({ id: 'after-noise', cmd: 'read_distance' });
+  let settled = false;
+  void pending.then(() => { settled = true; }, () => { settled = true; });
   port.emitData('x'.repeat(5000));
   assert((transport.getLastProtocolError() ?? '').indexOf('oversized') >= 0, 'oversized unterminated input must be discarded');
 
-  const pending = transport.send({ id: 'after-noise', cmd: 'read_distance' });
+  // This JSON is a suffix of the same oversized physical line, not a new
+  // frame. It must be discarded through the newline and cannot resolve the
+  // pending request.
+  port.emitData(`${JSON.stringify({ id: 'after-noise', ok: true, data: { distanceCm: 18 } })}\n`);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert(settled === false, 'suffix of an oversized line must never be parsed as a response');
+
+  // Parser is synchronized after that newline; the next complete line works.
   port.emitData(`${JSON.stringify({ id: 'after-noise', ok: true, data: { distanceCm: 18 } })}\n`);
   assert((await pending).ok === true, 'transport must recover after discarding oversized noise');
   await transport.disconnect();
@@ -608,6 +758,32 @@ async function testSerialTransportBoundsMalformedInput() {
     }
     assert(threw, `invalid request timeout ${requestTimeoutMs} must be rejected`);
   }
+}
+
+async function testConditioningRejectsNonFiniteValuesAndThresholds() {
+  const { DistanceInterlock, MedianFilter } = await import('../../lib/hardware/SensorConditioning');
+  const filter = new MedianFilter(3);
+  assert(filter.push(Number.POSITIVE_INFINITY) === null, 'median filter must reject +Infinity');
+  assert(filter.push(Number.NEGATIVE_INFINITY) === null, 'median filter must reject -Infinity');
+  assert(filter.push(10) === 10, 'finite sample remains usable after rejected values');
+
+  for (const options of [
+    { lockBelowCm: Number.NEGATIVE_INFINITY, releaseAboveCm: 12 },
+    { lockBelowCm: 10, releaseAboveCm: Number.POSITIVE_INFINITY },
+    { lockBelowCm: -1, releaseAboveCm: 12 }
+  ]) {
+    let threw = false;
+    try {
+      // eslint-disable-next-line no-new
+      new DistanceInterlock(options);
+    } catch {
+      threw = true;
+    }
+    assert(threw, `invalid distance thresholds must be rejected: ${JSON.stringify(options)}`);
+  }
+
+  const interlock = new DistanceInterlock({ lockBelowCm: 10, releaseAboveCm: 12 });
+  assert(interlock.update(Number.POSITIVE_INFINITY).locked === true, 'non-finite reading must fail closed');
 }
 
 async function testMedianFilterRejectsNoise() {
@@ -1040,10 +1216,16 @@ async function main() {
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['audit 1.1: raw transport send() refuses actuation frames', testRawSendRefusesActuationFrames],
     ['audit 1.1: adapter.execute requires the gate ticket', testAdapterExecuteRequiresGateTicket],
+    ['audit 3.1: protocol error surfaces in failure details', testProtocolErrorSurfacesInFailureDetails],
+    ['setup advisor classifies failures and probe results', testSetupAdvisorClassifications],
     ['serial transport rejects duplicate pending ids', testSerialTransportRejectsDuplicatePendingIds],
+    ['serial transport serializes connect/disconnect lifecycle', testSerialTransportSerializesLifecycle],
+    ['serial transport retires ambiguous timed-out ids', testSerialTransportRetiresAmbiguousRequestIds],
+    ['pre-wire frame rejection reports zero signal', testRejectedFramesReportZeroSignal],
     ['serial transport clears partial data across reconnect', testSerialTransportClearsPartialDataAcrossReconnect],
     ['serial transport bounds malformed input and validates timeouts', testSerialTransportBoundsMalformedInput],
     ['median filter rejects noise, never fakes data', testMedianFilterRejectsNoise],
+    ['conditioning rejects non-finite values and thresholds', testConditioningRejectsNonFiniteValuesAndThresholds],
     ['distance interlock hysteresis stays conservative', testDistanceInterlockHysteresis]
   ];
 

@@ -26,6 +26,13 @@ export interface RealDeviceTransport {
    * actuate.
    */
   sendActuation(frame: TransportFrame, ticket: ActuationTicket): Promise<TransportResponse>;
+  /**
+   * Most recent protocol-level error (malformed line, unmatched id, oversized
+   * input), if the transport tracks one. Surfaced into failure details so a
+   * timeout caused by garbled data is distinguishable from silence
+   * (audit 3.1: degradations must be visible, not just honest).
+   */
+  getLastProtocolError?(): string | null;
 }
 
 export class TransportOfflineError extends Error {
@@ -34,5 +41,19 @@ export class TransportOfflineError extends Error {
     this.name = 'TransportOfflineError';
     // Required for instanceof to work when compiled to ES5.
     Object.setPrototypeOf(this, TransportOfflineError.prototype);
+  }
+}
+
+/**
+ * The host rejected a frame before writing any bytes to the physical port.
+ * Callers use this distinction to keep `signalSent` honest: malformed,
+ * duplicate, retired, or oversized frames are failures, but they are known to
+ * have emitted zero hardware signal.
+ */
+export class TransportFrameRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TransportFrameRejectedError';
+    Object.setPrototypeOf(this, TransportFrameRejectedError.prototype);
   }
 }

@@ -1,6 +1,6 @@
 import { ACTUATION_TICKET } from './internal/actuation';
 import type { ActuationTicket } from './internal/actuation';
-import { TransportOfflineError } from './RealDeviceTransport';
+import { TransportFrameRejectedError, TransportOfflineError } from './RealDeviceTransport';
 import type { RealDeviceTransport } from './RealDeviceTransport';
 import type {
   HardwareCapabilityId,
@@ -86,6 +86,14 @@ export class Esp32DeviceAdapter {
     return this.transport.isConnected();
   }
 
+  /** Audit 3.1: attach the transport's protocol-level error (if any) to a
+   *  communication failure, so audit entries carry the real cause instead
+   *  of an undifferentiated timeout. */
+  private withProtocolError(base: string): string {
+    const protocolError = this.transport.getLastProtocolError?.();
+    return protocolError ? `${base} (last protocol error: ${protocolError})` : base;
+  }
+
   /**
    * Execute a command that has ALREADY been allowed by the SafetyMonitor.
    *
@@ -160,13 +168,16 @@ export class Esp32DeviceAdapter {
       if (error instanceof TransportOfflineError) {
         return { ok: false, signalSent: false, detail: 'hardware offline' };
       }
+      if (error instanceof TransportFrameRejectedError) {
+        return { ok: false, signalSent: false, detail: error.message };
+      }
       // Timeout / write errors after connect: the signal may have left the
       // host, but delivery was never confirmed. Report honestly as not ok;
       // signalSent stays false only when we know nothing left the host.
       return {
         ok: false,
         signalSent: true,
-        detail: `device communication failed: ${error instanceof Error ? error.message : String(error)}`
+        detail: this.withProtocolError(`device communication failed: ${error instanceof Error ? error.message : String(error)}`)
       };
     }
   }
@@ -219,7 +230,7 @@ export class Esp32DeviceAdapter {
     } catch (error) {
       return {
         reading: null,
-        error: error instanceof Error ? error.message : String(error)
+        error: this.withProtocolError(error instanceof Error ? error.message : String(error))
       };
     }
   }
