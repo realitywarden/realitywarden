@@ -34,3 +34,4 @@ demo/
 .next-verification/
 .next-browser/
 .tmp-virtual-loopback-test/
+dist-electron-runtime/

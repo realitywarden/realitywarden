@@ -1,13 +1,16 @@
 import { ipcMain } from 'electron';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 /**
  * Real-hardware IPC (v0.3, connection + read-only distance).
  *
  * This is the ONLY main-process surface for the renderer's REAL HARDWARE
- * panel. It deliberately exposes no actuation: the servo command is not
- * reachable from here (enforced by a desktop regression test). Real actuation
- * stays gated behind the runtime's HardwareExecutionGate and the
- * four-scenario device acceptance.
+ * panel. Actuation exists here in exactly ONE form: executeRealAngle(), which
+ * routes through the compiled HardwareExecutionGate chain and stays
+ * real_execution_locked until the four-scenario acceptance evidence exists
+ * (desktop regression enforces both properties). This file never hand-rolls
+ * an actuation frame.
  *
  * The newline-JSON protocol client below mirrors the semantics of
  * `lib/hardware/SerialEsp32Transport` (id-matched responses, hard timeouts,
@@ -292,6 +295,153 @@ class HardwareConnection {
   }
 }
 
+/**
+ * REAL EXECUTION service (product path, owner-approved 2026-07-11).
+ *
+ * Runs the SAME compiled safety chain the CLI demo and the invariant tests
+ * run - SafetyMonitor -> HardwareExecutionGate -> Esp32DeviceAdapter ->
+ * SerialEsp32Transport - loaded from dist-electron-runtime (built by
+ * scripts/build-electron.cjs). No protocol logic is duplicated here and no
+ * actuation frame is ever hand-rolled in this file: the gate chain is the
+ * only path, so every invariant (blocked => zero frames, ticket enforcement,
+ * default-block, honest audit) applies to UI execution identically.
+ *
+ * LOCK: execution stays disabled (real_execution_locked) until the
+ * four-scenario acceptance evidence exists in docs/acceptance/evidence/
+ * (>= 4 .json files) or ORS_REAL_EXECUTION=enabled is set explicitly for
+ * bench work. Every call additionally requires confirm:true from the UI.
+ */
+const APP_ROOT = path.join(__dirname, '..', '..');
+const EVIDENCE_DIR = path.join(APP_ROOT, 'docs', 'acceptance', 'evidence');
+const RUNTIME_LIB = path.join(APP_ROOT, 'dist-electron-runtime', 'lib');
+
+function evidenceCount(): number {
+  try {
+    return fs.readdirSync(EVIDENCE_DIR).filter((name) => name.endsWith('.json')).length;
+  } catch {
+    return 0;
+  }
+}
+
+function executionLock(): { locked: boolean; reason?: string; evidenceCount: number } {
+  const count = evidenceCount();
+  if (process.env.ORS_REAL_EXECUTION === 'enabled') {
+    return { locked: false, evidenceCount: count };
+  }
+  if (count >= 4) return { locked: false, evidenceCount: count };
+  return {
+    locked: true,
+    evidenceCount: count,
+    reason: `real_execution_locked: four-scenario acceptance evidence required (${count}/4 json files in docs/acceptance/evidence/). Run the acceptance per docs/acceptance/OPERATOR_CARD.md, or set ORS_REAL_EXECUTION=enabled for supervised bench work.`
+  };
+}
+
+interface RuntimeHardwareModule {
+  createNodeSerialPort(portPath: string, baudRate?: number): unknown;
+  SerialEsp32Transport: new (port: unknown, options: { requestTimeoutMs: number }) => {
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+  };
+  Esp32DeviceAdapter: new (transport: unknown) => {
+    readDistance(sensorId?: string): Promise<unknown | null>;
+    readDistanceDetailed(sensorId?: string): Promise<{ reading: unknown | null; error?: string }>;
+  };
+  HardwareExecutionGate: new (adapter: unknown) => {
+    run(request: unknown): Promise<{
+      status: 'executed' | 'failed' | 'blocked';
+      reason: string;
+      executionMode: string;
+      result: { ok: boolean; signalSent: boolean; detail: string };
+    }>;
+    getAuditLog(): { list(): unknown[] };
+  };
+  ESP32_SERVO_RIG_CAPABILITIES: unknown[];
+  buildConservativeMedianReading(readings: unknown[]): { value: number } | null;
+}
+
+function loadRuntimeHardware(): RuntimeHardwareModule | { error: string } {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(path.join(RUNTIME_LIB, 'hardware')) as RuntimeHardwareModule;
+  } catch (error) {
+    return {
+      error: 'runtime_chain_unavailable: compiled safety chain missing. Rebuild the desktop app (npm run desktop:dev / node scripts/build-electron.cjs). '
+        + `Underlying: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+async function executeRealAngle(payload: { portPath?: string; angle?: number; confirm?: boolean }) {
+  const lock = executionLock();
+  if (lock.locked) return { ok: false, error: lock.reason };
+  if (payload.confirm !== true) {
+    return { ok: false, error: 'confirmation_required: the UI must submit an explicit operator confirmation' };
+  }
+  const angle = payload.angle;
+  if (typeof angle !== 'number' || !Number.isFinite(angle)) {
+    return { ok: false, error: 'invalid_angle: numeric angle required' };
+  }
+  const portPath = payload.portPath;
+  if (typeof portPath !== 'string' || portPath.trim().length === 0) {
+    return { ok: false, error: 'invalid serial port path' };
+  }
+  const runtime = loadRuntimeHardware();
+  if ('error' in runtime) return { ok: false, error: runtime.error };
+
+  // The panel's read-only client must release the port before the real chain
+  // opens it; the UI reconnects afterwards.
+  await connection.disconnect();
+
+  const transport = new runtime.SerialEsp32Transport(runtime.createNodeSerialPort(portPath, 115200), { requestTimeoutMs: 3000 });
+  try {
+    await transport.connect();
+  } catch (error) {
+    return { ok: false, error: `open failed: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  try {
+    // ESP32 reboots on DTR toggle; wait for the firmware prompt window.
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+    const adapter = new runtime.Esp32DeviceAdapter(transport);
+    const gate = new runtime.HardwareExecutionGate(adapter);
+
+    const readings: unknown[] = [];
+    const readErrors: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const detailed = await adapter.readDistanceDetailed('hc-sr04');
+      if (detailed.reading) readings.push(detailed.reading);
+      else if (detailed.error) readErrors.push(detailed.error);
+    }
+    // Conservative median (oldest timestamps win). If no valid reading exists
+    // the gate default-blocks with sensor_missing - exactly like the demo.
+    const median = runtime.buildConservativeMedianReading(readings);
+    const outcome = await gate.run({
+      command: {
+        id: `ui-exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        deviceId: 'esp32-servo-rig',
+        capabilityId: 'move_to_angle',
+        args: { angle }
+      },
+      capabilityLimits: runtime.ESP32_SERVO_RIG_CAPABILITIES,
+      sensorReadings: median ? [median] : []
+    });
+    return {
+      ok: outcome.result.ok,
+      status: outcome.status,
+      reason: outcome.reason,
+      executionMode: outcome.executionMode,
+      signalSent: outcome.result.signalSent,
+      detail: outcome.result.detail,
+      distanceCm: median ? median.value : undefined,
+      readErrors,
+      audit: gate.getAuditLog().list()
+    };
+  } catch (error) {
+    return { ok: false, error: `execution failed: ${error instanceof Error ? error.message : String(error)}` };
+  } finally {
+    await transport.disconnect().catch(() => undefined);
+  }
+}
+
 const connection = new HardwareConnection();
 
 export function registerHardwareIpc() {
@@ -303,4 +453,7 @@ export function registerHardwareIpc() {
   ipcMain.handle('hardware:probe', (_event, payload: { portPath: string }) =>
     connection.probe(payload.portPath));
   ipcMain.handle('hardware:autoDetect', () => connection.autoDetect());
+  ipcMain.handle('hardware:executionStatus', () => executionLock());
+  ipcMain.handle('hardware:execute', (_event, payload: { portPath?: string; angle?: number; confirm?: boolean }) =>
+    executeRealAngle(payload));
 }

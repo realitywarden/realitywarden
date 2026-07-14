@@ -35,7 +35,9 @@ const api = {
     readDistance: () => ipcRenderer.invoke('hardware:readDistance'),
     disconnect: () => ipcRenderer.invoke('hardware:disconnect'),
     probe: (portPath: string) => ipcRenderer.invoke('hardware:probe', { portPath }),
-    autoDetect: () => ipcRenderer.invoke('hardware:autoDetect')
+    autoDetect: () => ipcRenderer.invoke('hardware:autoDetect'),
+    executionStatus: () => ipcRenderer.invoke('hardware:executionStatus'),
+    execute: (portPath: string, angle: number, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, angle, confirm })
   },
   onMenuAction: (callback: (action: MenuAction) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, action: MenuAction) => callback(action);

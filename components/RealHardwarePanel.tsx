@@ -50,6 +50,27 @@ export interface HardwareBridge {
   /** Optional (older desktop builds): read-only probe / auto-detect. */
   probe?: (portPath: string) => Promise<HardwareProbeResult>;
   autoDetect?: () => Promise<HardwareAutoDetectResult>;
+  /** Real execution (product path): locked until acceptance evidence exists. */
+  executionStatus?: () => Promise<HardwareExecutionLock>;
+  execute?: (portPath: string, angle: number, confirm: boolean) => Promise<HardwareExecuteOutcome>;
+}
+
+export interface HardwareExecutionLock {
+  locked: boolean;
+  reason?: string;
+  evidenceCount?: number;
+}
+
+export interface HardwareExecuteOutcome {
+  ok: boolean;
+  error?: string;
+  status?: 'executed' | 'failed' | 'blocked';
+  reason?: string;
+  executionMode?: string;
+  signalSent?: boolean;
+  detail?: string;
+  distanceCm?: number;
+  readErrors?: string[];
 }
 
 function bridge(): HardwareBridge | null {
@@ -76,6 +97,11 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
   const [detecting, setDetecting] = useState(false);
   const [identity, setIdentity] = useState<FirmwareIdentity | null>(null);
   const [advice, setAdvice] = useState<SetupAdvice[]>([]);
+  const [execLock, setExecLock] = useState<HardwareExecutionLock | null>(null);
+  const [execAngle, setExecAngle] = useState('45');
+  const [execConfirmed, setExecConfirmed] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [execOutcome, setExecOutcome] = useState<HardwareExecuteOutcome | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollGeneration = useRef(0);
   const mounted = useRef(true);
@@ -189,6 +215,8 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
       setStatus('connected');
       if (typeof result.distanceCm === 'number') setDistanceCm(result.distanceCm);
       startPolling();
+      const lockApi = bridge()?.executionStatus;
+      if (lockApi) void lockApi().then((lock) => { if (mounted.current) setExecLock(lock); }).catch(() => undefined);
     } else {
       setStatus('disconnected');
       setLastError(result.error ?? (zh ? '连接失败' : 'connect failed'));
@@ -246,6 +274,28 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
   }, [connect, zh]);
 
 
+
+  /** REAL actuation through the compiled gate chain (main process). */
+  const executeReal = useCallback(async () => {
+    const api = bridge();
+    if (!api?.execute || !selectedPort) return;
+    const angle = Number(execAngle);
+    setExecuting(true);
+    setExecOutcome(null);
+    stopPolling(); // main process closes our read connection during execution
+    try {
+      const outcome = await api.execute(selectedPort, angle, execConfirmed);
+      if (mounted.current) setExecOutcome(outcome);
+    } catch (error) {
+      if (mounted.current) setExecOutcome({ ok: false, error: errorMessage(error) });
+    } finally {
+      if (mounted.current) {
+        setExecuting(false);
+        setStatus('disconnected'); // port was handed to the execution chain
+        setDistanceCm(null);
+      }
+    }
+  }, [execAngle, execConfirmed, selectedPort, stopPolling]);
 
   // Advice shown to the operator: structured probe advice wins; otherwise the
   // last raw error is classified on the fly so no failure is ever unexplained.
@@ -392,6 +442,67 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
                 </div>
               )}
             </>
+          )}
+          {status === 'connected' && bridge()?.execute && (
+            <div className="flex flex-col gap-1.5 border-t border-[#3a2f1d] pt-2">
+              <div className="flex items-center gap-2">
+                <span className="rounded-[3px] border border-status-blocked-edge bg-status-blocked-surface px-1.5 text-[11px] font-bold uppercase tracking-wide text-status-blocked-soft">
+                  {zh ? '真机执行' : 'REAL EXECUTION'}
+                </span>
+                {execLock?.locked === false ? (
+                  <span className="text-[11px] text-status-executed-soft">{zh ? `已解锁（验收证据 ${execLock.evidenceCount ?? 0}/4）` : `unlocked (evidence ${execLock.evidenceCount ?? 0}/4)`}</span>
+                ) : (
+                  <span className="text-[11px] text-status-warning">{zh ? `锁定中（验收证据 ${execLock?.evidenceCount ?? 0}/4）` : `locked (evidence ${execLock?.evidenceCount ?? 0}/4)`}</span>
+                )}
+              </div>
+              {execLock?.locked !== false ? (
+                <div className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-2 py-1 text-[11px] leading-4 text-status-warning">
+                  {zh
+                    ? '完成四场景验收并把 4 份审计 JSON 存入 docs/acceptance/evidence/ 后自动解锁（操作卡：docs/acceptance/OPERATOR_CARD.md）。'
+                    : 'Unlocks automatically once the four acceptance audit JSON files exist in docs/acceptance/evidence/ (see docs/acceptance/OPERATOR_CARD.md).'}
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-text-secondary">{zh ? '目标角度' : 'target angle'}</span>
+                    <input
+                      value={execAngle}
+                      onChange={(event) => setExecAngle(event.target.value)}
+                      inputMode="numeric"
+                      className="h-7 w-16 rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 text-[12px] text-text-primary"
+                    />
+                    <span className="text-[11px] text-text-secondary">0–180°</span>
+                    <button
+                      type="button"
+                      onClick={() => void executeReal()}
+                      disabled={executing || !execConfirmed}
+                      className="h-7 rounded-[3px] border border-status-blocked-edge px-2 text-[12px] font-semibold text-status-blocked-soft hover:bg-status-blocked-surface disabled:opacity-40"
+                    >
+                      {executing ? (zh ? '执行中…' : 'Executing…') : (zh ? '通过安全门执行' : 'Execute via gate')}
+                    </button>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[11px] text-text-secondary">
+                    <input type="checkbox" checked={execConfirmed} onChange={(event) => setExecConfirmed(event.target.checked)} />
+                    {zh ? '我确认设备周围无人且可以安全动作' : 'I confirm the rig area is clear and safe to move'}
+                  </label>
+                  <div className="text-[11px] leading-4 text-text-muted">
+                    {zh
+                      ? '执行走完整安全链：传感器采样→中值→互锁→安全门。缺读数/过近/越界都会被拦截并如实审计。'
+                      : 'Execution runs the full safety chain: sensor sampling, median, interlock, gate. Missing data / close obstacle / out-of-range all block, honestly audited.'}
+                  </div>
+                </>
+              )}
+              {execOutcome && (
+                <div className={`rounded-[3px] border px-2 py-1 font-mono text-[11px] leading-4 ${execOutcome.status === 'executed' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'}`}>
+                  <div>
+                    [{execOutcome.executionMode ?? 'real_hardware'}] {execOutcome.status ?? 'error'}
+                    {typeof execOutcome.signalSent === 'boolean' ? ` · hardwareSignalSent=${String(execOutcome.signalSent)}` : ''}
+                    {typeof execOutcome.distanceCm === 'number' ? ` · ${execOutcome.distanceCm.toFixed(1)} cm` : ''}
+                  </div>
+                  <div className="break-all">{execOutcome.reason ?? execOutcome.error ?? execOutcome.detail}</div>
+                </div>
+              )}
+            </div>
           )}
           <div className="border-t border-[#3a2f1d] pt-1.5 text-[11px] text-text-secondary">
             {zh
