@@ -2662,6 +2662,10 @@ export default function Home() {
               onSelectWorkspaceDevice={handleWorkspaceSelect}
               onMoveWorkspaceDevice={(deviceId, position) => updateWorkspaceDevice(deviceId, { position })}
               onRemoveSelectedDevice={handleRemoveSelectedDevice}
+              onForbiddenZonesChange={(forbiddenZones) => {
+                if (!selectedWorkspaceDevice) return;
+                updateWorkspaceDevice(selectedWorkspaceDevice.id, { config: { ...selectedWorkspaceDevice.config, forbidden_zones: forbiddenZones } });
+              }}
             />
             {!workspaceExpanded && (
               <>

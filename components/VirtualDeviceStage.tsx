@@ -61,7 +61,8 @@ export function VirtualDeviceStage({
   onDropAsset,
   onSelectWorkspaceDevice,
   onMoveWorkspaceDevice,
-  onRemoveSelectedDevice
+  onRemoveSelectedDevice,
+  onForbiddenZonesChange
 }: {
   language: UiLanguage;
   profile: DeviceProfile;
@@ -80,8 +81,10 @@ export function VirtualDeviceStage({
   onSelectWorkspaceDevice: (deviceId: string) => void;
   onMoveWorkspaceDevice?: (deviceId: string, position: [number, number, number]) => void;
   onRemoveSelectedDevice?: () => void;
+  onForbiddenZonesChange?: (zones: string[]) => void;
 }) {
   const [dropzoneActive, setDropzoneActive] = useState(false);
+  const [forbiddenZoneEditing, setForbiddenZoneEditing] = useState(false);
   const fidelity = getSimulatorFidelity(profile.deviceMeta);
   const compactSingleDeviceView = workspaceDevices.length <= 1 && !dropzoneActive && !running && !report;
   const replayState = {
@@ -152,6 +155,13 @@ export function VirtualDeviceStage({
           dropzoneActive={dropzoneActive}
           onSelectWorkspaceDevice={onSelectWorkspaceDevice}
           onMoveWorkspaceDevice={onMoveWorkspaceDevice}
+          forbiddenZones={profile.deviceMeta.constraints.forbidden_zones}
+          knownTargets={profile.deviceMeta.constraints.known_targets ?? []}
+          forbiddenZoneEditing={forbiddenZoneEditing}
+          onToggleForbiddenZone={(zoneId) => {
+            const zones = profile.deviceMeta.constraints.forbidden_zones;
+            onForbiddenZonesChange?.(zones.includes(zoneId) ? zones.filter((zone) => zone !== zoneId) : [...zones, zoneId]);
+          }}
         />
         </StageErrorBoundary>
         {workspaceDevices.length === 0 && (
@@ -194,6 +204,14 @@ export function VirtualDeviceStage({
           </div>
         )}
         <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setForbiddenZoneEditing((value) => !value)}
+            disabled={!selectedWorkspaceDevice || !onForbiddenZonesChange}
+            className={`border px-2 py-1 text-[11px] font-semibold ${forbiddenZoneEditing ? 'border-danger bg-status-blocked-surface text-status-blocked-soft' : 'border-border-strong bg-black/45 text-text-primary'} disabled:opacity-40`}
+          >
+            {forbiddenZoneEditing ? (language === 'zh' ? '完成禁区编辑' : 'Finish zone edit') : (language === 'zh' ? '编辑禁区' : 'Edit forbidden zones')}
+          </button>
           {onRemoveSelectedDevice && selectedWorkspaceDevice && (
             <button
               type="button"
@@ -214,6 +232,18 @@ export function VirtualDeviceStage({
               : (language === 'zh' ? '放大工作区' : 'Expand workspace')}
           </button>
         </div>
+        {forbiddenZoneEditing && (
+          <div className="pointer-events-auto absolute right-3 top-14 z-20 w-[280px] border border-danger bg-status-blocked-surface/95 p-2 text-[12px] text-text-primary">
+            <div className="font-semibold text-status-blocked-soft">{language === 'zh' ? '禁区可视化编辑' : 'Forbidden-zone visual editor'}</div>
+            <div className="mt-1 text-text-secondary">{language === 'zh' ? '点击 3D 圆形区域，或使用下方开关。修改会使既有验证结果失效。' : 'Click a 3D zone marker or use the toggles below. Changes invalidate prior validation.'}</div>
+            <div className="mt-2 flex max-h-28 flex-wrap gap-1 overflow-y-auto">
+              {Array.from(new Set([...(profile.deviceMeta.constraints.known_targets ?? []), ...profile.deviceMeta.constraints.forbidden_zones])).map((zone) => {
+                const forbidden = profile.deviceMeta.constraints.forbidden_zones.includes(zone);
+                return <button key={zone} type="button" onClick={() => onForbiddenZonesChange?.(forbidden ? profile.deviceMeta.constraints.forbidden_zones.filter((item) => item !== zone) : [...profile.deviceMeta.constraints.forbidden_zones, zone])} className={`border px-2 py-1 font-mono text-[11px] ${forbidden ? 'border-danger text-status-blocked-soft' : 'border-border text-text-secondary'}`}>{forbidden ? '×' : '+'} {zone}</button>;
+              })}
+            </div>
+          </div>
+        )}
         <div className="pointer-events-none absolute bottom-3 left-3 max-w-[360px] rounded-[3px] border border-white/5 bg-black/35 px-2 py-1 font-mono text-[11px] leading-4 text-[#8A8F98] opacity-75 backdrop-blur-md">
           <span className="text-[#E6EAF0]">{t(language, 'device')}</span>: {displayName}
           <span className="mx-2 text-[#4B5563]">|</span>
@@ -233,4 +263,3 @@ export function VirtualDeviceStage({
     </main>
   );
 }
-

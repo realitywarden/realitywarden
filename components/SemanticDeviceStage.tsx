@@ -39,6 +39,43 @@ interface SemanticDeviceStageProps {
   dropzoneActive?: boolean;
   onSelectWorkspaceDevice?: (deviceId: string) => void;
   onMoveWorkspaceDevice?: (deviceId: string, position: [number, number, number]) => void;
+  forbiddenZones?: string[];
+  knownTargets?: string[];
+  forbiddenZoneEditing?: boolean;
+  onToggleForbiddenZone?: (zoneId: string) => void;
+}
+
+function zoneOffset(zoneId: string, index: number): [number, number] {
+  const id = zoneId.toLowerCase();
+  if (id.includes('left')) return [-1.35, 0];
+  if (id.includes('right')) return [1.35, 0];
+  if (id.includes('front')) return [0, 1.35];
+  if (id.includes('back')) return [0, -1.35];
+  if (id.includes('home')) return [0, 0];
+  const angle = (index / Math.max(1, index + 1)) * Math.PI * 2;
+  return [Math.cos(angle) * 1.8, Math.sin(angle) * 1.8];
+}
+
+function ForbiddenZoneOverlay({ zones, candidates, device, editing, onToggle, language }: { zones: string[]; candidates: string[]; device?: SemanticWorkspaceDevice; editing: boolean; onToggle?: (zoneId: string) => void; language: 'zh' | 'en' }) {
+  if (!device) return null;
+  const visible = editing ? Array.from(new Set([...candidates, ...zones])) : zones;
+  return <group>{visible.map((zone, index) => {
+    const forbidden = zones.includes(zone);
+    const [dx, dz] = zoneOffset(zone, index);
+    return (
+      <group key={zone} position={[device.position[0] + dx, 0.035, device.position[2] + dz]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} onClick={(event) => { if (!editing || !onToggle) return; event.stopPropagation(); onToggle(zone); }}>
+          <circleGeometry args={[0.48, 40]} />
+          <meshBasicMaterial color={forbidden ? '#F43F5E' : '#38BDF8'} transparent opacity={forbidden ? 0.28 : 0.1} depthWrite={false} />
+        </mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.46, 0.5, 40]} />
+          <meshBasicMaterial color={forbidden ? '#F43F5E' : '#38BDF8'} transparent opacity={forbidden ? 0.9 : 0.45} />
+        </mesh>
+        <Html center position={[0, 0.08, 0]}><div className={`pointer-events-none whitespace-nowrap border px-1.5 py-0.5 font-mono text-[8px] font-bold ${forbidden ? 'border-danger bg-status-blocked-surface text-status-blocked-soft' : 'border-accent bg-surface text-accent'}`}>{forbidden ? (language === 'zh' ? '禁区' : 'FORBIDDEN') : (language === 'zh' ? '候选' : 'CANDIDATE')} · {zone}</div></Html>
+      </group>
+    );
+  })}</group>;
 }
 
 export interface SemanticWorkspaceDevice {
@@ -637,7 +674,11 @@ export function SemanticDeviceStage({
   runTargetWorkspaceDeviceId,
   dropzoneActive,
   onSelectWorkspaceDevice,
-  onMoveWorkspaceDevice
+  onMoveWorkspaceDevice,
+  forbiddenZones = [],
+  knownTargets = [],
+  forbiddenZoneEditing = false,
+  onToggleForbiddenZone
 }: SemanticDeviceStageProps) {
   const frameState = currentActionFrame ? { ...state, ...currentActionFrame.device_state, visual_state: currentActionFrame.visual_state } : state;
   const devices = workspaceDevices ?? [{ id: 'primary', label: t(language, 'device'), deviceType, state: frameState, position: [0, 0.02, 0] as [number, number, number] }];
@@ -688,6 +729,7 @@ export function SemanticDeviceStage({
         />
         <WorkspaceDropzone language={language} position={suggestedDropPosition} active={Boolean(dropzoneActive)} />
         <SelectedDeviceFootprint device={selectedDevice} language={language} />
+        <ForbiddenZoneOverlay zones={forbiddenZones} candidates={knownTargets} device={selectedDevice} editing={forbiddenZoneEditing} onToggle={onToggleForbiddenZone} language={language} />
         <BlockedWarningRing blocked={blocked} />
         {devices.map((device) => (
           <WorkspaceDeviceMesh
