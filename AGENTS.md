@@ -51,10 +51,10 @@ npm run verify                           # 全量(慢,提交前跑一次)
 
 ## 当前进度与下一步(2026-07-11 交接时)
 
-已完成:安全审计 1.1/2.1/2.2/3.1/x.1/x.2 全修;零配置设备接入(自动检测+SetupAdvisor);一键烧录;UI 真机执行路径(证据锁);虚拟回环 e2e;UI 减重两批;v0.4 Action Composer(自定义动作,同管线)。
+已完成:安全审计 1.1/2.1/2.2/3.1/x.1/x.2 全修;零配置设备接入(自动检测+SetupAdvisor);一键烧录;UI 真机执行路径(证据锁);虚拟回环 e2e;UI 减重两批;v0.4 Action Composer(自定义动作,同管线);Windows NSIS 安装包(共享安全运行时+固件+serialport 原生绑定,安装态烟测通过)。
 
 所有者指示的方向(按优先级):
-1. **安装包打包**:electron-builder 产出 Windows 安装包,把 `dist-electron-runtime`、`firmware/prebuilt`、serialport 原生模块打进产物;版本号、图标。
+1. **安装包打包 ✅**:electron-builder 产出 Windows 安装包,把 `dist-electron-runtime`、`firmware/prebuilt`、serialport 原生模块打进产物;版本号、图标;构建后自动验包并跑过安装态 smoke。
 2. **UI 信息架构重构**(`docs/ui/2026-07-11-ui-audit.md` C 系列剩余项 + E 系列视觉一致性:设计 token 收敛、字号层级)。
 3. v0.4 深化:动作库导入/导出(JSON,已有 schema)、禁区(forbidden_zones)在 3D 工作区可视化编辑。
 4. 验收后清理:删 3 个 `@deprecated` 旧 adapter(先查测试引用)。

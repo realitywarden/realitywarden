@@ -1,4 +1,7 @@
 const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..');
 
 let builderCli;
 
@@ -11,6 +14,13 @@ try {
 }
 
 execFileSync(process.execPath, [builderCli, '--win', 'nsis'], {
+  cwd: root,
+  stdio: 'inherit',
+  windowsHide: true
+});
+
+execFileSync(process.execPath, [path.join(__dirname, 'verify-electron-package.cjs')], {
+  cwd: root,
   stdio: 'inherit',
   windowsHide: true
 });

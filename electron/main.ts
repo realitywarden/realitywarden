@@ -13,6 +13,7 @@ import { createAppMenu } from './menus/appMenu';
 const root = path.resolve(__dirname, '..');
 const sourceRoot = path.resolve(root, '..');
 const appRoot = fs.existsSync(path.join(root, 'package.json')) ? root : sourceRoot;
+const serverRoot = app.isPackaged ? path.join(process.resourcesPath, 'app.asar.unpacked') : appRoot;
 const basePort = Number(process.env.ORS_DESKTOP_PORT || 3100);
 const isSmokeTest = process.argv.includes('--smoke-test');
 
@@ -117,15 +118,20 @@ async function startNextServer(port: number) {
   const url = `http://127.0.0.1:${port}`;
   if (await request(url)) return;
 
-  const nextCli = path.join(appRoot, 'node_modules', 'next', 'dist', 'bin', 'next');
+  const nextCli = path.join(serverRoot, 'node_modules', 'next', 'dist', 'bin', 'next');
   const args = prod ? [nextCli, 'start', '-p', String(port)] : [nextCli, 'dev', '-p', String(port)];
   const nextDistDir = prod ? '.next-build' : `.next-desktop-${port}`;
   const logStream = fs.createWriteStream(getServerLogPath(), { flags: 'a' });
   logStream.write(`\n[${new Date().toISOString()}] Starting node ${args.join(' ')}\n`);
 
   const child = spawn(process.execPath, args, {
-    cwd: appRoot,
-    env: { ...process.env, BROWSER: 'none', ORS_NEXT_DIST_DIR: nextDistDir },
+    cwd: serverRoot,
+    env: {
+      ...process.env,
+      BROWSER: 'none',
+      ELECTRON_RUN_AS_NODE: '1',
+      ORS_NEXT_DIST_DIR: nextDistDir
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true
   });

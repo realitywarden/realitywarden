@@ -19,10 +19,11 @@
 
 ---
 
-## 当前状态（2026-07-11 更新）
+## 当前状态（2026-07-14 更新）
 
 - 版本：v0.2 close-out。v0.3 软件项已完成（LLM 编译器接线、REAL HARDWARE 只读面板、一键烧录待硬件）。
 - **冻结令修订（2026-07-11，所有者指示）**：真机接入易用性（零配置检测/一键烧录/诊断建议）纳入允许范围；六条安全不变量与验收 DoD 不变。
+- **Windows 安装包 ✅**：`npm run desktop:pack` 生成 `release/RealityWarden-0.1.1-Setup.exe`（NSIS x64）。产物包含 `dist-electron-runtime` 同源安全链、Next 生产运行时、`firmware/prebuilt`（镜像 SHA256 随包复验）与 3 个 serialport Windows 原生绑定；exe/安装器/卸载器使用 RealityWarden 图标与 0.1.1 版本资源。builder 完成后自动检查 asar/unpacked/固件/原生模块/安装包，且 `win-unpacked/RealityWarden.exe --prod --smoke-test` 安装态启动通过。
 - **UI 真机执行路径 ✅（成品主线）**：REAL HARDWARE 面板新增“真机执行”区。主进程运行时 require `dist-electron-runtime`（build-electron 同时编译根项目）——与 CLI/测试**同一份**编译后安全链（采样→保守中值→SafetyMonitor→gate→ticket→transport），ipc 层零协议复制、零手搓 actuation 帧（desktop 回归断言此契约）。执行默认 `real_execution_locked`：`docs/acceptance/evidence/` 集齐 4 份验收 JSON 才解锁（或 ORS_REAL_EXECUTION=enabled 台架督导模式），且每次执行需 UI 显式勾选确认。结果带 executionMode=real_hardware + hardwareSignalSent + 审计。
 - **v0.4 自定义动作 ✅（Action Composer）**：顶栏“自定义动作”打开可视化编辑器——基元步骤（能力/目标/速度/力度下拉）+ 安全包络选择，实时 `validateActionManifest` 校验（越权包络拒绝不收窄、内建意图重名拒绝、未知目标拒绝）；保存进工作区文件（加载时重新校验，非法即拒并提示）；“运行（仿真）”经 `expandManifestToTaskDsl` 展开为基元 TaskDSL，走与任意指令**完全相同**的运行时安全管线（LocalRuntime 新增 `manifest` 编译器来源，审计如实标注，绝不伪装成 llm/rules）。
 - 零配置接入：REAL HARDWARE 面板新增“自动检测”——扫描全部串口→只读探测识别固件（diagnose_hardware，旧固件回退 read_distance）→显示版本/传感器/设备时钟状态→给出中文修复建议（`lib/hardware/SetupAdvisor.ts`，与排障文档同源）→无阻断项自动连接。

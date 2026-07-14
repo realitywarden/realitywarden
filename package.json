@@ -54,20 +54,43 @@
     "productName": "RealityWarden",
     "icon": "assets/branding/realitywarden.ico",
     "asar": true,
+    "afterPack": "scripts/after-pack.cjs",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist-electron/**/*",
+      "dist-electron-runtime/**/*",
+      ".next-build/**/*",
+      "assets/branding/**/*",
+      "node_modules/**/*",
+      "next.config.mjs",
+      "package.json"
+    ],
+    "asarUnpack": [
       ".next-build/**/*",
       "node_modules/**/*",
-      "package.json"
+      "next.config.mjs"
+    ],
+    "extraResources": [
+      {
+        "from": "firmware/prebuilt",
+        "to": "firmware/prebuilt",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "next.config.mjs",
+        "to": "app.asar.unpacked/next.config.mjs"
+      }
     ],
     "extraMetadata": {
       "main": "dist-electron/main.js"
     },
     "win": {
       "icon": "assets/branding/realitywarden.ico",
+      "executableName": "RealityWarden",
       "signAndEditExecutable": false,
       "target": [
         {
@@ -82,7 +105,9 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false
+      "perMachine": false,
+      "installerIcon": "assets/branding/realitywarden.ico",
+      "uninstallerIcon": "assets/branding/realitywarden.ico"
     }
   },
   "dependencies": {
@@ -106,6 +131,7 @@
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.3",
     "postcss": "^8.4.38",
+    "rcedit": "4.0.1",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5"
   }
