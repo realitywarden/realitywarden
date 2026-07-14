@@ -56,8 +56,11 @@ software release pipeline.
 - completed: strict atomic action-library JSON import/export
 - completed: 3D forbidden-zone visualization and editing backed by profile
   constraints
-- next: sensor polling/subscription model and remaining developer-facing action
-  ergonomics
+- completed: sensor polling/subscription with a fresh evidence generation per
+  primitive; failed reads and latched clock/frozen faults interrupt a sequence
+  with zero further actuation frames
+- next: second and third reference-device recipes and remaining
+  developer-facing action ergonomics
 
 ## Later: v0.5–v0.6 (detail in PRODUCT_VISION.md)
 

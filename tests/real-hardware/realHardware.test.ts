@@ -10,6 +10,9 @@
  */
 import { Esp32DeviceAdapter, ESP32_SERVO_RIG_CAPABILITIES } from '../../lib/hardware/Esp32DeviceAdapter';
 import { HardwareExecutionGate } from '../../lib/hardware/HardwareExecutionGate';
+import { HardwareActionSequenceRunner } from '../../lib/hardware/HardwareActionSequenceRunner';
+import { DistanceSensorPollingService } from '../../lib/hardware/SensorPollingService';
+import type { SensorReadResult } from '../../lib/hardware/SensorPollingService';
 // Tests are a sanctioned importer of the gate-private ticket: they verify the
 // structural single-path contract itself (audit 1.1).
 import { ACTUATION_TICKET, isActuationCommand } from '../../lib/hardware/internal/actuation';
@@ -1322,6 +1325,131 @@ async function testStuckValueDetectorRejectsInvalidWindows() {
   }
 }
 
+class ScriptedSensorReader {
+  calls = 0;
+
+  constructor(private readonly results: SensorReadResult[]) {}
+
+  async readDistanceDetailed(): Promise<SensorReadResult> {
+    const index = Math.min(this.calls, this.results.length - 1);
+    this.calls += 1;
+    const result = this.results[index];
+    return {
+      ...result,
+      reading: result.reading ? { ...result.reading } : null
+    };
+  }
+}
+
+async function testPollingPublishesAndInvalidatesFailedEvidence() {
+  const reader = new ScriptedSensorReader([
+    { reading: reading(100, 0, 1000) },
+    { reading: null, error: 'ultrasonic timeout' }
+  ]);
+  const poller = new DistanceSensorPollingService(reader, {
+    intervalMs: 100,
+    sampleWindow: 3,
+    now: () => NOW
+  });
+  const states: string[] = [];
+  const unsubscribe = poller.subscribe((snapshot) => states.push(snapshot.state));
+
+  const healthy = await poller.pollOnce();
+  assert(healthy.state === 'healthy' && healthy.readings.length === 1, 'successful polling must publish fresh evidence');
+  healthy.readings[0].value = 999;
+  assert(poller.snapshot().readings[0].value === 100, 'subscriber snapshots must not mutate authoritative evidence');
+
+  const degraded = await poller.pollOnce();
+  assert(degraded.state === 'degraded', 'failed polling must publish a degraded state');
+  assert(degraded.readings.length === 0, 'failed polling must clear prior evidence instead of reusing a last-good value');
+  assert(degraded.lastError === 'ultrasonic timeout', 'poll failure reason must remain explicit');
+  assert(states.join(',') === 'idle,healthy,degraded', 'subscriber must observe each evidence generation');
+  unsubscribe();
+}
+
+async function testPollingLatchesDeviceClockRegression() {
+  const reader = new ScriptedSensorReader([
+    { reading: reading(100, 0, 1000) },
+    { reading: reading(100, 0, 900) },
+    { reading: reading(100, 0, 1100) }
+  ]);
+  const poller = new DistanceSensorPollingService(reader, {
+    intervalMs: 100,
+    sampleWindow: 3,
+    now: () => NOW
+  });
+
+  assert((await poller.pollOnce()).state === 'healthy', 'initial advancing device clock must be healthy');
+  const regressed = await poller.pollOnce();
+  assert(regressed.state === 'frozen', 'device clock regression must latch a frozen state');
+  assert(regressed.readings.length === 1, 'clock regression must preserve typed evidence for an explicit sensor_frozen gate reason');
+  assert(regressed.frozenSensorIds.has('hc-sr04'), 'clock regression must enter the non-overridable frozen set');
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+  const blocked = await gate.run({
+    command: servoCommand(45),
+    sensorReadings: regressed.readings,
+    frozenSensorIds: regressed.frozenSensorIds,
+    nowMs: regressed.observedAtMs
+  });
+  assert(blocked.status === 'blocked' && blocked.reason.indexOf('sensor_frozen') === 0, 'latched polling evidence must reach the gate as explicit sensor_frozen');
+  assert(adapter.executeCalls === 0 && transport.sentFrames.length === 0, 'clock-frozen evidence must emit zero actuation frames');
+  assert((await poller.pollOnce()).state === 'frozen', 'a later advancing value must not silently clear the clock latch');
+
+  poller.resetSensorLatch();
+  const recovered = await poller.pollOnce();
+  assert(recovered.state === 'healthy', 'explicit reset followed by fresh evidence may recover polling');
+}
+
+async function testSequenceStopsOnChangedInterlock() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+  const reader = new ScriptedSensorReader([
+    { reading: reading(100, 0, 1000) },
+    { reading: reading(5, 0, 1100) },
+    { reading: reading(100, 0, 1200) }
+  ]);
+  const poller = new DistanceSensorPollingService(reader, {
+    intervalMs: 100,
+    sampleWindow: 5,
+    now: () => NOW
+  });
+  const runner = new HardwareActionSequenceRunner(gate, poller);
+
+  const result = await runner.run([servoCommand(30), servoCommand(60), servoCommand(90)]);
+  assert(result.status === 'interrupted', 'unsafe sensor change must interrupt a multi-step action');
+  assert(result.reason.indexOf('interlock:min_safe_distance_violation') === 0, 'interruption must preserve the gate reason');
+  assert(result.completedSteps === 1 && result.steps.length === 2, 'only the first primitive may complete');
+  assert(result.steps[0].sensorGeneration !== result.steps[1].sensorGeneration, 'each primitive must use a new sensor generation');
+  assert(reader.calls === 2, 'the runner must stop polling once the sequence is interrupted');
+  assert(adapter.executeCalls === 1, 'blocked second primitive must never reach adapter.execute()');
+  assert(transport.sentFrames.length === 1, 'blocked and later primitives must put zero further actuation frames on the wire');
+}
+
+async function testSequenceStopsWhenPollingLosesSensor() {
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+  const reader = new ScriptedSensorReader([
+    { reading: reading(100, 0, 1000) },
+    { reading: null, error: 'sensor disconnected' },
+    { reading: reading(100, 0, 1200) }
+  ]);
+  const poller = new DistanceSensorPollingService(reader, {
+    intervalMs: 100,
+    now: () => NOW
+  });
+  const runner = new HardwareActionSequenceRunner(gate, poller);
+
+  const result = await runner.run([servoCommand(30), servoCommand(60), servoCommand(90)]);
+  assert(result.status === 'interrupted', 'missing sensor evidence must interrupt the sequence');
+  assert(result.reason.indexOf('interlock:sensor_missing') === 0, 'missing poll must default-block through SafetyMonitor');
+  assert(result.completedSteps === 1 && result.steps.length === 2, 'no later primitive may execute after evidence loss');
+  assert(adapter.executeCalls === 1 && transport.sentFrames.length === 1, 'evidence loss must result in zero further frames');
+}
+
 async function main() {
   const tests: Array<[string, () => Promise<void>]> = [
     ['blocked command never reaches hardware', testBlockedNeverReachesHardware],
@@ -1349,6 +1477,10 @@ async function main() {
     ['audit 2.2: device clock baseline advance/elapsed/reset', testDeviceClockBaseline],
     ['invalid safety metadata fails closed with zero signal', testInvalidSafetyMetadataFailsClosed],
     ['stuck-value detector rejects invalid windows', testStuckValueDetectorRejectsInvalidWindows],
+    ['sensor polling publishes generations and invalidates failed evidence', testPollingPublishesAndInvalidatesFailedEvidence],
+    ['sensor polling latches device-clock regression until explicit reset', testPollingLatchesDeviceClockRegression],
+    ['multi-step action stops with zero further frames when interlock changes', testSequenceStopsOnChangedInterlock],
+    ['multi-step action stops with zero further frames when sensor polling fails', testSequenceStopsWhenPollingLosesSensor],
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['audit 1.1: raw transport send() refuses actuation frames', testRawSendRefusesActuationFrames],
     ['audit 1.1: adapter.execute requires the gate ticket', testAdapterExecuteRequiresGateTicket],

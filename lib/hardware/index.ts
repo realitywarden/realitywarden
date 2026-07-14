@@ -22,6 +22,22 @@ export { SerialEsp32Transport, createNodeSerialPort } from './SerialEsp32Transpo
 export type { SerialPortLike, SerialEsp32TransportOptions } from './SerialEsp32Transport';
 export { Esp32DeviceAdapter, ESP32_SERVO_RIG_CAPABILITIES } from './Esp32DeviceAdapter';
 export { HardwareExecutionGate } from './HardwareExecutionGate';
+export { DistanceSensorPollingService } from './SensorPollingService';
+export type {
+  DistanceSensorPollingOptions,
+  DistanceSensorReader,
+  SensorEvidenceSnapshot,
+  SensorEvidenceSubscriber,
+  SensorPollingState
+} from './SensorPollingService';
+export { HardwareActionSequenceRunner } from './HardwareActionSequenceRunner';
+export type {
+  HardwareActionSequenceOptions,
+  HardwareActionSequenceResult,
+  HardwareActionSequenceStatus,
+  HardwareActionSequenceStepResult,
+  SensorEvidencePoller
+} from './HardwareActionSequenceRunner';
 export { adviceForFailure, interpretProbe, EXPECTED_FIRMWARE, EXPECTED_FIRMWARE_VERSION } from './SetupAdvisor';
 export type { FirmwareIdentity, SetupAdvice, AdviceSeverity } from './SetupAdvisor';
 export {

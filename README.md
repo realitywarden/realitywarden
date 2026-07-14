@@ -54,7 +54,7 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
   safety gate; blocked commands can never reach the wire
 - no production hardware control, no industrial safety certification
 
-Real-hardware safety invariants — **39/39 passing**, plus **5/5** virtual-loopback scenarios. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
+Real-hardware safety invariants — **43/43 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
 
 **Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 

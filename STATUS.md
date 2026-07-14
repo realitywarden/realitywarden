@@ -30,7 +30,8 @@
 - audit 3.1 ✅：transport 协议级错因（malformed/unmatched/oversized）随通信失败进入 adapter 失败详情与审计，超时不再无差别。
 - 新增：`npm run test:virtual-loopback` — 虚拟串口全链路 e2e（真 transport/真协议/真 ticket → 固件仿真器），覆盖四场景 + legacy 固件无 deviceMs，已接入 verify 链。host 侧验收路径已预先证明，真机失败可直接归因固件/接线/供电。
 - 新增：验收操作卡 `docs/acceptance/OPERATOR_CARD.md`（单页，前置检查/命令/判定/存证/速查）。
-- verify 链：全绿。real-hardware 安全不变量测试 **39/39**（含 audit 4.1/4.2 证据语义、2.3/5.2 通用数值能力边界、2.1、2.2、1.1、transport 硬化与诊断/安全元数据）；app + electron typecheck 绿；全部 runner/编译型套件绿。
+- **v0.4 传感器 polling/subscription ✅**：`DistanceSensorPollingService` 持续生成可订阅、不可由订阅者篡改的传感器证据；失败读立即发布空证据，不复用 last-good；设备时钟倒退与冻结值显式锁存且只能手动 reset。`HardwareActionSequenceRunner` 在每个基元前取得新 generation 并重新经过 `HardwareExecutionGate`，首个 blocked/failed/cancelled 即终止，后续零帧。桌面 REAL HARDWARE 路径已接入该链，未新增 ticket 或旁路。
+- verify 链：全绿。real-hardware 安全不变量测试 **43/43**（新增 polling 失败清空、设备时钟倒退锁存、互锁变化/传感器丢失中断多步动作并保持零后续帧；另含 audit 4.1/4.2、2.3/5.2、2.1、2.2、1.1、transport 硬化）；app + electron typecheck 绿；全部 runner/编译型套件绿。
 - 固件：`firmware/esp32-realitywarden/esp32-realitywarden.ino` v0.1.4 / 协议 4：`deviceMs`（audit 2.2）+ 只读诊断命令 `diagnose_hardware` / `diagnose_gpio_loopback` + `echoDurationUs`。**验收前必须重刷此版**，否则旧固件不发 deviceMs，actuation 被 `device_timestamp_unavailable` 拦（预期行为）。
 - 新增只读诊断 CLI：`npm run hardware:diagnose -- --port COMx`（永不驱动舵机；`--loopback` 可做 GPIO5→GPIO4 接线自检）。排障见 `docs/REAL_HARDWARE_ESP32.md` Troubleshooting（充电宝休眠/共地/S3 双串口/毛刺读数/分压等 6 类实测故障）。
 
@@ -54,7 +55,7 @@
 
 ## 下一步
 
-1. **v0.4 剩余项**：实现传感器 polling/subscription 模型，保持设备时间戳、冻结检测和默认拦截语义。
+1. **v0.4 剩余项**：补第二、第三参考设备 recipe，并继续开发者动作易用性收口。
 2. **v0.5 准备**：手册/PDF → 本地 LLM 草拟 DeviceProfile，必须人工复核且默认仿真-only。
 3. **发布操作（所有者）**：可选代码签名、tag、上传安装包与 SHA256；这些外部动作不改变软件完成状态。
 

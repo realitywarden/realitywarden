@@ -362,8 +362,37 @@ interface RuntimeHardwareModule {
     }>;
     getAuditLog(): { list(): unknown[] };
   };
-  ESP32_SERVO_RIG_CAPABILITIES: unknown[];
-  buildConservativeMedianReading(readings: unknown[]): { value: number } | null;
+  DistanceSensorPollingService: new (adapter: unknown, options: { intervalMs: number; sampleWindow: number }) => {
+    pollOnce(): Promise<{
+      generation: number;
+      state: string;
+      readings: Array<{ value: number }>;
+      lastError?: string;
+    }>;
+    snapshot(): { readings: Array<{ value: number }>; lastError?: string };
+    stop(): void;
+  };
+  HardwareActionSequenceRunner: new (gate: unknown, sensors: unknown) => {
+    run(commands: unknown[]): Promise<{
+      status: string;
+      reason: string;
+      steps: Array<{
+        outcome: {
+          status: 'executed' | 'failed' | 'blocked';
+          reason: string;
+          executionMode: string;
+          result: {
+            ok: boolean;
+            signalSent: boolean;
+            signalState: 'not_sent' | 'attempted_unconfirmed' | 'device_acknowledged';
+            executionEvidence: string;
+            physicalOutcomeVerified?: boolean;
+            detail: string;
+          };
+        };
+      }>;
+    }>;
+  };
 }
 
 function loadRuntimeHardware(): RuntimeHardwareModule | { error: string } {
@@ -410,27 +439,40 @@ async function executeRealAngle(payload: { portPath?: string; angle?: number; co
     await new Promise((resolve) => setTimeout(resolve, 1800));
     const adapter = new runtime.Esp32DeviceAdapter(transport);
     const gate = new runtime.HardwareExecutionGate(adapter);
-
-    const readings: unknown[] = [];
+    const sensors = new runtime.DistanceSensorPollingService(adapter, {
+      intervalMs: 250,
+      sampleWindow: 5
+    });
     const readErrors: string[] = [];
-    for (let index = 0; index < 5; index += 1) {
-      const detailed = await adapter.readDistanceDetailed('hc-sr04');
-      if (detailed.reading) readings.push(detailed.reading);
-      else if (detailed.error) readErrors.push(detailed.error);
+    // Pre-warm the conditioning window. A failure clears prior evidence in the
+    // polling service; it is never replaced with a cached last-good reading.
+    for (let index = 0; index < 4; index += 1) {
+      const evidence = await sensors.pollOnce();
+      if (evidence.lastError) readErrors.push(evidence.lastError);
     }
-    // Conservative median (oldest timestamps win). If no valid reading exists
-    // the gate default-blocks with sensor_missing - exactly like the demo.
-    const median = runtime.buildConservativeMedianReading(readings);
-    const outcome = await gate.run({
-      command: {
+    const runner = new runtime.HardwareActionSequenceRunner(gate, sensors);
+    const sequence = await runner.run([
+      {
         id: `ui-exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         deviceId: 'esp32-servo-rig',
         capabilityId: 'move_to_angle',
         args: { angle }
-      },
-      capabilityLimits: runtime.ESP32_SERVO_RIG_CAPABILITIES,
-      sensorReadings: median ? [median] : []
-    });
+      }
+    ]);
+    const outcome = sequence.steps[sequence.steps.length - 1]?.outcome;
+    const latestEvidence = sensors.snapshot();
+    if (latestEvidence.lastError) readErrors.push(latestEvidence.lastError);
+    sensors.stop();
+    if (!outcome) {
+      return {
+        ok: false,
+        error: `execution sequence rejected: ${sequence.reason}`,
+        executionMode: 'real_hardware',
+        signalSent: false,
+        signalState: 'not_sent',
+        readErrors
+      };
+    }
     return {
       ok: outcome.result.ok,
       status: outcome.status,
@@ -441,7 +483,7 @@ async function executeRealAngle(payload: { portPath?: string; angle?: number; co
       executionEvidence: outcome.result.executionEvidence,
       physicalOutcomeVerified: outcome.result.physicalOutcomeVerified,
       detail: outcome.result.detail,
-      distanceCm: median ? median.value : undefined,
+      distanceCm: latestEvidence.readings[0]?.value,
       readErrors,
       audit: gate.getAuditLog().list()
     };
