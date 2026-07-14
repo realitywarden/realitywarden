@@ -23,6 +23,10 @@ const workspaceBounds = {
 };
 
 const workspaceSnapStep = 0.1;
+// drei Html defaults near 16 million, which lets world labels paint above the
+// CommandDock at compact desktop heights. Keep world annotations below all
+// ordinary workspace controls; modal surfaces additionally suppress the stage.
+const worldLabelZIndexRange: [number, number] = [10, 0];
 
 interface SemanticDeviceStageProps {
   deviceType: DeviceType;
@@ -72,7 +76,7 @@ function ForbiddenZoneOverlay({ zones, candidates, device, editing, onToggle, la
           <ringGeometry args={[0.46, 0.5, 40]} />
           <meshBasicMaterial color={forbidden ? '#F43F5E' : '#38BDF8'} transparent opacity={forbidden ? 0.9 : 0.45} />
         </mesh>
-        <Html center position={[0, 0.08, 0]}><div className={`pointer-events-none whitespace-nowrap border px-1.5 py-0.5 font-mono text-[8px] font-bold ${forbidden ? 'border-danger bg-status-blocked-surface text-status-blocked-soft' : 'border-accent bg-surface text-accent'}`}>{forbidden ? (language === 'zh' ? '禁区' : 'FORBIDDEN') : (language === 'zh' ? '候选' : 'CANDIDATE')} · {zone}</div></Html>
+        <Html center position={[0, 0.08, 0]} zIndexRange={worldLabelZIndexRange}><div className={`pointer-events-none whitespace-nowrap border px-1.5 py-0.5 font-mono text-[8px] font-bold ${forbidden ? 'border-danger bg-status-blocked-surface text-status-blocked-soft' : 'border-accent bg-surface text-accent'}`}>{forbidden ? (language === 'zh' ? '禁区' : 'FORBIDDEN') : (language === 'zh' ? '候选' : 'CANDIDATE')} · {zone}</div></Html>
       </group>
     );
   })}</group>;
@@ -309,7 +313,7 @@ function WorkspaceDropzone({ language, position, active }: { language: 'zh' | 'e
         <boxGeometry args={[0.02, 0.01, 0.7]} />
         <meshBasicMaterial color="#9BD4FF" transparent opacity={0.75} />
       </mesh>
-      <Html center position={[0, 0.075, 1.16]}>
+      <Html center position={[0, 0.075, 1.16]} zIndexRange={worldLabelZIndexRange}>
         <div className="pointer-events-none whitespace-nowrap rounded-[3px] border border-[#075985] bg-[#0B2233]/84 px-2 py-1 text-center font-mono text-[8px] leading-3 text-[#D8EEFF]">
           <div className="font-semibold">{t(language, 'workspace_dropzone_title')}</div>
           <div className="mt-0.5 text-[7px] text-[#B6E0FF]">{t(language, 'workspace_dropzone_next')}</div>
@@ -416,7 +420,7 @@ function SelectedDeviceFootprint({ device, language }: { device?: SemanticWorksp
         <boxGeometry args={[0.02, 0.01, crossLength]} />
         <meshBasicMaterial color="#D8EEFF" transparent opacity={0.82} />
       </mesh>
-      <Html center position={[0, 0.06, depth / 2 + 0.18]}>
+      <Html center position={[0, 0.06, depth / 2 + 0.18]} zIndexRange={worldLabelZIndexRange}>
         <div className="pointer-events-none whitespace-nowrap rounded-[3px] border border-[#075985] bg-[#0B2233]/85 px-1.5 py-0.5 font-mono text-[8px] font-semibold leading-3 text-[#D8EEFF]">
           {language === 'zh' ? '\u5e03\u5c40\u9009\u4e2d' : 'LAYOUT SELECTED'}
         </div>
@@ -485,7 +489,7 @@ function CommandOutcomeGhost({
         <sphereGeometry args={[0.05, 18, 12]} />
         <meshBasicMaterial color={color} transparent opacity={0.45} />
       </mesh>
-      <Html center position={[0, 0.82, 0]}>
+      <Html center position={[0, 0.82, 0]} zIndexRange={worldLabelZIndexRange}>
         <div className="pointer-events-none whitespace-nowrap rounded-[3px] border border-white/10 bg-[#101114]/75 px-2 py-1 font-mono text-[8px] font-semibold leading-3 text-[#E6EAF0] backdrop-blur-sm">
           <div className="text-[#9AA3AF]">{language === 'zh' ? '\u9884\u671f\u7ed3\u679c\u843d\u70b9' : 'Expected Result Target'}</div>
           {label && <div>{label}</div>}
@@ -646,7 +650,7 @@ function WorkspaceDeviceMesh({
         </mesh>
       )}
       {(hovered || showPersistentLabel) && (
-        <Html center position={[0.84, selected ? 1.34 : 1.28, 0]}>
+        <Html center position={[0.84, selected ? 1.34 : 1.28, 0]} zIndexRange={worldLabelZIndexRange}>
           <div className={`pointer-events-none whitespace-nowrap rounded-[3px] border px-1.5 py-0.5 font-mono text-[7px] font-semibold leading-3 ${selected ? 'border-[#075985] bg-[#0B2233]/70 text-[#D8EEFF] opacity-85' : runTarget ? 'border-status-running-edge bg-status-warning-surface/76 text-[#FDE68A] opacity-82' : 'border-[#313338] bg-[#101114]/50 text-[#9AA3AF] opacity-62'}`}>
             <div>{shortName}</div>
             <div className="text-[7px] text-[#6B7280]">{localizeDeviceType(language, device.deviceType)} / {status}</div>
@@ -751,7 +755,7 @@ export function SemanticDeviceStage({
         ))}
         <ContactShadows position={[0, 0.01, 0]} opacity={0.16} scale={8.6} blur={3.2} far={3.8} color="#000000" />
         {blocked && (
-          <Html center position={[0, 1.75, 0]}>
+          <Html center position={[0, 1.75, 0]} zIndexRange={worldLabelZIndexRange}>
             <div className="max-w-[360px] border border-[#FECDD3] bg-[#FFF1F2]/95 px-4 py-2 text-center text-xs font-bold tracking-wide text-status-blocked">
               <div>{t(language, 'blocked_by_safety_runtime')}</div>
               {blockedReason && (
@@ -763,7 +767,7 @@ export function SemanticDeviceStage({
           </Html>
         )}
         {selectedSnapshot && !blocked && (
-          <Html position={[-2.2, 1.7, -1.9]}>
+          <Html position={[-2.2, 1.7, -1.9]} zIndexRange={worldLabelZIndexRange}>
             <div className="border border-[#313338] bg-[#1E1F22]/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[#949BA4]">
               {t(language, 'snapshot')} {selectedSnapshot.step_index}: {selectedSnapshot.stage}
             </div>

@@ -59,9 +59,43 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
   const [steps, setSteps] = useState<StepDraft[]>([newStepDraft(deviceMeta.capabilities[0] ?? '')]);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(onClose);
 
   const capabilities = deviceMeta.capabilities as readonly string[];
   const knownTargets = deviceMeta.constraints.known_targets ?? [];
+
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !modalRef.current) return;
+      const controls = Array.from(modalRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )).filter((control) => control.getClientRects().length > 0);
+      if (controls.length === 0) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
 
   useEffect(() => {
     // A draft belongs to one device profile. Keeping primitives from the
@@ -168,18 +202,18 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
-      <div className="flex max-h-[86vh] w-[720px] max-w-[94vw] flex-col overflow-hidden border border-border-panel bg-bg-panel shadow-2xl">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="action-composer-title" aria-describedby="action-composer-description" className="flex max-h-[calc(100vh-32px)] w-[720px] max-w-[94vw] flex-col overflow-hidden border border-border-panel bg-bg-panel shadow-2xl">
         <div className="flex items-center justify-between border-b border-border-panel px-4 py-2.5">
           <div>
-            <div className="text-[14px] font-semibold text-text-primary">{zh ? '自定义动作' : 'Custom Actions'}</div>
-            <div className="text-[11px] text-text-secondary">
+            <div id="action-composer-title" className="text-[15px] font-semibold text-text-primary">{zh ? '自定义动作' : 'Custom Actions'}</div>
+            <div id="action-composer-description" className="text-[12px] text-text-secondary">
               {zh
                 ? '动作由基元步骤组成，运行时经过与任何指令相同的安全管线；越权的包络会被拒绝，不会被收窄放行。'
                 : 'Actions are primitive steps; runs go through the same safety pipeline as any prompt. Over-broad envelopes are rejected, never clamped.'}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="h-7 rounded-[3px] border border-border-panel px-2 text-[12px] text-text-secondary hover:bg-[#2B2D31]">
+          <button ref={closeRef} type="button" onClick={onClose} className="h-8 rounded-[3px] border border-border-panel px-3 text-[12px] text-text-secondary hover:bg-[#2B2D31]">
             {zh ? '关闭' : 'Close'}
           </button>
         </div>
@@ -232,7 +266,7 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1 text-[11px] text-text-secondary">
                 action_id（snake_case）
-                <input value={actionId} onChange={(event) => setActionId(event.target.value)} placeholder="patrol_sweep" className={inputClass} />
+                <input value={actionId} onChange={(event) => setActionId(event.target.value)} placeholder="patrol_sweep" autoComplete="off" className={inputClass} />
               </label>
               <span />
               <label className="flex flex-col gap-1 text-[11px] text-text-secondary">
@@ -323,7 +357,7 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
           </section>
 
           {feedback && (
-            <div className={`rounded-[3px] border px-2 py-1 text-[11px] ${feedback.ok ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'}`}>
+            <div role={feedback.ok ? 'status' : 'alert'} aria-live={feedback.ok ? 'polite' : 'assertive'} aria-atomic="true" className={`rounded-[3px] border px-2 py-1 text-[12px] ${feedback.ok ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'}`}>
               {feedback.text}
             </div>
           )}

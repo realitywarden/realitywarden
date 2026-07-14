@@ -12,6 +12,8 @@ import { RealHardwarePanel } from '@/components/RealHardwarePanel';
 import { EvidenceSidebar } from '@/components/EvidenceSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { ManualImportWizard } from '@/components/ManualImportWizard';
+import { OperatorNotice } from '@/components/OperatorNotice';
+import type { OperatorNoticeAction, OperatorNoticeState } from '@/components/OperatorNotice';
 import { enableManualImportForVirtualLab, restoreEnabledManualSimulationAsset, validateStoredManualImport, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
 import type { UiLanguage } from '@/components/LabConfigurator';
@@ -150,12 +152,6 @@ interface WorkspaceIssue {
   severity: 'pass' | 'warning' | 'blocked';
   title: string;
   detail: string;
-}
-
-interface OperatorNotice {
-  id: number;
-  severity: 'info' | 'success' | 'warning' | 'error';
-  message: string;
 }
 
 interface CommandTerminalStatus {
@@ -1278,7 +1274,7 @@ export default function Home() {
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null);
   const [projectName, setProjectName] = useState('Untitled Project');
   const [workspaceValidation, setWorkspaceValidation] = useState<WorkspaceValidationResult | null>(null);
-  const [operatorNotice, setOperatorNotice] = useState<OperatorNotice | null>(null);
+  const [operatorNotice, setOperatorNotice] = useState<OperatorNoticeState | null>(null);
   const [commandStatus, setCommandStatus] = useState<CommandTerminalStatus>({
     kind: 'ready',
     message: defaultReadyMessage('en')
@@ -1372,8 +1368,19 @@ export default function Home() {
     ));
   }, [effectiveSelectedProfile.id, effectiveSelectedProfile.deviceMeta.device_type, language, prompt, replayPlaying, running]);
 
-  const showNotice = useCallback((severity: OperatorNotice['severity'], message: string) => {
-    setOperatorNotice({ id: Date.now(), severity, message });
+  const showNotice = useCallback((severity: OperatorNoticeState['severity'], message: string, options?: Pick<OperatorNoticeState, 'persistent' | 'action'>) => {
+    setOperatorNotice({ id: Date.now(), severity, message, ...options });
+  }, []);
+
+  const handleNoticeAction = useCallback((action: OperatorNoticeAction) => {
+    if (action !== 'discard_autosave') return;
+    window.localStorage.removeItem(workspaceStorageKey);
+    showNotice('success', noticeMessage(language, '损坏的自动保存已清除；当前工作区未被修改。', 'Corrupted autosave cleared; the current workspace was not changed.'));
+  }, [language, showNotice]);
+
+  const closeActionComposer = useCallback(() => {
+    setActionComposerOpen(false);
+    window.setTimeout(() => document.querySelector<HTMLElement>('[data-action-composer-trigger]')?.focus(), 0);
   }, []);
 
   const clearPlaybackTimers = useCallback(() => {
@@ -1404,7 +1411,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!operatorNotice) return;
-    const timer = window.setTimeout(() => setOperatorNotice(null), 3600);
+    if (operatorNotice.persistent || operatorNotice.severity === 'error') return;
+    const timer = window.setTimeout(() => setOperatorNotice(null), operatorNotice.severity === 'warning' ? 8000 : 5000);
     return () => window.clearTimeout(timer);
   }, [operatorNotice]);
 
@@ -2445,7 +2453,17 @@ export default function Home() {
       applyWorkspaceFile(JSON.parse(rawWorkspace) as LabWorkspaceFile);
       showNotice('success', noticeMessage(language, '\u5df2\u6062\u590d\u4e0a\u6b21\u5de5\u7a0b\u3002', 'Last workspace restored.'));
     } catch (error) {
-      showNotice('error', noticeMessage(language, `\u6062\u590d\u5931\u8d25\uff1a${error instanceof Error ? error.message : '\u81ea\u52a8\u4fdd\u5b58\u6570\u636e\u65e0\u6548'}`, `Restore failed: ${error instanceof Error ? error.message : 'Invalid autosave data'}`));
+      showNotice(
+        'error',
+        noticeMessage(language, `\u6062\u590d\u5931\u8d25\uff1a${error instanceof Error ? error.message : '\u81ea\u52a8\u4fdd\u5b58\u6570\u636e\u65e0\u6548'}`, `Restore failed: ${error instanceof Error ? error.message : 'Invalid autosave data'}`),
+        {
+          persistent: true,
+          action: {
+            kind: 'discard_autosave',
+            label: language === 'zh' ? '清除损坏的自动保存' : 'Discard corrupted autosave'
+          }
+        }
+      );
     }
   }, [applyWorkspaceFile, language, showNotice]);
 
@@ -2636,7 +2654,7 @@ export default function Home() {
   }, [effectiveSelectedProfile, labReport?.result, prompt, replayPlaying, runPreviewTask, selectedScenario.mode, selectedWorkspaceDeviceId, semanticWorkspaceDevices]);
 
   return (
-    <div className={`industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary ${manualImportOpen ? 'manual-import-active' : ''}`}>
+    <div className={`industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary ${assetImportOpen || actionComposerOpen || manualImportOpen ? 'modal-surface-active' : ''}`}>
       <AppHeader
         language={language}
         projectName={projectName}
@@ -2659,11 +2677,7 @@ export default function Home() {
         onLanguageChange={handleLanguageChange}
       />
       {operatorNotice && (
-        <div className="pointer-events-none fixed left-1/2 top-12 z-50 max-w-[420px] -translate-x-1/2 border border-border-panel bg-bg-panel px-3 py-2 text-[13px] font-semibold shadow-lg">
-          <span className={operatorNotice.severity === 'success' ? 'text-status-executed' : operatorNotice.severity === 'warning' ? 'text-status-running' : operatorNotice.severity === 'error' ? 'text-status-blocked' : 'text-[#0066CC]'}>
-            {operatorNotice.message}
-          </span>
-        </div>
+        <OperatorNotice language={language} notice={operatorNotice} onDismiss={() => setOperatorNotice(null)} onAction={handleNoticeAction} />
       )}
       <div className="flex min-h-0 flex-1 w-full gap-0 overflow-hidden">
         <LabConfigurator
@@ -2847,13 +2861,16 @@ export default function Home() {
         />
       </div>
       {assetImportOpen && (
-        <AssetImportWizard
-          onImport={handleImportedAsset}
-          onClose={() => setAssetImportOpen(false)}
-        />
+        <div data-app-modal className="contents">
+          <AssetImportWizard
+            onImport={handleImportedAsset}
+            onClose={() => setAssetImportOpen(false)}
+          />
+        </div>
       )}
       {actionComposerOpen && (
-        <ActionComposer
+        <div data-app-modal className="contents">
+          <ActionComposer
           language={language}
           deviceMeta={effectiveSelectedProfile.deviceMeta}
           actions={customActions}
@@ -2872,11 +2889,13 @@ export default function Home() {
               }
             });
           }}
-          onClose={() => setActionComposerOpen(false)}
-        />
+            onClose={closeActionComposer}
+          />
+        </div>
       )}
       {manualImportOpen && (
-        <ManualImportWizard
+        <div data-app-modal className="contents">
+          <ManualImportWizard
           language={language}
           builtinIntentIds={BUILTIN_INTENT_IDS}
           existingRecords={manualImports}
@@ -2915,8 +2934,9 @@ export default function Home() {
             showNotice('success', noticeMessage(language, '已通过第二道确认并添加到 Virtual Lab；执行模式仍为 simulation。', 'Second-gate confirmation passed and asset added to Virtual Lab; execution mode remains simulation.'));
             return { ok: true };
           }}
-          onClose={() => setManualImportOpen(false)}
-        />
+            onClose={() => setManualImportOpen(false)}
+          />
+        </div>
       )}
     </div>
   );

@@ -49,3 +49,20 @@
 - 一次运行只显示一个主状态：`idle`、`running`、`executed`、`blocked` 或 `unsupported`；`compiled` 是编译阶段元数据，不得与运行结果并列为主状态。
 - blocked/executed 后，右侧 `Audit & Governor` 必须一步可见对应证据。
 - `REAL HARDWARE` 始终位于仿真证据 Tab 之外，并带独立橙黑危险边界。
+
+## Accessibility and recovery contract
+
+- 信息/成功通知使用 `role=status` + `aria-live=polite`；警告/错误使用
+  `role=alert` + `aria-live=assertive`，消息必须 `aria-atomic=true`。
+- 错误通知不得自动消失；必须可手动关闭。可恢复错误应提供上下文操作，
+  例如损坏的自动保存只能由用户显式清除，且不得改变当前工作区。
+- 模态窗口必须具有可访问名称和说明、Escape 关闭、Tab/Shift+Tab 焦点圈闭，
+  并在关闭后把焦点还给明确的触发器。打开任何模态时，背景和 Three.js
+  HTML 标签不得穿透、接收交互或留在可见层。
+- Three.js 世界标签的 z-index 必须低于 CommandDock 和工作区操作控件；
+  不能在 1180×720 下覆盖命令输入或 Run/Stop。
+- UI/3D 崩溃界面必须提供局部恢复和完整重载两条路径，并显示错误详情/
+  digest。**不得**从 UI 崩溃推断 `hardwareSignalSent` 或声称“没有信号发送”；
+  恢复后应提示用户先检查审计证据，再决定是否重试真实命令。
+
+自动防回归入口：`npm run test:accessibility`，并已接入 `npm run verify`。

@@ -69,7 +69,7 @@ export function AppHeader(props: AppHeaderProps) {
         <nav className="flex shrink-0 items-center gap-2" aria-label={language === 'zh' ? '项目操作' : 'Project actions'}>
           <FileMenu {...props} />
           <button type="button" onClick={props.onQuickStart} className="h-8 border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>
-          <button type="button" onClick={props.onActions} className="h-8 border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
+          <button data-action-composer-trigger type="button" onClick={props.onActions} className="h-8 border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
         </nav>
         <div className="flex min-w-0 items-center gap-2 border-l border-border pl-3">
           <span className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${resultClass}`}>{resultText}</span>

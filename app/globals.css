@@ -74,10 +74,10 @@
   }
 }
 
-/* Three.js Html overlays use an intentionally high z-index range. A modal
-   must suppress the underlying workbench while open so canvas labels cannot
-   pierce the review surface or intercept its controls. */
-.manual-import-active > :not([data-manual-import-modal]) {
+/* Three.js Html overlays use an intentionally high z-index range. Every app
+   modal suppresses the underlying workbench so canvas labels cannot pierce
+   the dialog, intercept controls, or remain in the accessibility tree. */
+.modal-surface-active > :not([data-app-modal]) {
   visibility: hidden !important;
 }
 
