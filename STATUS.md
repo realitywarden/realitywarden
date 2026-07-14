@@ -61,6 +61,8 @@
 
 - **上市收口证据链与真实 renderer smoke ✅**：`--smoke-test` 不再只等待 Next 端口，而是在隔离会话中加载真实 Electron renderer，核对 AppHeader、Device Navigator、CommandDock、唯一 Run/Stop、SIMULATION ONLY、独立 REAL HARDWARE 边界与 preload bridge；任一缺失均非零退出。`desktop:pack` 现按“验包 → first-run renderer smoke → 证据清单”顺序执行，成功后写出带安装包 SHA256/大小、BUILD_ID、源码 commit、工作树 clean/dirty 状态的 `Release-Evidence.json` 及其 SHA256，并显式不声明签名、真机验收或物理结果。新增 `test:launch-closure` 接入 verify；源码 production desktop smoke 已实跑通过。未重打包含当前用户未提交改动的发布包。
 
+- **严格工程文件契约与自动保存隔离 ✅**：浏览器导入、Electron Open/Save 与自动恢复统一使用版本化深层契约；未知字段、非法枚举、重复/悬空设备、两份 devices 分叉、非有限数、原型污染键、超限文件及 `real_device_execution_enabled:true` 均明确拒绝，不钳制、不静默回退。损坏自动保存不再启动即删除或被当前工作区覆盖，而是隔离并等待人工清除。生产 parser/serializer 往返与恶意输入套件已接入 verify；未修改执行、安全门、审计或真机语义。
+
 ## 下一步
 
 1. **成品化持续项**：继续键盘遍历、窄窗口与高对比度审计，收敛资产导入向统一设计 token；不得覆盖尚未提交的资产预览健壮性改动。

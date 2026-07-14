@@ -1,27 +1,28 @@
 import { dialog, ipcMain } from 'electron';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 const projectFilters = [{ name: 'Open Reality Project', extensions: ['openreality.json'] }];
 
-function isProjectFile(value: unknown) {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.project === 'object' &&
-    Array.isArray(record.devices) &&
-    Array.isArray(record.scenarios) &&
-    Array.isArray(record.profiles) &&
-    typeof record.workspace === 'object' &&
-    Array.isArray(record.lab_reports) &&
-    typeof record.metadata === 'object'
-  );
+interface ProjectContractRuntime {
+  MAX_PROJECT_FILE_BYTES: number;
+  parseOpenRealityProjectText(text: string): { ok: true; value: unknown } | { ok: false; code: string; detail: string };
+  serializeOpenRealityProjectFile(value: unknown): { ok: true; value: string } | { ok: false; code: string; detail: string };
+}
+
+let projectContractRuntime: ProjectContractRuntime | null = null;
+
+function loadProjectContract() {
+  if (projectContractRuntime) return projectContractRuntime;
+  const runtimePath = path.resolve(__dirname, '..', '..', 'dist-electron-runtime', 'lib', 'project', 'ProjectFileContract.js');
+  projectContractRuntime = require(runtimePath) as ProjectContractRuntime;
+  return projectContractRuntime;
 }
 
 async function writeProjectFile(filePath: string, project: unknown) {
-  if (!isProjectFile(project)) {
-    throw new Error('Invalid Open Reality project file schema.');
-  }
-  await fs.writeFile(filePath, JSON.stringify(project, null, 2), 'utf8');
+  const serialized = loadProjectContract().serializeOpenRealityProjectFile(project);
+  if (!serialized.ok) throw new Error(`${serialized.code}: ${serialized.detail}`);
+  await fs.writeFile(filePath, serialized.value, 'utf8');
 }
 
 export function registerProjectIpc() {
@@ -40,13 +41,17 @@ export function registerProjectIpc() {
     if (result.canceled || result.filePaths.length === 0) return { canceled: true };
 
     const filePath = result.filePaths[0];
+    const contract = loadProjectContract();
+    const stats = await fs.stat(filePath);
+    if (stats.size > contract.MAX_PROJECT_FILE_BYTES) throw new Error(`file_too_large: project file exceeds ${contract.MAX_PROJECT_FILE_BYTES} bytes`);
     const raw = await fs.readFile(filePath, 'utf8');
-    const project = JSON.parse(raw) as unknown;
-    if (!isProjectFile(project)) throw new Error('Selected file is not a valid Open Reality project.');
-    return { canceled: false, filePath, project };
+    const parsed = contract.parseOpenRealityProjectText(raw);
+    if (!parsed.ok) throw new Error(`${parsed.code}: ${parsed.detail}`);
+    return { canceled: false, filePath, project: parsed.value };
   });
 
-  ipcMain.handle('project:save', async (_event, payload: { project: unknown; filePath?: string | null }) => {
+  ipcMain.handle('project:save', async (_event, payload: { project?: unknown; filePath?: string | null } | null) => {
+    if (!payload || !('project' in payload)) throw new Error('invalid_schema: save payload must contain a project');
     let filePath = payload.filePath;
     if (!filePath) {
       const result = await dialog.showSaveDialog({
@@ -61,7 +66,8 @@ export function registerProjectIpc() {
     return { canceled: false, filePath };
   });
 
-  ipcMain.handle('project:saveAs', async (_event, payload: { project: unknown }) => {
+  ipcMain.handle('project:saveAs', async (_event, payload: { project?: unknown } | null) => {
+    if (!payload || !('project' in payload)) throw new Error('invalid_schema: save payload must contain a project');
     const result = await dialog.showSaveDialog({
       title: 'Save Open Reality Project As',
       defaultPath: 'Untitled.openreality.json',

@@ -45,6 +45,7 @@ import { ScenarioRunner } from '@/lib/virtual-lab/ScenarioRunner';
 import { deviceScenarios, getScenarioForProfile } from '@/lib/virtual-lab/scenarios';
 import type { DeviceType } from '@/types/deviceMeta';
 import type { TaskDSL } from '@/types/taskDsl';
+import { MAX_PROJECT_FILE_BYTES, validateLabWorkspaceFile, validateOpenRealityProjectFile } from '@/lib/project/ProjectFileContract';
 
 interface WorkspaceDeviceRecord {
   id: string;
@@ -1262,6 +1263,7 @@ export default function Home() {
   const [validationRunning, setValidationRunning] = useState(false);
   const [running, setRunning] = useState(false);
   const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
+  const [autosaveQuarantined, setAutosaveQuarantined] = useState(false);
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null);
   const [projectName, setProjectName] = useState('Untitled Project');
   const [workspaceValidation, setWorkspaceValidation] = useState<WorkspaceValidationResult | null>(null);
@@ -1543,24 +1545,37 @@ export default function Home() {
   }), [buildWorkspaceFile, labReport, language, projectName, workspaceDevices]);
 
   const applyWorkspaceFile = useCallback((workspace: LabWorkspaceFile) => {
-    if (workspace.file_type !== 'open_reality_lab_workspace' || workspace.version !== 1) return;
+    const checked = validateLabWorkspaceFile(workspace);
+    if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
+    const nextProfile = deviceProfiles.find((profile) => profile.id === workspace.selected_profile_id);
+    if (!nextProfile) throw new Error(`Unknown selected profile: ${workspace.selected_profile_id}`);
+    const nextScenario = deviceScenarios.find((scenario) => scenario.id === workspace.selected_scenario_id);
+    if (!nextScenario) throw new Error(`Unknown selected scenario: ${workspace.selected_scenario_id}`);
+    if (nextScenario.device_profile !== nextProfile.id) throw new Error(`Scenario ${nextScenario.id} does not belong to profile ${nextProfile.id}`);
+    const deviceProfilesById = new Map(deviceProfiles.map((profile) => [profile.id, profile]));
+    for (const device of workspace.devices) {
+      if (device.assetId) {
+        if (device.profileId !== device.assetId) throw new Error(`Device ${device.id} profile does not match its asset identity`);
+        continue;
+      }
+      const profile = deviceProfilesById.get(device.profileId);
+      if (!profile) throw new Error(`Unknown device profile: ${device.profileId}`);
+      if (profile.deviceMeta.device_type !== device.deviceType) throw new Error(`Device ${device.id} type does not match profile ${device.profileId}`);
+    }
     cancelActiveWork();
     clearRuntimeDecision();
-    const nextProfile = deviceProfiles.find((profile) => profile.id === workspace.selected_profile_id) ?? deviceProfiles[0];
-    const nextScenario = deviceScenarios.find((scenario) => scenario.id === workspace.selected_scenario_id) ?? getScenarioForProfile(nextProfile.id, 'safe');
     const nextRunnable = isRunnableDeviceV01(nextProfile.deviceMeta.device_type);
     setLanguage(workspace.language);
-    const loadedWorkspaceDevices = workspace.devices.map((device, index) => {
-      const profile = deviceProfiles.find((item) => item.id === device.profileId) ?? getFirstProfileForType(device.deviceType);
+    const loadedWorkspaceDevices = workspace.devices.map((device) => {
       return {
         ...device,
-        label: device.label ?? `${localDeviceType(device.deviceType, workspace.language)} ${index + 1}`,
+        label: device.label,
         config: {
-          enabled: device.config?.enabled ?? true,
-          adapter_target_id: device.config?.adapter_target_id ?? profile.deviceMeta.device_id,
-          max_speed: device.config?.max_speed ?? profile.deviceMeta.constraints.max_speed,
-          force_limit: device.config?.force_limit ?? profile.deviceMeta.constraints.force_limit,
-          forbidden_zones: device.config?.forbidden_zones ?? profile.deviceMeta.constraints.forbidden_zones
+          enabled: device.config.enabled,
+          adapter_target_id: device.config.adapter_target_id,
+          max_speed: device.config.max_speed,
+          force_limit: device.config.force_limit,
+          forbidden_zones: device.config.forbidden_zones
         }
       };
     });
@@ -1623,6 +1638,8 @@ export default function Home() {
   }, [cancelActiveWork, clearRuntimeDecision, showNotice]);
 
   const applyProjectFile = useCallback((project: OpenRealityProjectFile, filePath?: string | null) => {
+    const checked = validateOpenRealityProjectFile(project);
+    if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
     applyWorkspaceFile(project.workspace);
     setProjectName(project.project?.name || 'Untitled Project');
     setProjectFilePath(filePath ?? null);
@@ -1638,12 +1655,22 @@ export default function Home() {
     if (!rawWorkspace) return;
     try {
       applyWorkspaceFile(JSON.parse(rawWorkspace) as LabWorkspaceFile);
-    } catch {
-      window.localStorage.removeItem(workspaceStorageKey);
+      setAutosaveQuarantined(false);
+    } catch (error) {
+      setAutosaveQuarantined(true);
+      showNotice(
+        'error',
+        noticeMessage(language, `自动保存已隔离：${error instanceof Error ? error.message : '数据无效'}`, `Autosave quarantined: ${error instanceof Error ? error.message : 'invalid data'}`),
+        {
+          persistent: true,
+          action: { kind: 'discard_autosave', label: language === 'zh' ? '清除损坏的自动保存' : 'Discard corrupted autosave' }
+        }
+      );
     }
-  }, [applyWorkspaceFile]);
+  }, [applyWorkspaceFile, language, showNotice]);
 
   useEffect(() => {
+    if (autosaveQuarantined) return;
     // Debounced autosave: serializing the whole workspace on every keystroke
     // caused needless main-thread work; 600ms of quiet is enough.
     const timer = window.setTimeout(() => {
@@ -1652,7 +1679,7 @@ export default function Home() {
       setAutosavedAt(workspace.saved_at);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [buildWorkspaceFile]);
+  }, [autosaveQuarantined, buildWorkspaceFile]);
 
   const dismissFirstRunGuide = useCallback(() => {
     window.localStorage.setItem(firstRunGuideStorageKey, '1');
@@ -2410,8 +2437,10 @@ export default function Home() {
   }, [cancelActiveWork, clearRuntimeDecision, language, showNotice]);
 
   const saveWorkspace = useCallback(async (saveAs = false) => {
-    const project = buildProjectFile();
     try {
+      const project = buildProjectFile();
+      const checked = validateOpenRealityProjectFile(project);
+      if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
       if (window.openReality) {
         const result = saveAs
           ? await window.openReality.project.saveAs(project)
@@ -2435,12 +2464,17 @@ export default function Home() {
   const loadWorkspaceFile = useCallback(async (file: File | null) => {
     if (!file) return;
     try {
+      if (file.size > MAX_PROJECT_FILE_BYTES) throw new Error(`file_too_large: project file exceeds ${MAX_PROJECT_FILE_BYTES} bytes`);
       const text = await file.text();
-      const parsed = JSON.parse(text) as LabWorkspaceFile | OpenRealityProjectFile;
-      if ('project' in parsed && 'workspace' in parsed) {
-        applyProjectFile(parsed);
+      const parsed = JSON.parse(text) as unknown;
+      if (parsed && typeof parsed === 'object' && 'project' in parsed && 'workspace' in parsed) {
+        const checked = validateOpenRealityProjectFile(parsed);
+        if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
+        applyProjectFile(checked.value as unknown as OpenRealityProjectFile);
       } else {
-        applyWorkspaceFile(parsed);
+        const checked = validateLabWorkspaceFile(parsed);
+        if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
+        applyWorkspaceFile(checked.value as unknown as LabWorkspaceFile);
       }
       showNotice('success', noticeMessage(language, '\u5de5\u7a0b\u5df2\u6253\u5f00\u3002', 'Lab workspace opened.'));
     } catch (error) {
@@ -2475,6 +2509,7 @@ export default function Home() {
     }
     try {
       applyWorkspaceFile(JSON.parse(rawWorkspace) as LabWorkspaceFile);
+      setAutosaveQuarantined(false);
       showNotice('success', noticeMessage(language, '\u5df2\u6062\u590d\u4e0a\u6b21\u5de5\u7a0b\u3002', 'Last workspace restored.'));
     } catch (error) {
       showNotice(
@@ -2588,6 +2623,7 @@ export default function Home() {
     setOperatorNotice(null);
     if (action === 'discard_autosave') {
       window.localStorage.removeItem(workspaceStorageKey);
+      setAutosaveQuarantined(false);
       showNotice('success', noticeMessage(language, '损坏的自动保存已清除；当前工作区未被修改。', 'Corrupted autosave cleared; the current workspace was not changed.'));
       return;
     }

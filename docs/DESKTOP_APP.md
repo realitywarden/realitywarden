@@ -82,7 +82,9 @@ Project schema:
 }
 ```
 
-The Main Process validates this top-level schema before saving or opening project files.
+The renderer and Main Process both use the same strict, versioned contract before saving or opening project files. Validation rejects unknown keys, unsupported device/config values, duplicate or dangling workspace references, divergent `devices` copies, unsafe `real_device_execution_enabled` metadata, non-finite values, excessive nesting, and prototype-pollution keys. Files larger than 25 MiB are rejected before the desktop process reads them; values are never clamped or silently repaired.
+
+Browser workspace import uses the same contract. A corrupt autosave is quarantined without changing the current workspace or overwriting/deleting the saved bytes; the operator must explicitly discard it before autosave resumes.
 
 ## Local Export
 
