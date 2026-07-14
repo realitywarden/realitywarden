@@ -44,6 +44,7 @@
 - **C3 右侧证据栏 ✅**：Runtime Governor 与审计证据合并为 `Audit & Governor`，设备配置拆入 `Device Inspector` Tab；设备选择变化一步打开 Inspector，新运行/新证据一步回到审计；`REAL HARDWARE` 始终位于 Tab 之外并保留独立黑黄危险边界。仅重组呈现与状态导航，未修改审计、安全门或真实执行逻辑。
 - **E1/E2/E3 设计系统基础 ✅**：`app/globals.css` 与 Tailwind 提供 background/surface/border/text/semantic tokens，仿真与 REAL HARDWARE 独立配色；统一 4px 间距规则、11/12/13/15/18px 字号层级、键盘 focus ring、浮层 96% 不透明度/8px blur/单一阴影，工程规范见 `docs/ui/DESIGN_SYSTEM.md`。旧组件通过兼容别名渐进迁移，不涉及业务状态。
 - **C2 CommandDock ✅**：AI Command 默认面仅保留输入、唯一 Run/Stop、单一主状态和当前目标；LLM 来源、诊断、不可运行目标恢复路径、starter commands 与 Quick Start 详情移入可展开二级区。所有原能力保留，移除引导内容中的重复 Run；提交/停止回调与运行时安全管线未变。
+- **C1 左侧导航 ✅**：Device Navigator 与 Asset Library 拆为显式 Tab；Device Type / Profile / Scenario 归设备导航，资产搜索/拖放/添加归资产库，Public Alpha 支持说明随设备配置折叠，静态 Developer Preview 独立放入 Build boundaries。语言设置移至全局顶栏；左栏在 1180px 为 240px、1280px 起为 280px，关键能力不隐藏。
 
 ## 下一步
 

@@ -21,7 +21,6 @@ interface LabConfiguratorProps {
   selectedDeviceRunnable: boolean;
   selectedWorkspaceDeviceLabel: string | null;
   selectedWorkspaceAssetId?: string | null;
-  onLanguageChange: (language: UiLanguage) => void;
   onDeviceTypeChange: (deviceType: DeviceType) => void;
   onProfileChange: (profileId: string) => void;
   onScenarioChange: (scenarioId: string) => void;
@@ -65,13 +64,13 @@ export function LabConfigurator({
   selectedDeviceRunnable,
   selectedWorkspaceDeviceLabel,
   selectedWorkspaceAssetId,
-  onLanguageChange,
   onDeviceTypeChange,
   onProfileChange,
   onScenarioChange,
   onAddAsset
 }: LabConfiguratorProps) {
   const [assetQuery, setAssetQuery] = useState('');
+  const [activeSection, setActiveSection] = useState<'devices' | 'assets'>('devices');
   const profileLabel = (profile: DeviceProfile) => localizeProfileName(language, profile.deviceMeta.display_name ?? profile.label ?? profile.id);
   const profileOptionLabel = (profile: DeviceProfile) => `${profileLabel(profile)} · ${supportSuffix(language, isRunnableDeviceV01(profile.deviceMeta.device_type))}`;
   const deviceTypeOptionLabel = (type: DeviceType) => `${localizeDeviceType(language, type)} · ${supportSuffix(language, isRunnableDeviceV01(type))}`;
@@ -93,22 +92,28 @@ export function LabConfigurator({
   }, [assetQuery, deviceAssets, deviceType]);
 
   return (
-    <aside className="flex h-full w-[264px] shrink-0 flex-col overflow-hidden border-r border-border-panel bg-bg-panel">
+    <aside data-component="DeviceNavigator" className="flex h-full w-[240px] shrink-0 flex-col overflow-hidden border-r border-border bg-surface xl:w-[280px]">
       <div className="flex h-full min-h-0 flex-col">
-        <header className="flex-none border-b border-border-panel px-2.5 py-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'devices')}</div>
-            <div className="relative w-24">
-              <select value={language} onChange={(event) => onLanguageChange(event.target.value as UiLanguage)} className={selectClassName}>
-                <option value="zh">{t(language, 'chinese')}</option>
-                <option value="en">{t(language, 'english')}</option>
-              </select>
-              <SelectChevron />
-            </div>
-          </div>
+        <header className="flex h-10 flex-none items-center border-b border-border px-3">
+          <div className="rw-text-title text-text-primary">{language === 'zh' ? '设备导航' : 'Device Navigator'}</div>
         </header>
 
-        <section className="grid flex-none gap-2 px-2.5 py-2">
+        <div className="grid h-10 flex-none grid-cols-2 border-b border-border bg-surface p-1" role="tablist" aria-label={language === 'zh' ? '左侧导航' : 'Left navigation'}>
+          {(['devices', 'assets'] as const).map((section) => (
+            <button
+              key={section}
+              type="button"
+              role="tab"
+              aria-selected={activeSection === section}
+              onClick={() => setActiveSection(section)}
+              className={`border px-2 text-[13px] font-semibold ${activeSection === section ? 'border-border-strong bg-surface-raised text-text-primary' : 'border-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary'}`}
+            >
+              {section === 'devices' ? t(language, 'devices') : t(language, 'asset_library')}
+            </button>
+          ))}
+        </div>
+
+        <section className={`${activeSection === 'devices' ? 'grid' : 'hidden'} custom-scrollbar min-h-0 flex-1 content-start gap-3 overflow-y-auto px-3 py-3`} role="tabpanel">
           <div>
             <FieldLabel>{t(language, 'device_type')}</FieldLabel>
             <div className="relative">
@@ -146,9 +151,7 @@ export function LabConfigurator({
               <SelectChevron />
             </div>
           </div>
-        </section>
-
-        <section className="flex-none border-t border-border-panel px-2.5 py-2">
+          <div className="border-t border-border pt-3">
           {/* Collapsed by default (UI audit C1): this block is explanatory,
               not operational - one summary line, details on demand. */}
           <details>
@@ -188,10 +191,10 @@ export function LabConfigurator({
             </div>
           </div>
           </details>
+          </div>
         </section>
 
-        <section className="flex min-h-0 flex-1 flex-col border-t border-border-panel px-2.5 py-2">
-          <FieldLabel>{t(language, 'asset_library')}</FieldLabel>
+        <section data-component="AssetLibrary" className={`${activeSection === 'assets' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col px-3 py-3`} role="tabpanel">
           <div className="mb-2 rounded-[3px] border border-border-panel bg-[#181A1D] px-2 py-1.5 text-[11px] leading-4 text-text-muted">
             {t(language, 'asset_library_note')}
             <div className="mt-1 text-[11px] text-[#9AA3AF]">{t(language, 'workspace_drag_hint')}</div>
@@ -261,11 +264,14 @@ export function LabConfigurator({
           </div>
         </section>
 
-        <section className="flex-none border-t border-border-panel px-2.5 py-2">
+        <details className="flex-none border-t border-border px-3 py-2">
+          <summary className="cursor-pointer select-none text-[11px] font-bold uppercase tracking-wide text-text-secondary">
+            {language === 'zh' ? '构建边界' : 'Build boundaries'}
+          </summary>
           {/* Conformance boundary copy: Developer Preview / Not for production hardware */}
-          <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'developer_preview')}</div>
-          <div className="mt-1 text-[11px] leading-4 text-text-muted">{t(language, 'not_for_production')}</div>
-        </section>
+          <div className="mt-2 text-[12px] font-semibold text-text-primary">{t(language, 'developer_preview')}</div>
+          <div className="mt-1 text-[12px] leading-4 text-text-secondary">{t(language, 'not_for_production')}</div>
+        </details>
       </div>
     </aside>
   );

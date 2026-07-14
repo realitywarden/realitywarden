@@ -2597,7 +2597,7 @@ export default function Home() {
   return (
     <div className="industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary">
       <div className="flex h-9 w-full select-none items-center border-b border-border-panel bg-bg-panel">
-        <div className="flex h-full w-[264px] shrink-0 items-center gap-2 border-r border-border-panel px-3 text-[11px] font-semibold text-text-primary">
+        <div className="flex h-full w-[240px] shrink-0 items-center gap-2 border-r border-border-panel px-3 text-[11px] font-semibold text-text-primary xl:w-[280px]">
           <div className="min-w-0">
             <div className="text-[11px] font-bold uppercase tracking-wide text-text-muted-strong">{t(language, 'app_project')}</div>
             <div className="max-w-[160px] truncate text-[13px] font-semibold text-text-primary">{projectName}</div>
@@ -2654,6 +2654,12 @@ export default function Home() {
             {labReport?.result === 'blocked' ? t(language, 'status_safety_blocked') : replayPlaying ? t(language, 'status_playing_motion') : labReport?.result === 'pass' ? t(language, 'status_executed') : t(language, 'status_idle')}
           </span>
           <span className="mx-1 h-6 w-px bg-border-panel" />
+          <div className="relative w-20">
+            <select value={language} onChange={(event) => handleLanguageChange(event.target.value as UiLanguage)} aria-label={language === 'zh' ? '界面语言' : 'Interface language'} className="h-7 w-full appearance-none border border-border bg-surface-raised px-2 text-[12px] text-text-primary">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
           <button type="button" onClick={() => void exportCurrentLabReport()} disabled={!labReport} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31] disabled:opacity-40">
             {t(language, 'app_export_report')}
           </button>
@@ -2693,7 +2699,6 @@ export default function Home() {
           selectedDeviceRunnable={isRunnableDeviceV01(deviceType)}
           selectedWorkspaceDeviceLabel={selectedWorkspaceDevice ? localizeDisplayName(language, selectedWorkspaceDevice.label) : null}
           selectedWorkspaceAssetId={selectedWorkspaceAsset?.manifest.asset_id ?? null}
-          onLanguageChange={handleLanguageChange}
           onDeviceTypeChange={handleDeviceTypeChange}
           onProfileChange={handleProfileChange}
           onScenarioChange={handleScenarioChange}
