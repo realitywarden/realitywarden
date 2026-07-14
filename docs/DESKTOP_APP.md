@@ -162,7 +162,7 @@ npm run desktop:pack
 
 `desktop:pack` is the Windows installer path. It uses `electron-builder` with an `nsis` x64 target and writes artifacts to `release/`. The command packages the compiled shared hardware safety runtime, the Next production runtime, the SHA256-paired prebuilt firmware image, and rebuilt Windows `serialport` native bindings. Next runs from `app.asar.unpacked` because Windows child processes require a real working directory; Electron and the shared safety runtime remain loaded from the packaged application.
 
-After electron-builder finishes, `scripts/verify-electron-package.cjs` fails the command unless all required asar/unpacked entries, native bindings, firmware checksums, branding metadata, and the versioned NSIS artifact are present. A final install-layout smoke check can be run without installing:
+After electron-builder finishes, `scripts/verify-electron-package.cjs` fails the command unless all required asar/unpacked entries, native bindings, PDF/manual-import runtime, firmware checksums, branding metadata, and the versioned NSIS artifact are present. `desktop:pack` then automatically runs the unpacked install-layout executable in production smoke mode. The same smoke check can be repeated manually without installing:
 
 ```powershell
 release\win-unpacked\RealityWarden.exe --prod --smoke-test
@@ -177,7 +177,7 @@ release/RealityWarden-<version>-Setup.exe
 Current verified Public Alpha installer artifact:
 
 ```text
-release/RealityWarden-0.3.0-Setup.exe
+release/RealityWarden-0.5.0-Setup.exe
 ```
 
 If `electron-builder` is missing, the command now fails explicitly instead of exiting successfully without producing an installer.

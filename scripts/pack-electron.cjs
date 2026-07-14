@@ -24,3 +24,16 @@ execFileSync(process.execPath, [path.join(__dirname, 'verify-electron-package.cj
   stdio: 'inherit',
   windowsHide: true
 });
+
+const packagedExecutable = path.join(root, 'release', 'win-unpacked', 'RealityWarden.exe');
+const smokeEnvironment = { ...process.env };
+delete smokeEnvironment.ELECTRON_RUN_AS_NODE;
+execFileSync(packagedExecutable, ['--prod', '--smoke-test'], {
+  cwd: path.dirname(packagedExecutable),
+  env: smokeEnvironment,
+  stdio: 'inherit',
+  timeout: 300_000,
+  windowsHide: true
+});
+
+console.log('Packaged desktop smoke test passed.');

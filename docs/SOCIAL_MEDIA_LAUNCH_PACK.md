@@ -1,4 +1,8 @@
-# RealityWarden Social Media Launch Pack
+# RealityWarden Social Media Launch Pack (Archived)
+
+> Historical v0.1.1 copy. Do not publish this file as current product copy.
+> Use `PUBLIC_LAUNCH_COPY.md` for the current version and the accurate
+> simulation-first / separately gated reference-hardware boundary.
 
 This pack is for the current Public Alpha. Keep the boundary honest:
 

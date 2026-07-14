@@ -1,12 +1,14 @@
 # Device Onboarding Guide
 
-This guide explains the minimum contract for adding a new device to RealityWarden without enabling real hardware control.
+This guide explains the minimum contract for adding a simulation device to
+RealityWarden without granting it real-hardware authority.
 
 Current boundary:
 
 - simulation-first
-- real device execution disabled
-- no direct hardware control in Public Alpha
+- new device manifests default to simulation-only
+- no manifest or public adapter can opt into direct hardware control
+- the existing ESP32 reference rig remains a separate, private-ticketed path
 
 Use this guide when you want to add a new device shape to the runtime, not when you want to bypass the safety boundary.
 

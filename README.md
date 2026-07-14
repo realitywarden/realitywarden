@@ -43,7 +43,7 @@ If Physical AI becomes locked inside a few closed stacks, fewer companies can pa
 
 RealityWarden is designed for the opposite direction: more devices, more adapters, more Reality Assets, more integration work, more deployment work, and a wider developer ecosystem around AI-controlled physical systems.
 
-**Current status — v0.3.0 Public Alpha**
+**Current status — v0.5.0 Public Alpha**
 
 - Public Alpha
 - the main simulation workbench never touches hardware
@@ -53,6 +53,10 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
   through an evidence lock, per-run operator confirmation, and an audited
   safety gate; blocked commands can never reach the wire
 - no production hardware control, no industrial safety certification
+- local PDF/Markdown/text manual import produces reviewable, simulation-only
+  device proposals; a second explicit review is required before a generated
+  asset can enter Virtual Lab, and generated assets can never enable a real
+  adapter
 
 Real-hardware safety invariants — **43/43 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
 
@@ -281,7 +285,7 @@ This is the current product truth:
 - **audited gate before any execution**
 - **local runtime gated**
 - **adapter boundary present**
-- **real execution disabled**
+- **real execution isolated behind the evidence-locked reference path**
 
 More detail: [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md)
 
@@ -311,7 +315,9 @@ The first real path (ESP32 bench rig) already follows this rule:
   and every decision is audited with `hardwareSignalSent`
 - simulation and reality stay strictly separated; hardware support expands
   only device-by-device, each behind the same gate
-- current repository scope is still simulation-only
+- the default workbench and all manually generated assets remain
+  simulation-only; the separately marked reference-rig path is the only real
+  hardware scope
 
 ## Contributing
 

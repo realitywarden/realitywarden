@@ -1,6 +1,6 @@
 # Windows Trial Guide
 
-Use this guide when you want to try the current `v0.3.0 Public Alpha` on Windows.
+Use this guide when you want to try the current `v0.5.0 Public Alpha` on Windows.
 
 This is a **simulation-first desktop application**. The normal evaluation path requires no hardware.
 
@@ -25,7 +25,7 @@ Other built-in device families are visible in the workspace, but they are still:
 If you already have a packaged installer, the expected Windows installer file looks like:
 
 ```text
-RealityWarden-0.3.0-Setup.exe
+RealityWarden-0.5.0-Setup.exe
 ```
 
 Install flow:
@@ -54,7 +54,7 @@ npm run desktop:pack
 Expected output:
 
 ```text
-release/RealityWarden-0.3.0-Setup.exe
+release/RealityWarden-0.5.0-Setup.exe
 ```
 
 If you only want to run the desktop shell from source in a production-like mode without generating an installer:
@@ -132,7 +132,8 @@ These are current product boundaries:
 
 - non-runnable device families show `Coming Soon`
 - unsupported prompts fail instead of silently guessing
-- there is no real hardware execution
+- real hardware is never reached from the normal simulation workflow; the
+  separately marked reference-rig panel remains evidence-locked and opt-in
 
 ## When To Stop And Re-check
 

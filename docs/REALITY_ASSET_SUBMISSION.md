@@ -147,9 +147,14 @@ realAdapterEnabled: false
 
 - [ ] npm run validate:reality-asset -- path/to/asset.json
 - [ ] I understand RealityWarden is simulation-first.
-- [ ] I am not enabling real device execution.
+- [ ] I am not granting this asset real-device execution authority.
 ```
 
 ## Real Device Boundary
 
-RealityWarden Public Alpha is simulation-only. Reality Asset submissions cannot enable live hardware control. Future real device adapters must go through explicit adapter, safety, dry-run, and human-approval boundaries before they can be considered.
+RealityWarden's public asset contribution path is simulation-only. Reality
+Asset submissions cannot enable live hardware control. The existing ESP32
+reference rig is separately implemented behind an evidence lock,
+HardwareExecutionGate, sensor interlocks, and per-run human confirmation; asset
+metadata cannot select or expand that path. Any future real-device integration
+requires an equally explicit, separately reviewed safety boundary.

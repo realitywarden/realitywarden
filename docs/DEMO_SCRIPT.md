@@ -10,7 +10,9 @@ It does not build robots or chips.
 
 It demonstrates the software boundary that can help robots, robot arms, smart devices, sensors, lab equipment, factory systems, electronic toys, and future physical devices become AI-controllable through Reality Assets, capability checks, simulation, safety decisions, adapter plans, and audit logs.
 
-Current boundary: simulation-first. Real device execution is not enabled.
+Current boundary: simulation-first. The main workflow never touches hardware;
+the separately marked ESP32 reference-rig path is evidence-locked, opt-in, and
+outside this software demo flow.
 
 ## Target Length
 
@@ -37,8 +39,8 @@ Open Reality turns it into a checked, simulated, permissioned physical action.
 11. End on this statement:
 
 ```text
-Open Reality = universal software runtime for AI-controlled physical devices.
-Simulation-only Public Alpha. Real device execution is not enabled yet.
+RealityWarden = a safety-governed runtime for AI-controlled physical devices.
+Simulation-first Public Alpha. Reference hardware remains separately gated.
 ```
 
 ## Suggested On-Screen Captions
@@ -67,7 +69,8 @@ AI should not touch reality directly.
 
 - Use the real desktop app UI.
 - Do not splice in concept trailers.
-- Do not imply real hardware execution.
+- Do not imply general or production hardware execution; if the reference rig
+  is mentioned, show its independent REAL HARDWARE boundary and evidence lock.
 - Do not claim unsupported device families are runnable.
 - Do not claim that purely mechanical objects without electronics or interfaces can be controlled by software alone.
 - Use language like "ordinary hardware with chips, controllers, sensors, actuators, motors, or hardware interfaces" when explaining future device scope.

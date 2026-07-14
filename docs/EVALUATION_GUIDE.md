@@ -1,6 +1,6 @@
 # Evaluation Guide
 
-This guide is for the current `v0.3.0 Public Alpha`.
+This guide is for the current `v0.5.0 Public Alpha`.
 
 Use it when you want a clean first evaluation of the product without guessing which prompts or device paths are actually supported.
 
@@ -13,6 +13,8 @@ Runnable device paths in the current Public Alpha:
 - `robot_arm`
 - `smart_light`
 - `camera_sensor`
+- manually imported PDF/Markdown/text device proposals after two explicit
+  simulation-only reviews
 
 Everything else in the workspace should be treated as:
 
@@ -151,7 +153,8 @@ Expected unsupported behavior:
 
 Do not expect the following from this Public Alpha:
 
-- real device execution
+- general-purpose real-device execution (the separately marked ESP32 reference
+  rig is the only gated hardware path)
 - production hardware control
 - certified industrial safety
 - all device families runnable from AI Command
@@ -171,7 +174,7 @@ Check these first:
 If the run target is a non-runnable device family, the correct behavior is:
 
 - `Coming Soon`
-- `Not runnable in v0.1`
+- `Not runnable in this Public Alpha`
 - no motion or action execution
 
 ## Honest Summary
@@ -184,6 +187,6 @@ Use this Public Alpha to evaluate:
 
 Do not use this Public Alpha as evidence of:
 
-- real-world hardware control
+- general real-world hardware compatibility or certified physical outcomes
 - full multi-device runtime coverage
 - production readiness

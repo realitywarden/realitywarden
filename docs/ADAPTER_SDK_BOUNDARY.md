@@ -1,6 +1,8 @@
 # Adapter SDK Boundary
 
-`v0.2 Phase 3` defines the future adapter boundary without enabling real hardware.
+> Historical v0.2 design note. The current product retains this dry-run Adapter
+> SDK boundary for third-party adapters; the separately documented ESP32
+> reference rig now uses `HardwareExecutionGate`, not this public SDK surface.
 
 ## Scope
 
@@ -10,7 +12,7 @@ How will future real devices consume validated `TaskDSL` without letting product
 
 ## Current Rules
 
-- real device execution is still disabled
+- third-party real-device execution through this SDK is disabled
 - all adapter plans are `dryRunOnly`
 - supported adapter modes are:
   - `simulation`

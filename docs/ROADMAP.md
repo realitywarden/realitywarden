@@ -35,9 +35,10 @@ Physical reference-kit validation remains an optional field check documented in
 - keep simulation the default path; real hardware is always opt-in and
   visibly distinct
 
-The v0.3.0 Public Alpha installer is the release-closure artifact for this
-milestone. Physical rig evidence remains optional and does not block the
-software release pipeline.
+The v0.3.0 installer closed this historical milestone. The current v0.5.0
+release candidate adds the manual/PDF simulation-only review loop and refreshed
+package verification. Physical rig evidence remains optional and does not block
+the software release pipeline.
 
 ## Next: Ecosystem Surface
 

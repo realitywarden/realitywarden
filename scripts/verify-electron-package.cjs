@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, '..');
 const releaseDir = path.join(root, 'release');
 const resourcesDir = path.join(releaseDir, 'win-unpacked', 'resources');
 const asarPath = path.join(resourcesDir, 'app.asar');
+const unpackedAppDir = path.join(resourcesDir, 'app.asar.unpacked');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 function findFiles(directory, predicate) {
@@ -27,6 +28,12 @@ function findFiles(directory, predicate) {
   return matches;
 }
 
+function readPackagedEntry(entry) {
+  const unpackedPath = path.join(unpackedAppDir, ...entry.split('/'));
+  if (fs.existsSync(unpackedPath)) return fs.readFileSync(unpackedPath);
+  return asar.extractFile(asarPath, entry);
+}
+
 assert(fs.existsSync(asarPath), `packaged app archive missing: ${asarPath}`);
 const entries = new Set(asar.listPackage(asarPath).map((entry) => entry.replace(/^[/\\]+/, '').replaceAll('\\', '/')));
 for (const required of [
@@ -35,6 +42,7 @@ for (const required of [
   'dist-electron-runtime/lib/hardware/index.js',
   '.next-build/BUILD_ID',
   'node_modules/next/dist/bin/next',
+  'node_modules/pdfjs-dist/package.json',
   'node_modules/serialport/package.json',
   'assets/branding/realitywarden.ico'
 ]) {
@@ -44,9 +52,16 @@ for (const required of [
 const packagedMetadata = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert.equal(packagedMetadata.version, packageJson.version, 'packaged app version must match package.json');
 assert.equal(packagedMetadata.main, 'dist-electron/main.js', 'packaged app main entry must target the compiled Electron process');
+assert.equal(packagedMetadata.dependencies?.['pdfjs-dist'], '4.10.38', 'packaged app must retain the pinned PDF extraction runtime');
+
+const manualImportChunks = Array.from(entries).filter((entry) => /^\.next-build\/static\/chunks\/app\/page-[^/]+\.js$/.test(entry));
+assert(manualImportChunks.length > 0, 'packaged Next output is missing the main application chunk');
+const mainApplicationBundle = manualImportChunks.map((entry) => readPackagedEntry(entry).toString('utf8')).join('\n');
+assert(mainApplicationBundle.includes('Import Device Manual'), 'packaged UI is missing the manual-import entry point');
+assert(mainApplicationBundle.includes('SIMULATION ONLY'), 'packaged manual-import UI is missing its simulation-only boundary');
 
 const unpackedBindings = findFiles(
-  path.join(resourcesDir, 'app.asar.unpacked', 'node_modules', '@serialport', 'bindings-cpp'),
+  path.join(unpackedAppDir, 'node_modules', '@serialport', 'bindings-cpp'),
   (file) => file.endsWith('.node') && file.toLowerCase().includes('win32')
 );
 assert(unpackedBindings.length > 0, 'serialport Windows native binding must be present outside app.asar');
@@ -55,7 +70,7 @@ for (const required of [
   'next.config.mjs',
   'node_modules/next/dist/bin/next'
 ]) {
-  assert(fs.existsSync(path.join(resourcesDir, 'app.asar.unpacked', ...required.split('/'))), `Next server runtime must be unpacked to a real filesystem path: ${required}`);
+  assert(fs.existsSync(path.join(unpackedAppDir, ...required.split('/'))), `Next server runtime must be unpacked to a real filesystem path: ${required}`);
 }
 
 const firmwareDir = path.join(resourcesDir, 'firmware', 'prebuilt');
@@ -85,6 +100,7 @@ assert(fs.statSync(installer).size > 1024 * 1024, 'NSIS installer is unexpectedl
 console.log('Electron package verification passed.');
 console.log(`- Installer: ${installerName}`);
 console.log('- Compiled Electron + shared safety runtime + Next production output are present.');
+console.log('- Manual/PDF import UI and pinned pdfjs runtime are present.');
 console.log(`- serialport native binding(s): ${unpackedBindings.length}`);
 console.log(`- Firmware image(s) with valid sha256: ${firmwareImages.length}`);
 console.log('- Branded executable, installer, and uninstaller icon configuration is present.');
