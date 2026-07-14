@@ -81,6 +81,10 @@
   visibility: hidden !important;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 @layer utilities {
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
@@ -139,7 +143,10 @@
   .industrial-workbench select:focus-visible,
   .industrial-workbench input:focus-visible,
   .industrial-workbench textarea:focus-visible,
-  .industrial-workbench [role='tab']:focus-visible {
+  .industrial-workbench [role='tab']:focus-visible,
+  .industrial-workbench [role='menuitem']:focus-visible,
+  .industrial-workbench summary:focus-visible,
+  .industrial-workbench a[href]:focus-visible {
     outline: none;
     box-shadow: var(--focus-ring) !important;
   }
@@ -216,5 +223,40 @@
     background: var(--color-surface-overlay);
     box-shadow: var(--shadow-floating) !important;
     backdrop-filter: blur(8px);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .industrial-workbench {
+    --color-border: #4B5563;
+    --color-border-strong: #7C8798;
+    --color-text-secondary: #C7CDD7;
+    --color-text-muted: #AAB2BF;
+    --focus-ring: 0 0 0 3px #7DD3FC;
+  }
+}
+
+@media (forced-colors: active) {
+  .industrial-workbench button:focus-visible,
+  .industrial-workbench select:focus-visible,
+  .industrial-workbench input:focus-visible,
+  .industrial-workbench textarea:focus-visible,
+  .industrial-workbench [role='tab']:focus-visible,
+  .industrial-workbench [role='menuitem']:focus-visible,
+  .industrial-workbench summary:focus-visible,
+  .industrial-workbench a[href]:focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+    box-shadow: none !important;
+  }
+
+  .industrial-workbench [role='tab'][aria-selected='true'] {
+    border-color: Highlight !important;
+    color: HighlightText !important;
+  }
+
+  .industrial-workbench [data-real-hardware-boundary] {
+    border-top: 4px double CanvasText !important;
+    border-image: none !important;
   }
 }

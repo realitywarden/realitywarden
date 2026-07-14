@@ -6,6 +6,7 @@ import type { DeviceProfile, DeviceType } from '@/types/deviceMeta';
 import type { DeviceAsset } from '@/lib/assets/DeviceAsset';
 import type { Locale } from '@/lib/i18n';
 import { localizeCategory, localizeDeviceType, localizeDisplayName, localizeMetadataValue, localizeProfileName, localizeScenarioName, t } from '@/lib/i18n';
+import { handleRovingTabKey } from '@/lib/ui/keyboardNavigation';
 
 export type UiLanguage = Locale;
 
@@ -99,13 +100,17 @@ export function LabConfigurator({
         </header>
 
         <div className="grid h-10 flex-none grid-cols-2 border-b border-border bg-surface p-1" role="tablist" aria-label={language === 'zh' ? '左侧导航' : 'Left navigation'}>
-          {(['devices', 'assets'] as const).map((section) => (
+          {(['devices', 'assets'] as const).map((section, index, sections) => (
             <button
               key={section}
+              id={`device-navigator-tab-${section}`}
               type="button"
               role="tab"
               aria-selected={activeSection === section}
+              aria-controls={`device-navigator-panel-${section}`}
+              tabIndex={activeSection === section ? 0 : -1}
               onClick={() => setActiveSection(section)}
+              onKeyDown={(event) => handleRovingTabKey(event, index, sections.length, (nextIndex) => setActiveSection(sections[nextIndex]))}
               className={`border px-2 text-[13px] font-semibold ${activeSection === section ? 'border-border-strong bg-surface-raised text-text-primary' : 'border-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary'}`}
             >
               {section === 'devices' ? t(language, 'devices') : t(language, 'asset_library')}
@@ -113,7 +118,7 @@ export function LabConfigurator({
           ))}
         </div>
 
-        <section className={`${activeSection === 'devices' ? 'grid' : 'hidden'} custom-scrollbar min-h-0 flex-1 content-start gap-3 overflow-y-auto px-3 py-3`} role="tabpanel">
+        <section id="device-navigator-panel-devices" aria-labelledby="device-navigator-tab-devices" hidden={activeSection !== 'devices'} className={`${activeSection === 'devices' ? 'grid' : 'hidden'} custom-scrollbar min-h-0 flex-1 content-start gap-3 overflow-y-auto px-3 py-3`} role="tabpanel">
           <div>
             <FieldLabel>{t(language, 'device_type')}</FieldLabel>
             <div className="relative">
@@ -194,7 +199,7 @@ export function LabConfigurator({
           </div>
         </section>
 
-        <section data-component="AssetLibrary" className={`${activeSection === 'assets' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col px-3 py-3`} role="tabpanel">
+        <section data-component="AssetLibrary" id="device-navigator-panel-assets" aria-labelledby="device-navigator-tab-assets" hidden={activeSection !== 'assets'} className={`${activeSection === 'assets' ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col px-3 py-3`} role="tabpanel">
           <div className="mb-2 rounded-[3px] border border-border-panel bg-[#181A1D] px-2 py-1.5 text-[11px] leading-4 text-text-muted">
             {t(language, 'asset_library_note')}
             <div className="mt-1 text-[11px] text-[#9AA3AF]">{t(language, 'workspace_drag_hint')}</div>

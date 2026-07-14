@@ -67,6 +67,13 @@
 
 自动防回归入口：`npm run test:accessibility`，并已接入 `npm run verify`。
 
+### Keyboard and contrast contract
+
+- 横向 Tab 组采用 roving `tabIndex`：只有当前 Tab 进入 Tab 顺序；`ArrowLeft` / `ArrowRight` 循环切换并同步焦点，`Home` / `End` 到首尾。Tab 与面板必须使用 `aria-controls` / `aria-labelledby` 成对关联。
+- File 菜单使用 `menu` / `menuitem` 语义；上下方向键、Home、End 可遍历，Escape 关闭并回焦 File，点击菜单外关闭。Run / Stop 仍不得进入该菜单或顶栏。
+- button、表单控件、Tab、菜单项、链接和 `summary` 都必须保留统一 `:focus-visible`。`prefers-contrast: more` 提升边界、次级文本和焦点环；`forced-colors` 使用系统 Highlight 与显式 outline。
+- REAL HARDWARE 在强制颜色模式下仍保留双线危险边界和文字标签，不能依赖橙色；仿真与真实硬件的语义和安全逻辑不受显示模式影响。
+
 ### File operation recovery
 
 - Project Open / Save / Save As，以及 Lab Report、Adapter Package、所选资产配置导出，必须统一捕获桌面 IPC、文件系统和浏览器下载异常。

@@ -57,6 +57,8 @@
 - **可访问恢复第一批 ✅**：操作通知按严重度使用 `status/polite` 或 `alert/assertive`，错误保持到人工关闭；损坏自动保存提供显式清除且不改当前工作区。Action Composer 具备可访问名称、Escape、Tab/Shift+Tab 圈闭与触发器回焦；所有模态统一抑制背景和 Three.js HTML 穿透。3D 世界标签被约束在工作区控件下层，不再覆盖 CommandDock。路由/全局/3D 崩溃面提供局部恢复 + 完整重载，并不再从 UI 异常伪造“硬件未发送”结论。新增 `test:accessibility` 接入 verify；1180×720 / 1440×900 动作编辑器实测完整，键盘路径通过。
 - **文件恢复与剩余导入模态 ✅**：Project Open / Save / Save As、Lab Report、Adapter Package 与所选资产配置导出均捕获桌面 IPC、文件系统和浏览器下载失败；错误通知保持可见并提供原操作重试，浏览器 Open 恢复入口允许重新选择同名文件。资产导入获得 dialog/Escape/Tab 圈闭，资产与手册导入均稳定回焦到仍可见的 File 菜单按钮；1180×720 与 1440×900 浏览器验收完整，控制台零 warning/error。未修改导入校验、安全逻辑或执行语义。
 
+- **全局键盘与高对比度收口 ✅**：Device Navigator、Evidence Sidebar、手册审阅三组 Tab 统一 roving focus，支持方向键/Home/End，并补齐 Tab/Panel 关系；File 桌面菜单支持上下键、Home/End、Escape 回焦和菜单外关闭。全局 focus-visible 覆盖菜单项、链接与 summary，增加 prefers-contrast / forced-colors 兜底；REAL HARDWARE 在强制颜色下保留独立双线危险边界。未修改运行、安全、审计或真实执行语义。
+
 ## 下一步
 
 1. **成品化持续项**：继续键盘遍历、窄窗口与高对比度审计，收敛资产导入向统一设计 token；不得覆盖尚未提交的资产预览健壮性改动。

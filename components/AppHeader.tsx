@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import type { UiLanguage } from './LabConfigurator';
 import { t } from '@/lib/i18n';
 
@@ -15,6 +16,9 @@ interface FileMenuProps {
 }
 
 export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore }: FileMenuProps) {
+  const [open, setOpen] = useState(false);
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
   const items: Array<{ label: string; action: () => void }> = [
     { label: t(language, 'app_new'), action: onNew },
     { label: t(language, 'app_open'), action: onOpen },
@@ -24,17 +28,72 @@ export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManua
     { label: t(language, 'app_save_as'), action: onSaveAs },
     { label: t(language, 'app_restore'), action: onRestore }
   ];
+
+  const focusItem = (index: number) => {
+    requestAnimationFrame(() => {
+      detailsRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]')[index]?.focus();
+    });
+  };
+
+  const openAt = (index: number) => {
+    setOpen(true);
+    focusItem(index);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!detailsRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [open]);
+
   return (
-    <details className="relative">
-      <summary data-file-menu-trigger className="flex h-8 cursor-pointer select-none list-none items-center border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">
+    <details ref={detailsRef} open={open} className="relative" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+      <summary
+        ref={triggerRef}
+        data-file-menu-trigger
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(event) => { event.preventDefault(); if (open) setOpen(false); else openAt(0); }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            openAt(event.key === 'ArrowDown' ? 0 : items.length - 1);
+          } else if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            setOpen(false);
+          }
+        }}
+        className="flex h-8 cursor-pointer select-none list-none items-center border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary"
+      >
         {language === 'zh' ? '文件' : 'File'} <span className="ml-2 text-[10px] text-text-secondary">▾</span>
       </summary>
-      <div className="rw-floating-panel absolute left-0 top-9 z-50 flex w-48 flex-col py-1">
-        {items.map((item) => (
+      <div className="rw-floating-panel absolute left-0 top-9 z-50 flex w-48 flex-col py-1" role="menu" aria-label={language === 'zh' ? '文件操作' : 'File actions'}>
+        {items.map((item, index) => (
           <button
             key={item.label}
             type="button"
-            onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open'); item.action(); }}
+            role="menuitem"
+            tabIndex={-1}
+            onClick={() => { setOpen(false); item.action(); }}
+            onKeyDown={(event) => {
+              let nextIndex: number | null = null;
+              if (event.key === 'ArrowDown') nextIndex = (index + 1) % items.length;
+              else if (event.key === 'ArrowUp') nextIndex = (index - 1 + items.length) % items.length;
+              else if (event.key === 'Home') nextIndex = 0;
+              else if (event.key === 'End') nextIndex = items.length - 1;
+              else if (event.key === 'Escape') {
+                event.preventDefault();
+                setOpen(false);
+                triggerRef.current?.focus();
+              }
+              if (nextIndex !== null) {
+                event.preventDefault();
+                focusItem(nextIndex);
+              }
+            }}
             className="px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-raised"
           >
             {item.label}
