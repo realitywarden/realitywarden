@@ -1,3 +1,5 @@
+import type { HardwareSignalState } from '@/lib/hardware/types';
+
 export type RuntimeAuditLevel = 'info' | 'warn' | 'error';
 
 export type RuntimeAuditStage =
@@ -18,11 +20,13 @@ export interface RuntimeAuditEntry {
   code: string;
   message: string;
   /**
-   * REQUIRED on every entry. True ONLY when a signal actually left the host
-   * toward real hardware for this entry. Blocked decisions are always false.
-   * Simulation-only entries are always false.
+   * REQUIRED compatibility flag. False proves no signal left the host; true is
+   * conservative and covers both attempted/unconfirmed and acknowledged sends.
+   * Read hardwareSignalState for the precise evidence (audit 4.1).
    */
   hardwareSignalSent: boolean;
+  /** Precise companion to hardwareSignalSent (audit 4.1). */
+  hardwareSignalState: HardwareSignalState;
   data?: Record<string, unknown>;
 }
 
@@ -32,8 +36,12 @@ function createEntry(
   code: string,
   message: string,
   data?: Record<string, unknown>,
-  hardwareSignalSent = false
+  hardwareSignalSent = false,
+  hardwareSignalState: HardwareSignalState = 'not_sent'
 ): RuntimeAuditEntry {
+  if (hardwareSignalSent !== (hardwareSignalState !== 'not_sent')) {
+    throw new Error(`invalid_hardware_signal_evidence:${hardwareSignalSent}:${hardwareSignalState}`);
+  }
   return {
     id: `runtime-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     timestamp: new Date().toISOString(),
@@ -42,6 +50,7 @@ function createEntry(
     code,
     message,
     hardwareSignalSent,
+    hardwareSignalState,
     data
   };
 }
@@ -72,9 +81,10 @@ export class RuntimeAuditLog {
     code: string,
     message: string,
     hardwareSignalSent: boolean,
+    hardwareSignalState: HardwareSignalState,
     data?: Record<string, unknown>
   ) {
-    this.entries.push(createEntry(stage, level, code, message, data, hardwareSignalSent));
+    this.entries.push(createEntry(stage, level, code, message, data, hardwareSignalSent, hardwareSignalState));
   }
 
   list() {

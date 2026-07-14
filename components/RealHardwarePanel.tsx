@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * REAL HARDWARE panel (v0.3, connection-only).
+ * REAL HARDWARE panel (v0.3, separately gated execution boundary).
  *
  * Scope is deliberately narrow and honest (invariant 6: simulation and
  * reality visibly distinct):
  * - explicit REAL HARDWARE identity, styled unlike any simulation panel
  * - serial connection wizard: list ports -> connect -> handshake
  * - read-only live distance from the HC-SR04 (read_distance capability)
- * - NO execution path: runs in this build stay simulation-only; wiring real
- *   actuation into the UI is gated on the four-scenario device acceptance.
+ * - real actuation remains evidence-locked, operator-confirmed, and routed
+ *   through the authoritative HardwareExecutionGate chain.
  *
  * Every state shown is real: no bridge (web build) says so, a failed
  * handshake says so, and "connected" appears only after the device answered
@@ -68,6 +68,9 @@ export interface HardwareExecuteOutcome {
   reason?: string;
   executionMode?: string;
   signalSent?: boolean;
+  signalState?: 'not_sent' | 'attempted_unconfirmed' | 'device_acknowledged';
+  executionEvidence?: 'not_executed' | 'delivery_unconfirmed' | 'device_rejected' | 'command_acknowledged_open_loop' | 'read_response';
+  physicalOutcomeVerified?: boolean;
   detail?: string;
   distanceCm?: number;
   readErrors?: string[];
@@ -325,8 +328,8 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
         onClick={() => setExpanded((value) => !value)}
         className="flex h-8 w-full items-center gap-2 px-3 text-left"
         title={zh
-          ? '真实硬件连接面板。本构建的任务执行仍为仿真-only。'
-          : 'Real hardware connection panel. Runs in this build stay simulation-only.'}
+          ? '独立的真实硬件边界；执行受证据锁、人工确认和安全门控制。'
+          : 'Independent real-hardware boundary; execution requires the evidence lock, operator confirmation, and safety gate.'}
       >
         <span className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-1.5 text-[11px] font-bold uppercase tracking-wide text-status-warning">
           REAL HARDWARE
@@ -497,17 +500,32 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
                   <div>
                     [{execOutcome.executionMode ?? 'real_hardware'}] {execOutcome.status ?? 'error'}
                     {typeof execOutcome.signalSent === 'boolean' ? ` · hardwareSignalSent=${String(execOutcome.signalSent)}` : ''}
+                    {execOutcome.signalState ? ` · ${execOutcome.signalState}` : ''}
                     {typeof execOutcome.distanceCm === 'number' ? ` · ${execOutcome.distanceCm.toFixed(1)} cm` : ''}
                   </div>
                   <div className="break-all">{execOutcome.reason ?? execOutcome.error ?? execOutcome.detail}</div>
+                  {execOutcome.executionEvidence === 'command_acknowledged_open_loop' && (
+                    <div className="mt-1 border-t border-status-executed-edge pt-1 font-sans font-semibold">
+                      {zh
+                        ? '设备已确认命令；SG90 为开环舵机，物理角度/到位状态未经反馈验证。'
+                        : 'Device acknowledged the command; the open-loop SG90 provides no feedback proving physical angle or arrival.'}
+                    </div>
+                  )}
+                  {execOutcome.signalState === 'attempted_unconfirmed' && (
+                    <div className="mt-1 border-t border-status-blocked-edge pt-1 font-sans font-semibold">
+                      {zh
+                        ? '主机已尝试发送，但设备未确认交付；不得视为未动作，也不得视为执行成功。'
+                        : 'Host transmission was attempted but delivery was not acknowledged; treat this as neither known-safe non-motion nor successful execution.'}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
           <div className="border-t border-[#3a2f1d] pt-1.5 text-[11px] text-text-secondary">
             {zh
-              ? '此面板仅做连接与只读距离。本构建的任务执行仍为仿真-only；真机执行在四场景验收通过后才会解锁。'
-              : 'This panel is connection + read-only distance. Task execution in this build stays simulation-only; real actuation unlocks only after the four-scenario device acceptance.'}
+              ? 'AI Command Terminal 默认运行仿真；真实执行只存在于此独立危险边界，并受证据锁、逐次人工确认与完整安全门控制。'
+              : 'AI Command Terminal runs simulation by default. Real actuation exists only inside this independent danger boundary with evidence lock, per-run confirmation, and the full safety gate.'}
           </div>
         </div>
       )}

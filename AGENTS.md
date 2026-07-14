@@ -59,6 +59,6 @@ npm run verify                           # 全量(慢,提交前跑一次)
 1. **安装包打包 ✅**:electron-builder 产出 Windows 安装包,把 `dist-electron-runtime`、`firmware/prebuilt`、serialport 原生模块打进产物;版本号、图标;构建后自动验包并跑过安装态 smoke。
 2. **UI 信息架构重构**(`docs/ui/2026-07-11-ui-audit.md` C 系列剩余项 + E 系列视觉一致性:设计 token 收敛、字号层级)。
 3. v0.4 深化:动作库导入/导出(JSON,已有 schema)、禁区(forbidden_zones)在 3D 工作区可视化编辑。
-4. **成品清理进行中**:旧 adapter 已删除；安全 P2 2.3/5.2 已以通用 `argumentLimits` 默认拦截收口；下一步处理 4.1 审计发送状态、4.2 开环执行语义与发布文档，不等待真机验收。
+4. **成品清理进行中**:旧 adapter 已删除；安全自审 P1/P2 全部收口（含三态发送证据与开环物理未验证语义）；下一步集中处理成品发布文档、版本与发布说明，不等待真机验收。
 
 git:提交按功能单元、message 说明验证结果;所有者本机负责 push。

@@ -52,7 +52,8 @@ export interface HardwareGateRequest {
  * Core invariant enforced here: when the SafetyMonitor blocks a command,
  * adapter.execute() is NOT called — there is no code path from a blocked
  * decision to the transport. Every decision (allow or block) is written to
- * the audit log with an explicit hardwareSignalSent boolean.
+ * the audit log with both the conservative hardwareSignalSent boolean and the
+ * precise hardwareSignalState evidence.
  */
 export class HardwareExecutionGate {
   constructor(
@@ -84,6 +85,7 @@ export class HardwareExecutionGate {
         'hardware_command_blocked',
         `Hardware command blocked: ${decision.reason}`,
         false,
+        'not_sent',
         {
           commandId: command.id,
           deviceId: command.deviceId,
@@ -97,7 +99,13 @@ export class HardwareExecutionGate {
         status: 'blocked',
         reason: decision.reason,
         executionMode: 'real_hardware',
-        result: { ok: false, signalSent: false, detail: `blocked: ${decision.reason}` }
+        result: {
+          ok: false,
+          signalSent: false,
+          signalState: 'not_sent',
+          executionEvidence: 'not_executed',
+          detail: `blocked: ${decision.reason}`
+        }
       };
     }
 
@@ -107,15 +115,19 @@ export class HardwareExecutionGate {
       result.ok ? 'info' : 'error',
       result.ok ? 'hardware_command_executed' : 'hardware_command_failed',
       result.ok
-        ? `Hardware command executed: ${command.capabilityId}`
+        ? `Hardware command acknowledged: ${command.capabilityId}${result.executionEvidence === 'command_acknowledged_open_loop' ? ' (open loop; physical outcome not verified)' : ''}`
         : `Hardware command failed: ${result.detail}`,
       result.signalSent,
+      result.signalState,
       {
         commandId: command.id,
         deviceId: command.deviceId,
         capabilityId: command.capabilityId,
         args: command.args,
         executionMode: 'real_hardware',
+        hardwareSignalState: result.signalState,
+        executionEvidence: result.executionEvidence,
+        physicalOutcomeVerified: result.physicalOutcomeVerified,
         detail: result.detail
       }
     );

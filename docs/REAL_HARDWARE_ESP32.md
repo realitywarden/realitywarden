@@ -4,7 +4,7 @@ This is the first REAL hardware execution path in RealityWarden. It is fully
 separate from the simulation runtime, and it obeys the six core invariants:
 blocked commands never reach hardware, offline never fakes success, missing /
 stale / implausible sensor data default-blocks actuation, every decision is
-audited with `hardwareSignalSent`, there is no silent fallback, and real
+audited with `hardwareSignalSent` plus precise `hardwareSignalState`, there is no silent fallback, and real
 execution is always labeled `real_hardware`.
 
 ## What you need
@@ -61,8 +61,10 @@ firmware is detected explicitly and can still receive the basic distance test.
 
 Expected results:
 
-1. `move_to_angle 45` → executed, the servo moves, audit shows
-   `hardwareSignalSent: true`.
+1. `move_to_angle 45` → device acknowledges the command; audit shows
+   `hardwareSignalSent: true`, `hardwareSignalState: device_acknowledged`,
+   `executionEvidence: command_acknowledged_open_loop`, and
+   `physicalOutcomeVerified: false`.
 2. `move_to_angle 200` → BLOCKED (outside 0-180), the servo does not move,
    audit shows `hardwareSignalSent: false`.
 3. Legal angle with an obstacle closer than `--min-safe-cm` (default 10) →
@@ -70,8 +72,18 @@ Expected results:
 4. Sensor unplugged or silent → BLOCKED (default-block: no data means no
    actuation).
 
-Every run prints the full audit log as JSON; each entry carries an explicit
-`hardwareSignalSent` boolean.
+Every run prints the full audit log as JSON. Each entry carries the compatible
+`hardwareSignalSent` boolean and a precise `hardwareSignalState`:
+
+- `not_sent`: the host proves zero signal was emitted;
+- `attempted_unconfirmed`: sending was attempted, but delivery/device handling
+  was not acknowledged; do not treat this as either known non-motion or success;
+- `device_acknowledged`: a matching device response was received.
+
+The SG90 is open-loop and provides no position feedback. Therefore `executed`
+means the firmware accepted the command and called its servo output API; it does
+not mean the shaft reached the requested angle. RealityWarden records this as
+`command_acknowledged_open_loop` with `physicalOutcomeVerified: false`.
 
 ## 4. Run the safety invariant tests (no hardware needed)
 

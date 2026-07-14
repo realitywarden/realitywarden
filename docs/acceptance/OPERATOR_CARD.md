@@ -31,10 +31,12 @@ npm run hardware:demo -- --port COMx --scenario 4
 
 | 场景 | 眼睛看到 | 审计日志里 |
 |------|----------|-----------|
-| 1 `move_to_angle 45` | **舵机转动** | `executed`，`hardwareSignalSent: true` |
+| 1 `move_to_angle 45` | **舵机转动**（人工观察，非位置反馈） | `executed`，`hardwareSignalSent: true`，`hardwareSignalState: device_acknowledged`，`executionEvidence: command_acknowledged_open_loop`，`physicalOutcomeVerified: false` |
 | 2 `move_to_angle 200` | 舵机纹丝不动 | `blocked`（`angle_out_of_range`），`hardwareSignalSent: false` |
 | 3 障碍 <10cm | 舵机纹丝不动 | `blocked`（`min_safe_distance_violation`） |
 | 4 传感器拔线 | 舵机纹丝不动 | `blocked`（`sensor_missing`） |
+
+> SG90 是开环舵机。`executed` 只表示固件确认命令并调用舵机输出，不表示系统实测到物理角度。若看到 `attempted_unconfirmed`，按“动作可能发生但未获确认”处理，先断电/检查现场，不得重试推定。
 
 任一场景"blocked 但舵机动了" = **P0 安全事故**，立即停，保留日志找我。
 

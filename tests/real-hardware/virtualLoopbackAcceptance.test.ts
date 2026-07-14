@@ -239,7 +239,11 @@ async function main() {
   assert(blockedEntries.length === 4, `four blocked audit entries expected, got ${blockedEntries.length}`);
   assert(entries.every((entry) => typeof entry.hardwareSignalSent === 'boolean'), 'every audit entry must carry hardwareSignalSent');
   assert(blockedEntries.every((entry) => entry.hardwareSignalSent === false), 'blocked entries must have hardwareSignalSent=false');
-  console.log('ok - audit log: 1 executed + 4 blocked, hardwareSignalSent explicit everywhere');
+  assert(entries.every((entry) => entry.hardwareSignalSent === (entry.hardwareSignalState !== 'not_sent')), 'signal boolean/state evidence must agree');
+  assert(executedEntries[0].hardwareSignalState === 'device_acknowledged', 'executed entry requires device acknowledgement');
+  assert(executedEntries[0].data?.executionEvidence === 'command_acknowledged_open_loop', 'servo acknowledgement must stay explicitly open-loop');
+  assert(executedEntries[0].data?.physicalOutcomeVerified === false, 'virtual firmware acknowledgement must not claim physical verification');
+  console.log('ok - audit log: delivery state explicit; acknowledgement remains open-loop, never physical proof');
 
   await transport.disconnect();
   console.log('Virtual loopback acceptance e2e passed (5 scenarios, real transport + protocol).');

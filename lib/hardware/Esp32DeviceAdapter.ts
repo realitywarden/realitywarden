@@ -113,6 +113,8 @@ export class Esp32DeviceAdapter {
       return {
         ok: false,
         signalSent: false,
+        signalState: 'not_sent',
+        executionEvidence: 'not_executed',
         detail: `unsupported capability: ${command.capabilityId}`
       };
     }
@@ -123,12 +125,14 @@ export class Esp32DeviceAdapter {
       return {
         ok: false,
         signalSent: false,
+        signalState: 'not_sent',
+        executionEvidence: 'not_executed',
         detail: 'invalid_actuation_ticket: actuation requires the HardwareExecutionGate'
       };
     }
 
     if (!this.transport.isConnected()) {
-      return { ok: false, signalSent: false, detail: 'hardware offline' };
+      return { ok: false, signalSent: false, signalState: 'not_sent', executionEvidence: 'not_executed', detail: 'hardware offline' };
     }
 
     // Defense-in-depth generic physical limit check (primary check is in
@@ -139,6 +143,8 @@ export class Esp32DeviceAdapter {
         return {
           ok: false,
           signalSent: false,
+          signalState: 'not_sent',
+          executionEvidence: 'not_executed',
           detail: `${command.capabilityId} requires finite numeric args.${limit.argument}`
         };
       }
@@ -146,6 +152,8 @@ export class Esp32DeviceAdapter {
         return {
           ok: false,
           signalSent: false,
+          signalState: 'not_sent',
+          executionEvidence: 'not_executed',
           detail: `${limit.argument} ${value} outside physical limits [${limit.min}, ${limit.max}]`
         };
       }
@@ -167,15 +175,20 @@ export class Esp32DeviceAdapter {
         // The frame left the host and the device answered => signal was sent,
         // even if the device reports a failure.
         signalSent: true,
+        signalState: 'device_acknowledged',
+        executionEvidence: capability.actuation
+          ? (response.ok ? 'command_acknowledged_open_loop' : 'device_rejected')
+          : 'read_response',
+        physicalOutcomeVerified: capability.actuation ? false : undefined,
         detail: response.detail ?? (response.ok ? 'device acknowledged' : 'device reported failure'),
         data: response.data
       };
     } catch (error) {
       if (error instanceof TransportOfflineError) {
-        return { ok: false, signalSent: false, detail: 'hardware offline' };
+        return { ok: false, signalSent: false, signalState: 'not_sent', executionEvidence: 'not_executed', detail: 'hardware offline' };
       }
       if (error instanceof TransportFrameRejectedError) {
-        return { ok: false, signalSent: false, detail: error.message };
+        return { ok: false, signalSent: false, signalState: 'not_sent', executionEvidence: 'not_executed', detail: error.message };
       }
       // Timeout / write errors after connect: the signal may have left the
       // host, but delivery was never confirmed. Report honestly as not ok;
@@ -183,6 +196,9 @@ export class Esp32DeviceAdapter {
       return {
         ok: false,
         signalSent: true,
+        signalState: 'attempted_unconfirmed',
+        executionEvidence: 'delivery_unconfirmed',
+        physicalOutcomeVerified: capability.actuation ? false : undefined,
         detail: this.withProtocolError(`device communication failed: ${error instanceof Error ? error.message : String(error)}`)
       };
     }

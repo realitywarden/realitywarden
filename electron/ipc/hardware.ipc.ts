@@ -351,7 +351,14 @@ interface RuntimeHardwareModule {
       status: 'executed' | 'failed' | 'blocked';
       reason: string;
       executionMode: string;
-      result: { ok: boolean; signalSent: boolean; detail: string };
+      result: {
+        ok: boolean;
+        signalSent: boolean;
+        signalState: 'not_sent' | 'attempted_unconfirmed' | 'device_acknowledged';
+        executionEvidence: string;
+        physicalOutcomeVerified?: boolean;
+        detail: string;
+      };
     }>;
     getAuditLog(): { list(): unknown[] };
   };
@@ -430,6 +437,9 @@ async function executeRealAngle(payload: { portPath?: string; angle?: number; co
       reason: outcome.reason,
       executionMode: outcome.executionMode,
       signalSent: outcome.result.signalSent,
+      signalState: outcome.result.signalState,
+      executionEvidence: outcome.result.executionEvidence,
+      physicalOutcomeVerified: outcome.result.physicalOutcomeVerified,
       detail: outcome.result.detail,
       distanceCm: median ? median.value : undefined,
       readErrors,

@@ -268,6 +268,7 @@ async function testOfflineTransportNeverFakesSuccess() {
   assert(outcome.status === 'failed', 'offline hardware must fail, not fake success');
   assert(outcome.result.ok === false, 'offline result.ok must be false');
   assert(outcome.result.signalSent === false, 'offline result.signalSent must be false');
+  assert(outcome.result.signalState === 'not_sent', 'offline result must prove signalState=not_sent');
   assert(outcome.result.detail === 'hardware offline', `offline detail must be "hardware offline", got: ${outcome.result.detail}`);
   assert(adapter.executeCalls === 1, 'allowed command reaches the adapter, which then reports offline honestly');
   assert(transport.sentFrames.length === 0, 'offline transport must not record any sent frame');
@@ -275,6 +276,7 @@ async function testOfflineTransportNeverFakesSuccess() {
   const failedEntry = audit.list().find((entry) => entry.code === 'hardware_command_failed');
   assert(failedEntry, 'offline failure must be audited');
   assert(failedEntry.hardwareSignalSent === false, 'offline audit entry must have hardwareSignalSent=false');
+  assert(failedEntry.hardwareSignalState === 'not_sent', 'offline audit entry must carry signalState=not_sent');
 }
 
 async function testAllowedCommandExecutesAndAudits() {
@@ -292,6 +294,9 @@ async function testAllowedCommandExecutesAndAudits() {
   assert(outcome.status === 'executed', 'legal command with healthy sensors must execute');
   assert(outcome.executionMode === 'real_hardware', 'outcome must be labeled real_hardware');
   assert(outcome.result.signalSent === true, 'executed result must report signalSent=true');
+  assert(outcome.result.signalState === 'device_acknowledged', 'executed result must require a matching device acknowledgement');
+  assert(outcome.result.executionEvidence === 'command_acknowledged_open_loop', 'servo success proves command acknowledgement, not physical arrival');
+  assert(outcome.result.physicalOutcomeVerified === false, 'open-loop servo outcome must never claim physical verification');
   assert(adapter.executeCalls === 1, 'allowed command must invoke adapter.execute() exactly once');
   assert(transport.sentFrames.length === 1, 'exactly one frame must reach the wire');
   assert(transport.sentFrames[0].cmd === 'move_to_angle', 'wire frame must carry move_to_angle');
@@ -300,6 +305,35 @@ async function testAllowedCommandExecutesAndAudits() {
   const executedEntry = audit.list().find((entry) => entry.code === 'hardware_command_executed');
   assert(executedEntry, 'executed decision must be audited');
   assert(executedEntry.hardwareSignalSent === true, 'executed audit entry must have hardwareSignalSent=true');
+  assert(executedEntry.hardwareSignalState === 'device_acknowledged', 'executed audit entry must preserve device acknowledgement evidence');
+  assert(executedEntry.data?.executionEvidence === 'command_acknowledged_open_loop', 'audit must label SG90 acknowledgement as open-loop');
+  assert(executedEntry.data?.physicalOutcomeVerified === false, 'audit must explicitly deny physical outcome verification');
+}
+
+async function testAttemptedDeliveryIsNotReportedAsAcknowledged() {
+  const transport = new FakeTransport(() => {
+    throw new Error('device response timeout after write attempt');
+  });
+  await transport.connect();
+  const { audit, gate } = buildGate(transport);
+
+  const outcome = await gate.run({
+    command: servoCommand(45),
+    sensorReadings: [reading(100)],
+    nowMs: NOW
+  });
+
+  assert(outcome.status === 'failed', 'unconfirmed delivery must fail, never execute');
+  assert(outcome.result.signalSent === true, 'compatibility boolean stays conservative after a send attempt');
+  assert(outcome.result.signalState === 'attempted_unconfirmed', 'send attempt without response must not be called acknowledged');
+  assert(outcome.result.executionEvidence === 'delivery_unconfirmed', 'execution evidence must say delivery_unconfirmed');
+  assert(outcome.result.physicalOutcomeVerified === false, 'unconfirmed delivery cannot verify physical outcome');
+  assert(transport.sentFrames.length === 1, 'test must exercise the after-dispatch ambiguity, not a pre-wire rejection');
+
+  const failedEntry = audit.list().find((entry) => entry.code === 'hardware_command_failed');
+  assert(failedEntry?.hardwareSignalSent === true, 'ambiguous send must stay conservatively true in legacy audit flag');
+  assert(failedEntry?.hardwareSignalState === 'attempted_unconfirmed', 'audit must preserve attempted_unconfirmed precision');
+  assert(failedEntry?.data?.executionEvidence === 'delivery_unconfirmed', 'audit must not claim execution for unconfirmed delivery');
 }
 
 async function testReadsAllowedWhileActuationLockedOut() {
@@ -373,6 +407,14 @@ async function testEveryAuditEntryCarriesHardwareSignalSent() {
       typeof entry.hardwareSignalSent === 'boolean',
       `every audit entry must carry boolean hardwareSignalSent (entry ${entry.code})`
     );
+    assert(
+      ['not_sent', 'attempted_unconfirmed', 'device_acknowledged'].includes(entry.hardwareSignalState),
+      `every audit entry must carry a valid hardwareSignalState (entry ${entry.code})`
+    );
+    assert(
+      entry.hardwareSignalSent === (entry.hardwareSignalState !== 'not_sent'),
+      `hardwareSignalSent and hardwareSignalState must agree (entry ${entry.code})`
+    );
   }
 
   const exported = JSON.parse(audit.exportJson()) as Array<Record<string, unknown>>;
@@ -382,7 +424,28 @@ async function testEveryAuditEntryCarriesHardwareSignalSent() {
       typeof entry.hardwareSignalSent === 'boolean',
       'exported audit entries must carry boolean hardwareSignalSent'
     );
+    assert(
+      typeof entry.hardwareSignalState === 'string'
+        && ['not_sent', 'attempted_unconfirmed', 'device_acknowledged'].includes(entry.hardwareSignalState),
+      'exported audit entries must carry hardwareSignalState'
+    );
   }
+
+  let rejectedContradiction = false;
+  try {
+    new RuntimeAuditLog().decision(
+      'hardware',
+      'error',
+      'contradictory_test_entry',
+      'must be rejected',
+      false,
+      'attempted_unconfirmed'
+    );
+  } catch (error) {
+    rejectedContradiction = error instanceof Error
+      && error.message.indexOf('invalid_hardware_signal_evidence') === 0;
+  }
+  assert(rejectedContradiction, 'audit log must reject contradictory boolean and precise signal evidence');
 }
 
 /** Fake serial port for SerialEsp32Transport protocol tests. */
@@ -1269,6 +1332,7 @@ async function main() {
     ['min safe distance interlock blocks actuation', testMinSafeDistanceInterlock],
     ['offline transport never fakes success', testOfflineTransportNeverFakesSuccess],
     ['allowed command executes with signalSent=true', testAllowedCommandExecutesAndAudits],
+    ['audit 4.1: attempted delivery is never reported as acknowledged', testAttemptedDeliveryIsNotReportedAsAcknowledged],
     ['reads stay available while actuation locked out', testReadsAllowedWhileActuationLockedOut],
     ['unsupported capability fails loudly', testUnsupportedCapabilityFailsLoudly],
     ['every audit entry carries hardwareSignalSent', testEveryAuditEntryCarriesHardwareSignalSent],

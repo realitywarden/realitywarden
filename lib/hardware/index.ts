@@ -4,6 +4,8 @@ export type {
   HardwareCapabilityLimit,
   HardwareCommand,
   HardwareExecuteResult,
+  HardwareExecutionEvidence,
+  HardwareSignalState,
   InterlockOverride,
   SensorInterlockRequirement,
   SensorReading,

@@ -89,10 +89,28 @@ export interface HardwareCommand {
   args: Record<string, number | string | boolean>;
 }
 
+export type HardwareSignalState =
+  | 'not_sent'
+  | 'attempted_unconfirmed'
+  | 'device_acknowledged';
+
+export type HardwareExecutionEvidence =
+  | 'not_executed'
+  | 'delivery_unconfirmed'
+  | 'device_rejected'
+  | 'command_acknowledged_open_loop'
+  | 'read_response';
+
 export interface HardwareExecuteResult {
   ok: boolean;
-  /** True ONLY if a signal actually left the host toward the device. */
+  /** Conservative compatibility flag: false only when zero signal is known. */
   signalSent: boolean;
+  /** Precise delivery evidence; never infer device acknowledgement from write attempt. */
+  signalState: HardwareSignalState;
+  /** What the response proves. Open-loop acknowledgement is not physical motion proof. */
+  executionEvidence: HardwareExecutionEvidence;
+  /** Always false for open-loop actuation; omitted for read-only responses. */
+  physicalOutcomeVerified?: boolean;
   detail: string;
   data?: Record<string, unknown>;
 }
