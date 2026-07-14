@@ -55,7 +55,11 @@ Expected output:
 
 ```text
 release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.0-Release-Evidence.json
+release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 ```
+
+The evidence JSON is written only after package inspection and the packaged first-run renderer smoke pass. Use it to verify the installer SHA256 and packaged BUILD_ID; it does not claim code signing or physical-device acceptance.
 
 If you only want to run the desktop shell from source in a production-like mode without generating an installer:
 

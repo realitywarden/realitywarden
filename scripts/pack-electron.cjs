@@ -36,4 +36,10 @@ execFileSync(packagedExecutable, ['--prod', '--smoke-test'], {
   windowsHide: true
 });
 
-console.log('Packaged desktop smoke test passed.');
+console.log('Packaged desktop first-run renderer smoke test passed.');
+
+execFileSync(process.execPath, [path.join(__dirname, 'write-release-evidence.cjs')], {
+  cwd: root,
+  stdio: 'inherit',
+  windowsHide: true
+});

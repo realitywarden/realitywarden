@@ -53,13 +53,17 @@ npm run desktop:pack
 Next runtime, compiled shared safety runtime, pinned `pdfjs-dist`, manual-import
 UI boundary, firmware SHA256 pairs, branding metadata, and Windows serialport
 bindings are present. It must then run the packaged executable with
-`--prod --smoke-test` successfully.
+`--prod --smoke-test` successfully. The smoke is a packaged first-run renderer smoke, not only a local-server readiness probe: it loads the renderer in an isolated session and verifies the desktop regions, sole Run/Stop controls, simulation/REAL HARDWARE separation, and preload bridge. Failure exits non-zero.
 
 Expected artifact:
 
 ```text
 release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.0-Release-Evidence.json
+release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 ```
+
+The evidence manifest is emitted only after package verification and first-run renderer smoke succeed. It records the exact installer SHA256 and size, packaged Next BUILD_ID, source commit, and clean/dirty worktree state. Its companion checksum protects the evidence record itself. It deliberately marks code signing and optional physical-hardware acceptance as not assessed rather than inventing evidence.
 
 Verified local artifact record (2026-07-14):
 

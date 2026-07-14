@@ -162,7 +162,7 @@ npm run desktop:pack
 
 `desktop:pack` is the Windows installer path. It uses `electron-builder` with an `nsis` x64 target and writes artifacts to `release/`. The command packages the compiled shared hardware safety runtime, the Next production runtime, the SHA256-paired prebuilt firmware image, and rebuilt Windows `serialport` native bindings. Next runs from `app.asar.unpacked` because Windows child processes require a real working directory; Electron and the shared safety runtime remain loaded from the packaged application.
 
-After electron-builder finishes, `scripts/verify-electron-package.cjs` fails the command unless all required asar/unpacked entries, native bindings, PDF/manual-import runtime, firmware checksums, branding metadata, and the versioned NSIS artifact are present. `desktop:pack` then automatically runs the unpacked install-layout executable in production smoke mode. The same smoke check can be repeated manually without installing:
+After electron-builder finishes, `scripts/verify-electron-package.cjs` fails the command unless all required asar/unpacked entries, native bindings, PDF/manual-import runtime, firmware checksums, branding metadata, and the versioned NSIS artifact are present. `desktop:pack` then runs a packaged first-run renderer smoke: a hidden, isolated Electron session starts the bundled Next server and must load the real AppHeader, Device Navigator, CommandDock, sole Run/Stop pair, simulation boundary, independent REAL HARDWARE boundary, and preload bridge. Any missing contract exits non-zero. The same smoke check can be repeated manually without installing:
 
 ```powershell
 release\win-unpacked\RealityWarden.exe --prod --smoke-test
@@ -173,6 +173,15 @@ Installer artifact pattern:
 ```text
 release/RealityWarden-<version>-Setup.exe
 ```
+
+Only after package verification and the first-run renderer smoke pass, packaging writes two additional artifacts:
+
+```text
+release/RealityWarden-<version>-Release-Evidence.json
+release/RealityWarden-<version>-Release-Evidence.json.sha256
+```
+
+The machine-readable manifest records the exact installer SHA256/size, packaged executable size, Next BUILD_ID, source commit, clean/dirty worktree state, and the two package/startup gates. If Git metadata is unavailable it says so instead of guessing. It explicitly does not claim code-signing status, physical hardware acceptance, or a verified physical outcome.
 
 Current verified Public Alpha installer artifact:
 

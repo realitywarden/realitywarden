@@ -52,14 +52,14 @@ function loadingHtml() {
   <head>
     <meta charset="utf-8" />
     <style>
-      html, body { margin: 0; height: 100%; background: #F5F5F7; color: #1D1D1F; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+      html, body { margin: 0; height: 100%; background: #090A0C; color: #E5E7EB; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
       body { display: grid; place-items: center; }
-      main { width: 380px; border: 1px solid #E5E5EA; background: #fff; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.06); }
-      .brand { color: #0066CC; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+      main { width: 380px; border: 1px solid #3A3F4A; background: #121418; padding: 24px; }
+      .brand { color: #38BDF8; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
       h1 { margin: 8px 0; font-size: 18px; line-height: 1.25; }
-      p { margin: 0; color: #86868B; font-size: 12px; line-height: 1.7; }
-      .bar { height: 3px; margin-top: 18px; overflow: hidden; background: #E5E5EA; }
-      .bar::before { content: ""; display: block; height: 100%; width: 42%; background: linear-gradient(90deg, #007AFF, #0066CC); animation: move 1.15s ease-in-out infinite; }
+      p { margin: 0; color: #9CA3AF; font-size: 12px; line-height: 1.7; }
+      .bar { height: 3px; margin-top: 18px; overflow: hidden; background: #2A2D35; }
+      .bar::before { content: ""; display: block; height: 100%; width: 42%; background: #38BDF8; animation: move 1.15s ease-in-out infinite; }
       @keyframes move { 0% { transform: translateX(-120%); } 100% { transform: translateX(260%); } }
     </style>
   </head>
@@ -113,6 +113,71 @@ async function waitForServer(url: string, timeoutMs = 240000) {
   throw new Error(`Simulator server did not start at ${url} within ${Math.round(timeoutMs / 1000)} seconds.`);
 }
 
+interface RendererSmokeSnapshot {
+  ready: boolean;
+  title: string;
+  appHeader: boolean;
+  deviceNavigator: boolean;
+  commandDock: boolean;
+  runControls: number;
+  stopControls: number;
+  simulationBoundary: boolean;
+  realHardwareBoundary: boolean;
+  preloadBridge: boolean;
+}
+
+async function waitForRendererSmoke(window: BrowserWindow, timeoutMs = 60_000) {
+  const started = Date.now();
+  let lastSnapshot: RendererSmokeSnapshot | null = null;
+  while (Date.now() - started < timeoutMs) {
+    lastSnapshot = await window.webContents.executeJavaScript(`(() => {
+      const exactButtons = (label) => Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === label).length;
+      const bodyText = document.body?.innerText ?? '';
+      const snapshot = {
+        title: document.title,
+        appHeader: Boolean(document.querySelector('[data-component="AppHeader"]')),
+        deviceNavigator: Boolean(document.querySelector('[data-component="DeviceNavigator"]')),
+        commandDock: Boolean(document.querySelector('[data-component="CommandDock"]')),
+        runControls: exactButtons('Run'),
+        stopControls: exactButtons('Stop'),
+        simulationBoundary: bodyText.includes('SIMULATION ONLY') || bodyText.includes('Simulation Only'),
+        realHardwareBoundary: Boolean(document.querySelector('[data-real-hardware-boundary]')) && bodyText.includes('REAL HARDWARE'),
+        preloadBridge: typeof window.openReality === 'object'
+      };
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge };
+    })()`, true) as RendererSmokeSnapshot;
+    if (lastSnapshot.ready) return lastSnapshot;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Packaged renderer did not satisfy the first-run contract: ${JSON.stringify(lastSnapshot)}`);
+}
+
+function createDesktopWindow(show: boolean) {
+  const preloadPath = path.join(__dirname, 'preload.js');
+  const iconPath = path.join(appRoot, 'assets', 'branding', 'realitywarden.ico');
+  return new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1180,
+    minHeight: 720,
+    center: true,
+    title: 'RealityWarden',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    backgroundColor: '#090A0C',
+    autoHideMenuBar: true,
+    frame: true,
+    titleBarStyle: 'default',
+    show,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      partition: isSmokeTest ? `realitywarden-smoke-${process.pid}` : undefined
+    }
+  });
+}
+
 async function startNextServer(port: number) {
   const prod = process.argv.includes('--prod');
   const url = `http://127.0.0.1:${port}`;
@@ -150,40 +215,24 @@ async function startNextServer(port: number) {
 async function createWindow() {
   const port = await findAvailablePort(basePort);
   const url = `http://127.0.0.1:${port}`;
-  const preloadPath = path.join(__dirname, 'preload.js');
-  const iconPath = path.join(appRoot, 'assets', 'branding', 'realitywarden.ico');
 
   appendLog(`Starting Next server at ${url}`);
   await startNextServer(port);
   await waitForServer(url);
 
   if (isSmokeTest) {
-    appendLog(`Desktop smoke test ready at ${url}`);
+    mainWindow = createDesktopWindow(false);
+    await mainWindow.loadURL(url);
+    const snapshot = await waitForRendererSmoke(mainWindow);
+    appendLog(`Packaged first-run renderer smoke passed at ${url}: ${JSON.stringify(snapshot)}`);
+    mainWindow.destroy();
+    mainWindow = null;
     shutdownServer();
     await app.quit();
     return;
   }
 
-  mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1180,
-    minHeight: 720,
-    center: true,
-    title: 'RealityWarden',
-    icon: fs.existsSync(iconPath) ? iconPath : undefined,
-    backgroundColor: '#18191B',
-    autoHideMenuBar: true,
-    frame: true,
-    titleBarStyle: 'default',
-    show: true,
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  });
+  mainWindow = createDesktopWindow(true);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -218,6 +267,7 @@ app.whenReady().then(async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendLog(`Startup failed: ${message}`);
+    if (isSmokeTest) process.exitCode = 1;
     dialog.showErrorBox('RealityWarden failed to start', message);
     shutdownServer();
     app.quit();

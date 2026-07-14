@@ -59,6 +59,8 @@
 
 - **全局键盘与高对比度收口 ✅**：Device Navigator、Evidence Sidebar、手册审阅三组 Tab 统一 roving focus，支持方向键/Home/End，并补齐 Tab/Panel 关系；File 桌面菜单支持上下键、Home/End、Escape 回焦和菜单外关闭。全局 focus-visible 覆盖菜单项、链接与 summary，增加 prefers-contrast / forced-colors 兜底；REAL HARDWARE 在强制颜色下保留独立双线危险边界。未修改运行、安全、审计或真实执行语义。
 
+- **上市收口证据链与真实 renderer smoke ✅**：`--smoke-test` 不再只等待 Next 端口，而是在隔离会话中加载真实 Electron renderer，核对 AppHeader、Device Navigator、CommandDock、唯一 Run/Stop、SIMULATION ONLY、独立 REAL HARDWARE 边界与 preload bridge；任一缺失均非零退出。`desktop:pack` 现按“验包 → first-run renderer smoke → 证据清单”顺序执行，成功后写出带安装包 SHA256/大小、BUILD_ID、源码 commit、工作树 clean/dirty 状态的 `Release-Evidence.json` 及其 SHA256，并显式不声明签名、真机验收或物理结果。新增 `test:launch-closure` 接入 verify；源码 production desktop smoke 已实跑通过。未重打包含当前用户未提交改动的发布包。
+
 ## 下一步
 
 1. **成品化持续项**：继续键盘遍历、窄窗口与高对比度审计，收敛资产导入向统一设计 token；不得覆盖尚未提交的资产预览健壮性改动。
