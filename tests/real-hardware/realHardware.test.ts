@@ -882,6 +882,7 @@ async function testEmptyOverridesStillEnforceDeviceInterlock() {
 async function testCallerCannotReplaceOrMutateDevicePolicy() {
   const sourceCapabilities = ESP32_SERVO_RIG_CAPABILITIES.map((capability) => ({
     ...capability,
+    argumentLimits: capability.argumentLimits.map((limit) => ({ ...limit })),
     requiredSensorInterlocks: capability.requiredSensorInterlocks.map((requirement) => ({ ...requirement }))
   }));
   const transport = new FakeTransport();
@@ -892,7 +893,7 @@ async function testCallerCannotReplaceOrMutateDevicePolicy() {
   // Mutate the caller-owned source after adapter construction and also pass a
   // malicious per-call policy with no interlocks. Neither may affect the gate.
   sourceCapabilities[0].requiredSensorInterlocks = [];
-  sourceCapabilities[0].max = 999;
+  sourceCapabilities[0].argumentLimits[0].max = 999;
   const maliciousPolicy = sourceCapabilities.map((capability) => ({
     ...capability,
     requiredSensorInterlocks: []
@@ -908,6 +909,76 @@ async function testCallerCannotReplaceOrMutateDevicePolicy() {
   assert(outcome.reason.indexOf('sensor_missing') === 0, 'adapter policy must still require the distance sensor');
   assert(adapter.executeCalls === 0, 'policy bypass attempt must not reach adapter.execute()');
   assert(transport.sentFrames.length === 0, 'policy bypass attempt must put zero frames on the wire');
+}
+
+async function testGenericNumericCapabilityBoundsFailClosed() {
+  const monitor = new SafetyMonitor();
+  const command: HardwareCommand = {
+    id: 'future-spin',
+    deviceId: 'future-device',
+    capabilityId: 'spin_motor' as never,
+    args: { rpm: 120 }
+  };
+  const base = {
+    command,
+    sensorReadings: [],
+    nowMs: NOW
+  };
+
+  const allowed = monitor.evaluateHardwareCommand({
+    ...base,
+    capabilityLimits: [{
+      capabilityId: 'spin_motor' as never,
+      argumentLimits: [{ argument: 'rpm', min: 0, max: 200, unit: 'rpm' }],
+      actuation: true,
+      requiredSensorInterlocks: []
+    }]
+  });
+  assert(allowed.ok, `generic bounded numeric capability should pass, got: ${allowed.reason}`);
+
+  const outOfRange = monitor.evaluateHardwareCommand({
+    ...base,
+    command: { ...command, args: { rpm: 500 } },
+    capabilityLimits: [{
+      capabilityId: 'spin_motor' as never,
+      argumentLimits: [{ argument: 'rpm', min: 0, max: 200 }],
+      actuation: true,
+      requiredSensorInterlocks: []
+    }]
+  });
+  assert(!outOfRange.ok && outOfRange.reason.indexOf('argument_out_of_range') === 0, 'future numeric capability must enforce its declared range');
+
+  const undeclared = monitor.evaluateHardwareCommand({
+    ...base,
+    capabilityLimits: [{
+      capabilityId: 'spin_motor' as never,
+      argumentLimits: [],
+      actuation: true,
+      requiredSensorInterlocks: []
+    }]
+  });
+  assert(!undeclared.ok && undeclared.reason.indexOf('unbounded_numeric_argument') === 0, 'undeclared numeric actuation argument must default-block');
+
+  const missing = monitor.evaluateHardwareCommand({
+    ...base,
+    capabilityLimits: [{
+      capabilityId: 'spin_motor' as never,
+      actuation: true,
+      requiredSensorInterlocks: []
+    } as never]
+  });
+  assert(!missing.ok && missing.reason.indexOf('invalid_capability_policy') === 0, 'missing numeric argument-limit declaration must default-block');
+
+  const malformed = monitor.evaluateHardwareCommand({
+    ...base,
+    capabilityLimits: [{
+      capabilityId: 'spin_motor' as never,
+      argumentLimits: [{ argument: 'rpm', min: 200, max: 0 }],
+      actuation: true,
+      requiredSensorInterlocks: []
+    }]
+  });
+  assert(!malformed.ok && malformed.reason.indexOf('invalid_capability_policy') === 0, 'inverted capability bounds must default-block');
 }
 
 async function testBaselineInterlockEnforcedWithoutOverride() {
@@ -1203,6 +1274,7 @@ async function main() {
     ['every audit entry carries hardwareSignalSent', testEveryAuditEntryCarriesHardwareSignalSent],
     ['audit 2.1: empty caller policy + device interlock => blocked, zero signal', testEmptyOverridesStillEnforceDeviceInterlock],
     ['caller cannot replace or mutate device safety policy', testCallerCannotReplaceOrMutateDevicePolicy],
+    ['audits 2.3/5.2: generic numeric capability bounds fail closed', testGenericNumericCapabilityBoundsFailClosed],
     ['audit 2.1: capability baseline interlock enforced without override', testBaselineInterlockEnforcedWithoutOverride],
     ['audit 2.1: interlock override can only tighten, loosening rejected', testInterlockOverrideCanOnlyTighten],
     ['audit 2.1: override for undeclared sensor rejected', testOverrideForUndeclaredSensorRejected],

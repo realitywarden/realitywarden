@@ -3,7 +3,9 @@
 > - **2.2** 设备侧时间戳 + 冻结值检测 — ✅ 已修复（commit `37df0d4`）
 > - **1.1** execute/send 结构性封装 — ✅ 已修复（方案 B+：gate 私有 ACTUATION_TICKET + transport 运行期拒绝 actuation 帧 + ESLint 边界；详见 STATUS.md 与 `lib/hardware/internal/actuation.ts`）
 > - **x.1 / x.2** 接收缓冲无上限 / 请求 id 复用 — ✅ 已修复（缓冲有界 + duplicate_request_id 显式拒绝）
-> - 剩余 P2 项（2.3 / 3.1 / 4.1 / 5.2）+ 4.2 文档化 — 归入真机验收后处理，冻结不动
+> - **3.1** 协议错因不可见 — ✅ 已修复（transport 协议错误进入 adapter 失败详情与审计）
+> - **2.3 / 5.2** 能力边界可缺 / 数值检查不可扩展 — ✅ 已修复（必填 `argumentLimits` + 通用有限范围校验 + 未声明数值执行参数默认拦截；adapter 同声明防御纵深）
+> - 剩余 P2 项：**4.1** 审计发送状态细化 + **4.2** 开环执行语义文档化
 > - 本文件为原始自审报告归档，正文未改；解决进度以本头部与 STATUS.md 为准。
 
 # 安全自审报告 — 六不变量攻击面分析（2026-07-09）

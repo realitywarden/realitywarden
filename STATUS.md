@@ -30,7 +30,7 @@
 - audit 3.1 ✅：transport 协议级错因（malformed/unmatched/oversized）随通信失败进入 adapter 失败详情与审计，超时不再无差别。
 - 新增：`npm run test:virtual-loopback` — 虚拟串口全链路 e2e（真 transport/真协议/真 ticket → 固件仿真器），覆盖四场景 + legacy 固件无 deviceMs，已接入 verify 链。host 侧验收路径已预先证明，真机失败可直接归因固件/接线/供电。
 - 新增：验收操作卡 `docs/acceptance/OPERATOR_CARD.md`（单页，前置检查/命令/判定/存证/速查）。
-- verify 链：全绿。real-hardware 安全不变量测试 **37/37**（audit 2.1 四条 + 2.2 五条 + 1.1 两条 + transport 硬化三条 + 诊断/安全元数据若干）；app + electron typecheck 绿；全部 runner/编译型套件绿。（沙盒内 Next 生产构建因 powershell 清理脚本跳过，本机 `npm run build` 补认一次。）
+- verify 链：全绿。real-hardware 安全不变量测试 **38/38**（含 audit 2.3/5.2 通用数值能力边界、2.1、2.2、1.1、transport 硬化与诊断/安全元数据）；app + electron typecheck 绿；全部 runner/编译型套件绿。
 - 固件：`firmware/esp32-realitywarden/esp32-realitywarden.ino` v0.1.4 / 协议 4：`deviceMs`（audit 2.2）+ 只读诊断命令 `diagnose_hardware` / `diagnose_gpio_loopback` + `echoDurationUs`。**验收前必须重刷此版**，否则旧固件不发 deviceMs，actuation 被 `device_timestamp_unavailable` 拦（预期行为）。
 - 新增只读诊断 CLI：`npm run hardware:diagnose -- --port COMx`（永不驱动舵机；`--loopback` 可做 GPIO5→GPIO4 接线自检）。排障见 `docs/REAL_HARDWARE_ESP32.md` Troubleshooting（充电宝休眠/共地/S3 双串口/毛刺读数/分压等 6 类实测故障）。
 
@@ -39,8 +39,9 @@
 - **2.2 设备侧时间戳 + 冻结值检测** — ✅ 完成（commit `37df0d4`）。缺 deviceMs ⇒ actuation blocked（`device_timestamp_unavailable`，无 silent fallback）；`StuckValueDetector`（N=5，值卡住+时钟不动才判 frozen）；`sensor_frozen` 不可 override、须显式 reset。
 - **1.1 execute()/send() 结构性封装** — ✅ 完成（本次提交）。方案 B+ 双层：`lib/hardware/internal/actuation.ts` 的 gate 私有 ACTUATION_TICKET（unique symbol，index 不导出，ESLint 禁止外部 import）+ 运行期权威层——`SerialEsp32Transport.send()` 直接拒绝 actuation 帧（`actuation_requires_gate`），`sendActuation()` 校验 ticket（`invalid_actuation_ticket`），adapter 同样校验（防御纵深）。持有 adapter/transport 引用也无法发出 actuation 帧，"结构性单一通路"名副其实。只读命令（read_distance/diagnose_*）不受影响。
 - **x.1 / x.2 transport 硬化** — ✅ 完成（本次提交）。接收缓冲有界（oversized line 丢弃并记 protocolError）、重复 pending id 显式拒绝、requestTimeoutMs 构造期校验。
+- **2.3 / 5.2 通用数值执行边界** — ✅ 完成。`HardwareCapabilityLimit.argumentLimits` 对每项能力强制显式声明；SafetyMonitor 通用校验声明名称、有限且有序的 min/max、参数类型与范围，并默认拦截未声明的数值 actuation 参数；adapter 复用同一声明做第二层物理限位，所有越界只拒绝不钳制。真机安全套件增至 38 项，conformance 增加强制源码断言。
 - **附带收紧**（本次提交）：SafetyMonitor 增加 nowMs 非有限拒绝、override 去重与阈值校验、传感器类型/单位绑定校验（`sensor_type_mismatch`）、设备/主机时间戳非法与未来时间拒绝；中值读数取窗口内最旧时间戳（保守），StuckValueDetector 窗口参数校验。
-- 剩余 P2（2.3/4.1/5.2 + 4.2 文档化）按成品路线图处理，不再等待真机验收。
+- 剩余 P2：4.1 审计发送状态细化 + 4.2 开环执行语义文档化；按成品路线图处理，不等待真机验收。
 
 ### UI
 - UI 审查报告 `docs/ui/2026-07-11-ui-audit.md`；第 1、2 批（重叠/截断/去重/i18n）已修复；信息架构与视觉一致性现为最高优先级。

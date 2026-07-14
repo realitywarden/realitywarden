@@ -106,17 +106,41 @@ export class SafetyMonitor {
       return { ok: false, reason: 'invalid_safety_clock:now_ms_not_finite' };
     }
 
-    if (command.capabilityId === 'move_to_angle') {
-      const angle = command.args.angle;
-      if (typeof angle !== 'number' || Number.isNaN(angle)) {
-        return { ok: false, reason: 'invalid_argument:angle_not_numeric' };
+    // Audits 2.3/5.2: numeric execution bounds are capability-owned and
+    // generic. Malformed declarations and undeclared numeric actuation args
+    // fail closed; values are rejected, never clamped.
+    const boundedArguments = new Set<string>();
+    if (!Array.isArray(capability.argumentLimits)) {
+      return { ok: false, reason: `invalid_capability_policy:${command.capabilityId}:argument_limits_missing` };
+    }
+    for (const limit of capability.argumentLimits) {
+      if (typeof limit.argument !== 'string' || limit.argument.length === 0) {
+        return { ok: false, reason: `invalid_capability_policy:${command.capabilityId}:argument_name_missing` };
       }
-      if ((capability.min !== undefined && angle < capability.min)
-        || (capability.max !== undefined && angle > capability.max)) {
+      if (boundedArguments.has(limit.argument)) {
+        return { ok: false, reason: `invalid_capability_policy:${command.capabilityId}:duplicate_argument_limit:${limit.argument}` };
+      }
+      boundedArguments.add(limit.argument);
+      if (!Number.isFinite(limit.min) || !Number.isFinite(limit.max) || limit.min > limit.max) {
+        return { ok: false, reason: `invalid_capability_policy:${command.capabilityId}:invalid_range:${limit.argument}` };
+      }
+      const value = command.args[limit.argument];
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return { ok: false, reason: `invalid_argument:${limit.argument}_not_finite_numeric` };
+      }
+      if (value < limit.min || value > limit.max) {
+        const reasonCode = limit.argument === 'angle' ? 'angle_out_of_range' : 'argument_out_of_range';
         return {
           ok: false,
-          reason: `angle_out_of_range:${angle} not in [${capability.min ?? '-inf'}, ${capability.max ?? 'inf'}]`
+          reason: `${reasonCode}:${limit.argument}=${value} not in [${limit.min}, ${limit.max}]`
         };
+      }
+    }
+    if (capability.actuation) {
+      for (const [argument, value] of Object.entries(command.args)) {
+        if (typeof value === 'number' && !boundedArguments.has(argument)) {
+          return { ok: false, reason: `unbounded_numeric_argument:${command.capabilityId}:${argument}` };
+        }
       }
     }
 

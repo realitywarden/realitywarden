@@ -51,11 +51,23 @@ export interface InterlockOverride {
   minSafeDistanceCm: number;
 }
 
+export interface HardwareArgumentLimit {
+  /** Exact HardwareCommand.args key governed by this bound. */
+  argument: string;
+  /** Inclusive finite bounds. Invalid or inverted declarations fail closed. */
+  min: number;
+  max: number;
+  unit?: string;
+}
+
 export interface HardwareCapabilityLimit {
   capabilityId: HardwareCapabilityId;
-  /** Inclusive numeric bounds for the primary argument, if any. */
-  min?: number;
-  max?: number;
+  /**
+   * Authoritative numeric argument bounds. Required even when empty so every
+   * capability makes an explicit declaration. For actuation, any numeric arg
+   * without a matching entry is rejected by SafetyMonitor (audits 2.3/5.2).
+   */
+  argumentLimits: HardwareArgumentLimit[];
   unit?: string;
   /** True if this capability physically actuates something. */
   actuation: boolean;

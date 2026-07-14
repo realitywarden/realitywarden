@@ -18,8 +18,7 @@ export interface DistanceReadResult {
 export const ESP32_SERVO_RIG_CAPABILITIES: HardwareCapabilityLimit[] = [
   {
     capabilityId: 'move_to_angle',
-    min: 0,
-    max: 180,
+    argumentLimits: [{ argument: 'angle', min: 0, max: 180, unit: 'deg' }],
     unit: 'deg',
     actuation: true,
     // Authoritative interlock (audit 2.1): the servo may not actuate unless a
@@ -40,6 +39,7 @@ export const ESP32_SERVO_RIG_CAPABILITIES: HardwareCapabilityLimit[] = [
   },
   {
     capabilityId: 'read_distance',
+    argumentLimits: [],
     unit: 'cm',
     actuation: false,
     // Read-only capability: no actuation, therefore no interlock required.
@@ -67,6 +67,7 @@ export class Esp32DeviceAdapter {
     // mutate the source array later and silently loosen a live safety gate.
     this.capabilities = capabilities.map((capability) => ({
       ...capability,
+      argumentLimits: capability.argumentLimits.map((limit) => ({ ...limit })),
       requiredSensorInterlocks: capability.requiredSensorInterlocks.map((requirement) => ({ ...requirement }))
     }));
   }
@@ -74,6 +75,7 @@ export class Esp32DeviceAdapter {
   getCapabilities(): HardwareCapabilityLimit[] {
     return this.capabilities.map((capability) => ({
       ...capability,
+      argumentLimits: capability.argumentLimits.map((limit) => ({ ...limit })),
       requiredSensorInterlocks: capability.requiredSensorInterlocks.map((requirement) => ({ ...requirement }))
     }));
   }
@@ -129,18 +131,22 @@ export class Esp32DeviceAdapter {
       return { ok: false, signalSent: false, detail: 'hardware offline' };
     }
 
-    // Defense-in-depth physical limit check (primary check is in SafetyMonitor).
-    if (command.capabilityId === 'move_to_angle') {
-      const angle = command.args.angle;
-      if (typeof angle !== 'number' || Number.isNaN(angle)) {
-        return { ok: false, signalSent: false, detail: 'move_to_angle requires numeric args.angle' };
-      }
-      if ((capability.min !== undefined && angle < capability.min)
-        || (capability.max !== undefined && angle > capability.max)) {
+    // Defense-in-depth generic physical limit check (primary check is in
+    // SafetyMonitor). Never clamp an untrusted value.
+    for (const limit of capability.argumentLimits) {
+      const value = command.args[limit.argument];
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
         return {
           ok: false,
           signalSent: false,
-          detail: `angle ${angle} outside physical limits [${capability.min}, ${capability.max}]`
+          detail: `${command.capabilityId} requires finite numeric args.${limit.argument}`
+        };
+      }
+      if (value < limit.min || value > limit.max) {
+        return {
+          ok: false,
+          signalSent: false,
+          detail: `${limit.argument} ${value} outside physical limits [${limit.min}, ${limit.max}]`
         };
       }
     }
