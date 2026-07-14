@@ -149,8 +149,16 @@ export function LabConfigurator({
         </section>
 
         <section className="flex-none border-t border-border-panel px-2.5 py-2">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'public_alpha_support')}</div>
-          <div className="grid gap-2 rounded-[3px] border border-border-panel bg-[#181A1D] p-2">
+          {/* Collapsed by default (UI audit C1): this block is explanatory,
+              not operational - one summary line, details on demand. */}
+          <details>
+            <summary className="flex cursor-pointer select-none items-center justify-between text-[11px] font-bold uppercase tracking-wide text-text-secondary hover:text-text-primary">
+              <span>{t(language, 'public_alpha_support')}</span>
+              <span className={`ml-2 rounded-[3px] border px-1.5 py-0.5 font-bold normal-case ${selectedDeviceRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
+                {selectedDeviceRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
+              </span>
+            </summary>
+          <div className="mt-2 grid gap-2 rounded-[3px] border border-border-panel bg-[#181A1D] p-2">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'supported_now')}</div>
               <div className="mt-1 flex flex-wrap gap-1">
@@ -179,6 +187,7 @@ export function LabConfigurator({
               </div>
             </div>
           </div>
+          </details>
         </section>
 
         <section className="flex min-h-0 flex-1 flex-col border-t border-border-panel px-2.5 py-2">

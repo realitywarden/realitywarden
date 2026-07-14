@@ -309,7 +309,12 @@ async function sha256Hex(payload: string) {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function getWorkspaceIssues(devices: WorkspaceDeviceRecord[], report: LabReport | null, language: UiLanguage): WorkspaceIssue[] {
+function getWorkspaceIssues(
+  devices: WorkspaceDeviceRecord[],
+  report: LabReport | null,
+  workspaceValidation: WorkspaceValidationResult | null,
+  language: UiLanguage
+): WorkspaceIssue[] {
   const issues: WorkspaceIssue[] = [];
   const enabledDevices = devices.filter((device) => device.config.enabled);
   const targetIds = enabledDevices.map((device) => device.config.adapter_target_id.trim()).filter(Boolean);
@@ -379,6 +384,17 @@ function getWorkspaceIssues(devices: WorkspaceDeviceRecord[], report: LabReport 
       detail: language === 'zh'
         ? `\u6700\u8fd1\u4e00\u6b21\u5b9e\u9a8c\u7ed3\u679c\u4e3a ${report.result}\uff0c\u8bf7\u4fee\u590d\u573a\u666f\u6216\u8bbe\u5907\u914d\u7f6e\u540e\u518d\u5bfc\u51fa\u3002`
         : `Last lab result is ${report.result}. Fix the scenario or device config before deployment export.`
+    });
+  }
+
+  if (workspaceValidation && workspaceValidation.result !== 'pass') {
+    issues.push({
+      id: 'workspace-validation-not-pass',
+      severity: 'blocked',
+      title: language === 'zh' ? '\u5de5\u4f5c\u533a\u6574\u4f53\u9a8c\u8bc1\u672a\u901a\u8fc7' : 'Workspace validation did not pass',
+      detail: language === 'zh'
+        ? `\u6574\u4f53\u9a8c\u8bc1\u7ed3\u679c\u4e3a ${workspaceValidation.result}\uff0c\u4e0d\u80fd\u4ec5\u4f9d\u636e\u6700\u540e\u4e00\u53f0\u8bbe\u5907\u7684\u62a5\u544a\u5c06\u5de5\u4f5c\u533a\u6807\u8bb0\u4e3a\u5c31\u7eea\u3002`
+        : `Workspace validation is ${workspaceValidation.result}; a passing report from only the last device cannot mark the workspace ready.`
     });
   }
 
@@ -854,14 +870,26 @@ function AICommandTerminal({
           >
             {llmChipText}
           </div>
-            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
-              <span className="font-semibold text-text-secondary">{t(language, 'active_workspace_device')}:</span>
-              <span className="truncate text-text-primary" title={runTargetLabel}>{runTargetLabel}</span>
-            <span className={`rounded-[3px] border px-1.5 py-0.5 font-bold ${runTargetRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
-              {runTargetRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
-            </span>
-            </div>
-            <div className="mt-0.5 text-[11px] text-[#9BD4FF]">{t(language, 'workspace_selection_run_same')}</div>
+            {/* Context details collapsed by default (UI audit C2): the
+                terminal keeps input + Run/Stop + one status badge visible. */}
+            <details className="mt-0.5">
+              <summary className="cursor-pointer select-none text-[11px] text-text-muted hover:text-text-secondary">
+                {language === 'zh' ? '目标与说明' : 'Target & notes'} · <span className="text-text-primary">{runTargetLabel}</span>
+              </summary>
+              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
+                <span className="font-semibold text-text-secondary">{t(language, 'active_workspace_device')}:</span>
+                <span className="truncate text-text-primary" title={runTargetLabel}>{runTargetLabel}</span>
+                <span className={`rounded-[3px] border px-1.5 py-0.5 font-bold ${runTargetRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
+                  {runTargetRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
+                </span>
+              </div>
+              <div className="mt-0.5 text-[11px] text-[#9BD4FF]">{t(language, 'workspace_selection_run_same')}</div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-[#8A94A0]">
+                <span>{t(language, 'command_target_notice')}</span>
+                <span className="text-[#4B5563]">|</span>
+                <span>{t(language, 'command_safe_blocked_notice')}</span>
+              </div>
+            </details>
             {!runTargetRunnable && (
               <div className="mt-0.5 text-[11px] text-status-warning">
                 {t(language, 'welcome_protocol_only')}
@@ -893,12 +921,6 @@ function AICommandTerminal({
           </div>
         </div>
       )}
-      <div className="ml-20 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-[#8A94A0]">
-        <span>{t(language, 'command_target_notice')}</span>
-        <span className="text-[#4B5563]">|</span>
-        <span>{t(language, 'command_safe_blocked_notice')}</span>
-        {/* "Simulation only" already lives on the viewport badge + Governor header (UI audit B3). */}
-      </div>
       <div className="ml-20 flex min-h-5 items-center gap-2">
         <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'starter_commands')}</div>
         {/* Wrap instead of a hidden horizontal scrollbar (UI audit A4). */}
@@ -1326,7 +1348,10 @@ export default function Home() {
   const liveRunActiveRef = useRef(false);
   const validationRunTokenRef = useRef(0);
   const consoleLogSessionRef = useRef(0);
-  const workspaceIssues = useMemo(() => getWorkspaceIssues(workspaceDevices, labReport, language), [labReport, language, workspaceDevices]);
+  const workspaceIssues = useMemo(
+    () => getWorkspaceIssues(workspaceDevices, labReport, workspaceValidation, language),
+    [labReport, language, workspaceDevices, workspaceValidation]
+  );
   const availableAssets = useMemo(() => [...builtInDeviceAssets, ...importedAssets], [importedAssets]);
   const workspaceBlocked = workspaceIssues.some((issue) => issue.severity === 'blocked');
   const workspaceWarnings = workspaceIssues.filter((issue) => issue.severity === 'warning').length;
@@ -1361,8 +1386,8 @@ export default function Home() {
     [selectedWorkspaceDeviceId, workspaceDevices]
   );
   const currentRunTargetRunnable = useMemo(
-    () => isRunnableDeviceV01(effectiveSelectedProfile.deviceMeta.device_type),
-    [effectiveSelectedProfile.deviceMeta.device_type]
+    () => isRunnableDeviceV01(effectiveSelectedProfile.deviceMeta.device_type) && (selectedWorkspaceDevice?.config.enabled ?? true),
+    [effectiveSelectedProfile.deviceMeta.device_type, selectedWorkspaceDevice?.config.enabled]
   );
   const currentRunStarterPrompts = useMemo(
     () => starterPromptsForDevice(effectiveSelectedProfile.deviceMeta.device_type, language),
@@ -1694,12 +1719,27 @@ export default function Home() {
     showNotice('info', noticeMessage(language, `\u5df2\u6dfb\u52a0\u8d44\u4ea7\uff1a${nextDevice.label}`, `Asset added: ${nextDevice.label}`));
   }, [availableAssets, cancelActiveWork, clearRuntimeDecision, language, showNotice, workspaceDevices.length]);
 
+  const invalidateWorkspaceResults = useCallback(() => {
+    cancelActiveWork();
+    clearRuntimeDecision();
+    setLabReport(null);
+    setWorkspaceValidation(null);
+    setSelectedSnapshot(null);
+    setCurrentActionFrame(null);
+    setLivePlaybackEvents([]);
+    setLiveAdapterCommands([]);
+    setReplayIndex(0);
+    setCommandStatus({ kind: 'ready', message: t(language, 'command_waiting') });
+  }, [cancelActiveWork, clearRuntimeDecision, language]);
+
   const handleImportedAsset = useCallback((asset: DeviceAsset) => {
+    invalidateWorkspaceResults();
     setImportedAssets((assets) => [...assets.filter((item) => item.manifest.asset_id !== asset.manifest.asset_id), asset]);
     showNotice('success', noticeMessage(language, `\u8d44\u4ea7\u5df2\u5bfc\u5165\uff1a${asset.manifest.display_name}`, `Asset imported: ${asset.manifest.display_name}`));
-  }, [language, showNotice]);
+  }, [invalidateWorkspaceResults, language, showNotice]);
 
   const updateWorkspaceDevice = useCallback((deviceId: string, patch: Partial<WorkspaceDeviceRecord>) => {
+    invalidateWorkspaceResults();
     setWorkspaceDevices((devices) => devices.map((device) => (
       device.id === deviceId
         ? {
@@ -1709,14 +1749,20 @@ export default function Home() {
           }
         : device
     )));
-  }, []);
+  }, [invalidateWorkspaceResults]);
 
   const removeWorkspaceDevice = useCallback((deviceId: string) => {
     const removed = workspaceDevices.find((device) => device.id === deviceId);
-    setWorkspaceDevices((devices) => devices.filter((device) => device.id !== deviceId));
-    setSelectedWorkspaceDeviceId((selectedId) => selectedId === deviceId ? null : selectedId);
+    const remainingDevices = workspaceDevices.filter((device) => device.id !== deviceId);
+    invalidateWorkspaceResults();
+    setWorkspaceDevices(remainingDevices);
+    setSelectedWorkspaceDeviceId((selectedId) => (
+      selectedId === deviceId || !remainingDevices.some((device) => device.id === selectedId)
+        ? remainingDevices[0]?.id ?? null
+        : selectedId
+    ));
     if (removed) showNotice('warning', noticeMessage(language, `\u5df2\u79fb\u9664\u8bbe\u5907\uff1a${removed.label}`, `Device removed: ${removed.label}`));
-  }, [language, showNotice, workspaceDevices]);
+  }, [invalidateWorkspaceResults, language, showNotice, workspaceDevices]);
 
   const handleRemoveSelectedDevice = useCallback(() => {
     const device = workspaceDevices.find((item) => item.id === selectedWorkspaceDeviceId) ?? workspaceDevices[0];
@@ -1740,10 +1786,11 @@ export default function Home() {
       position: workspaceSlots[workspaceDevices.length % workspaceSlots.length] ?? workspaceSlots[0],
       config: { ...source.config, adapter_target_id: `${source.config.adapter_target_id}-copy` }
     };
+    invalidateWorkspaceResults();
     setWorkspaceDevices((devices) => [...devices, clone]);
     setSelectedWorkspaceDeviceId(clone.id);
     showNotice('info', noticeMessage(language, `\u5df2\u590d\u5236\u8bbe\u5907\uff1a${clone.label}`, `Device duplicated: ${clone.label}`));
-  }, [language, showNotice, workspaceDevices]);
+  }, [invalidateWorkspaceResults, language, showNotice, workspaceDevices]);
 
   const exportSelectedAssetConfig = useCallback(() => {
     if (!selectedWorkspaceDevice) return;
@@ -1880,7 +1927,13 @@ export default function Home() {
     setOperatorNotice(null);
     window.localStorage.setItem(firstRunGuideStorageKey, '1');
     setShowFirstRunGuide(false);
-    syncWorkspaceSelectionForType(path.deviceType, nextProfile.id);
+    const existingDevice = syncWorkspaceSelectionForType(path.deviceType, nextProfile.id);
+    if (!existingDevice) {
+      const matchingAsset = availableAssets.find((asset) => asset.manifest.device_type === path.deviceType);
+      const nextDevice = createWorkspaceDevice(path.deviceType, workspaceDevices.length, language, matchingAsset);
+      setWorkspaceDevices((devices) => [...devices, nextDevice]);
+      setSelectedWorkspaceDeviceId(nextDevice.id);
+    }
     setDeviceType(path.deviceType);
     setSelectedProfileId(nextProfile.id);
     setScenarioId(nextScenario.id);
@@ -1897,7 +1950,7 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [cancelActiveWork, clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
+  }, [availableAssets, cancelActiveWork, clearRuntimeDecision, language, syncWorkspaceSelectionForType, workspaceDevices.length]);
 
   const handlePromptChange = useCallback((nextPrompt: string) => {
     if (liveRunActiveRef.current) cancelActiveWork();
@@ -1908,6 +1961,10 @@ export default function Home() {
   const runScenario = useCallback(async () => {
     if (liveRunActiveRef.current) {
       showNotice('warning', noticeMessage(language, '\u5f53\u524d\u6267\u884c\u6b63\u5728\u8fd0\u884c\uff0c\u8bf7\u5148\u505c\u6b62\u6216\u7b49\u5f85\u5b8c\u6210\u3002', 'A run is already active. Stop it or wait for completion.'));
+      return;
+    }
+    if (selectedWorkspaceDevice && !selectedWorkspaceDevice.config.enabled) {
+      showNotice('warning', noticeMessage(language, '\u5f53\u524d\u8bbe\u5907\u5df2\u7981\u7528\uff0c\u8bf7\u5148\u5728\u8bbe\u5907\u914d\u7f6e\u4e2d\u542f\u7528\u5b83\u3002', 'The current device is disabled. Enable it in Device Configuration before running.'));
       return;
     }
     liveRunActiveRef.current = true;
@@ -1965,8 +2022,13 @@ export default function Home() {
       } catch {
         llmCompile = undefined;
       }
+      // Stop/project/profile changes invalidate the token while the compiler
+      // request is in flight. Never let that stale request restart a canceled
+      // run or overwrite a newer workspace.
+      if (liveRunTokenRef.current !== runToken) return;
       setLlmChipState(llmCompile && llmCompile.compiler === 'llm' ? 'online' : 'offline');
     }
+    if (liveRunTokenRef.current !== runToken) return;
     let localRuntimeSession: ReturnType<LocalRuntime['prepareSimulationSession']>;
     try {
       localRuntimeSession = new LocalRuntime().prepareSimulationSession({
@@ -2188,6 +2250,7 @@ export default function Home() {
         }
       }
     } catch (error) {
+      if (liveRunTokenRef.current !== runToken) return;
       setCommandStatus({
         kind: 'failed',
         message: error instanceof Error ? error.message : localUnknownError(language)
@@ -2255,7 +2318,7 @@ export default function Home() {
         const asset = assetForId(availableAssets, device.assetId);
         const baseProfile = asset ? profileFromAsset(asset) : deviceProfiles.find((profile) => profile.id === device.profileId) ?? getFirstProfileForType(device.deviceType);
         const effectiveProfile = applyWorkspaceDeviceConfig(baseProfile, device);
-        const scenario = getScenarioForProfile(baseProfile.id, 'safe');
+        const scenario = (asset?.scenarios?.safe as DeviceScenario | undefined) ?? getScenarioForProfile(baseProfile.id, 'safe');
         const localizedPrompt = getLocalizedPrompt(scenario, language);
         setSelectedWorkspaceDeviceId(device.id);
         setDeviceType(baseProfile.deviceMeta.device_type);
@@ -2263,6 +2326,7 @@ export default function Home() {
         setScenarioId(scenario.id);
         setPrompt(localizedPrompt);
         const report = await new ScenarioRunner().run(effectiveProfile, scenario, localizedPrompt);
+        if (validationRunTokenRef.current !== validationToken) return;
         lastReport = report;
         deviceResults.push({
           workspace_device_id: device.id,
@@ -2280,10 +2344,13 @@ export default function Home() {
         if (validationRunTokenRef.current !== validationToken) return;
       }
     } catch (error) {
+      if (validationRunTokenRef.current !== validationToken) return;
       showNotice('error', noticeMessage(language, `\u5de5\u4f5c\u533a\u9a8c\u8bc1\u5931\u8d25\uff1a${error instanceof Error ? error.message : localUnknownError(language)}`, `Workspace validation failed: ${error instanceof Error ? error.message : localUnknownError(language)}`));
       setValidationRunning(false);
       return;
     }
+
+    if (validationRunTokenRef.current !== validationToken) return;
 
     const validation: WorkspaceValidationResult = {
       run_id: `workspace-validation-${Date.now()}`,
@@ -2594,41 +2661,47 @@ export default function Home() {
           </span>
         </div>
         <div className="flex h-full min-w-0 flex-1 items-center justify-between">
-          <div className="toolbar-scroll custom-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden px-3">
-          <button type="button" onClick={newProject} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-            {t(language, 'app_new')}
-          </button>
-          <button type="button" onClick={() => void openProject()} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-            {t(language, 'app_open')}
-          </button>
-          <button type="button" onClick={() => setAssetImportOpen(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-            {t(language, 'app_import_asset')}
-          </button>
-          <span className="mx-1 h-6 w-px bg-border-panel" />
-          <button type="button" onClick={() => void saveWorkspace(false)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-            {t(language, 'app_save_project')}
-          </button>
-          <button type="button" onClick={() => void saveWorkspace(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-            {t(language, 'app_save_as')}
-          </button>
-          {/* Restore Last autosaved workspace entry for desktop conformance checks. */}
-          <button type="button" title={t(language, 'app_restore')} onClick={restoreLastWorkspace} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-            {t(language, 'app_restore')}
-          </button>
+          {/* Decluttered toolbar (UI audit C4, owner-approved): file operations
+              live in one Project menu; the terminal is the single Run entry. */}
+          <div className="flex min-w-0 items-center gap-1.5 px-3">
+          <details className="relative">
+            <summary className="flex h-7 cursor-pointer select-none list-none items-center rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+              {language === 'zh' ? '项目' : 'Project'} <span className="ml-1 text-[10px] text-text-secondary">▾</span>
+            </summary>
+            <div className="absolute left-0 top-8 z-50 flex w-44 flex-col border border-border-panel bg-bg-panel py-1 shadow-lg">
+              {([
+                [t(language, 'app_new'), () => newProject()],
+                [t(language, 'app_open'), () => void openProject()],
+                [t(language, 'app_import_asset'), () => setAssetImportOpen(true)],
+                [t(language, 'app_save_project'), () => void saveWorkspace(false)],
+                [t(language, 'app_save_as'), () => void saveWorkspace(true)],
+                // Restore Last autosaved workspace entry for desktop conformance checks.
+                [t(language, 'app_restore'), () => restoreLastWorkspace()]
+              ] as Array<[string, () => void]>).map(([label, action]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={(event) => {
+                    (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                    action();
+                  }}
+                  className="px-3 py-1.5 text-left text-[13px] text-text-primary hover:bg-[#2B2D31]"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </details>
           <button type="button" title={t(language, 'app_quick_start')} onClick={reopenFirstRunGuide} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[13px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
             {t(language, 'app_quick_start')}
           </button>
           </div>
           <div className="flex h-full shrink-0 items-center gap-1.5 border-l border-border-panel px-3">
-          <button type="button" title={!currentRunTargetRunnable ? t(language, 'select_runnable_target_hint') : undefined} onClick={() => void runScenario()} disabled={running || !currentRunTargetRunnable} className="h-7 rounded-[3px] border border-[#075985] bg-[#0284C7] px-3 text-[13px] font-bold text-white hover:bg-[#0369A1] disabled:cursor-not-allowed disabled:opacity-40">
-            {t(language, 'app_run')}
-          </button>
+          {/* Run/Stop live ONLY in the AI command terminal now (UI audit B2);
+              the toolbar keeps the result chip + exports. */}
           <span title={language === 'zh' ? '\u4e0a\u6b21\u8fd0\u884c\u7684\u6700\u7ec8\u7ed3\u679c\uff1b\u7ec8\u7aef\u5fbd\u7ae0\u663e\u793a\u547d\u4ee4\u6d41\u72b6\u6001\uff0cGovernor \u663e\u793a\u7f16\u8bd1\u51b3\u7b56\u3002' : 'Final result of the last run; the terminal badge shows command-flow state, the Governor shows the compile decision.'} className={`h-7 rounded-[3px] border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${labReport?.result === 'blocked' ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : replayPlaying ? 'border-status-running-edge bg-status-warning-surface text-status-running' : labReport?.result === 'pass' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-border-panel bg-[#232529] text-text-secondary'}`}>
             {labReport?.result === 'blocked' ? t(language, 'status_safety_blocked') : replayPlaying ? t(language, 'status_playing_motion') : labReport?.result === 'pass' ? t(language, 'status_executed') : t(language, 'status_idle')}
           </span>
-          <button type="button" onClick={stopRun} className="h-7 rounded-[3px] border border-[#4C1D1D] bg-[#25191B] px-3 text-[13px] font-semibold text-status-blocked-soft hover:bg-[#3A2020]">
-            {t(language, 'app_stop')}
-          </button>
           <span className="mx-1 h-6 w-px bg-border-panel" />
           <button type="button" onClick={() => void exportCurrentLabReport()} disabled={!labReport} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31] disabled:opacity-40">
             {t(language, 'app_export_report')}
@@ -2771,7 +2844,9 @@ export default function Home() {
           )}
         </div>
         <aside className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border-panel bg-bg-panel">
-          <div className="h-[42%] min-h-[300px] shrink-0 overflow-hidden">
+          {/* Governor takes real estate only when it has a decision to show
+              (UI audit C3); idle it collapses to its header + hint. */}
+          <div className={`${runtimeDecision ? 'h-[42%] min-h-[300px]' : 'max-h-[104px]'} shrink-0 overflow-hidden`}>
             <AutonomyDecisionPanel
               language={language}
               prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
