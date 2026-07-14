@@ -116,7 +116,8 @@ export class LocalRuntime {
     prompt,
     locale,
     deviceState,
-    llmCompile
+    llmCompile,
+    manifestCompile
   }: {
     profile: DeviceProfile;
     prompt: string;
@@ -130,6 +131,13 @@ export class LocalRuntime {
      * exactly as before - explicitly audited, never silently.
      */
     llmCompile?: CompileWithFallbackResult;
+    /**
+     * Optional pre-expanded Action Manifest TaskDSL (v0.4 custom actions).
+     * UNTRUSTED like any proposal: it is bridged and every safety layer runs
+     * unchanged on the bridged values. Compiler provenance is audited as
+     * 'manifest', never disguised as llm/rules.
+     */
+    manifestCompile?: { taskDsl: TaskDSL; actionId: string };
   }): LocalRuntimeSession {
     const audit = new RuntimeAuditLog();
     const manifest = buildManifestFromProfile(profile);
@@ -148,9 +156,28 @@ export class LocalRuntime {
     // -- Compiler provenance (honesty invariant: which layer produced the
     // language understanding is always audited; fallback is never silent). --
     let bridged: BridgedProposal | null = null;
-    let compilerUsed: 'llm' | 'rules' = 'rules';
+    let compilerUsed: 'llm' | 'rules' | 'manifest' = 'rules';
     let compilerDetail = 'rules engine';
-    if (llmCompile && llmCompile.compiler === 'llm' && llmCompile.taskDsl) {
+    if (manifestCompile) {
+      bridged = profile.deviceMeta.device_type === 'robot_arm'
+        ? bridgeProposalToRuntime(prompt, manifestCompile.taskDsl, profile.deviceMeta.device_id)
+        : null;
+      if (bridged) {
+        compilerUsed = 'manifest';
+        compilerDetail = `action manifest (${manifestCompile.actionId})`;
+        audit.info('compiler', 'manifest_compiler_used', 'Validated action manifest expanded and bridged into the runtime pipelines.', {
+          actionId: manifestCompile.actionId,
+          compiler: 'manifest'
+        });
+      } else {
+        compilerDetail = 'rules engine (manifest unmappable)';
+        audit.info('compiler', 'manifest_compiler_fallback', 'Manifest expansion did not map to a known goal shape; rules compiler used.', {
+          kind: 'proposal_unmappable',
+          actionId: manifestCompile.actionId,
+          compiler: 'rules'
+        });
+      }
+    } else if (llmCompile && llmCompile.compiler === 'llm' && llmCompile.taskDsl) {
       bridged = profile.deviceMeta.device_type === 'robot_arm'
         ? bridgeProposalToRuntime(prompt, llmCompile.taskDsl, profile.deviceMeta.device_id)
         : null;

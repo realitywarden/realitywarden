@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuditPanel } from '@/components/AuditPanel';
 import { AutonomyDecisionPanel } from '@/components/AutonomyDecisionPanel';
 import { AssetImportWizard } from '@/components/AssetImportWizard';
+import { ActionComposer, BUILTIN_INTENT_IDS } from '@/components/ActionComposer';
+import { validateActionManifest } from '@/lib/action-manifest/ActionManifest';
+import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { LabConfigurator } from '@/components/LabConfigurator';
 import { RealHardwarePanel } from '@/components/RealHardwarePanel';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
@@ -65,6 +68,8 @@ interface LabWorkspaceFile {
   selected_workspace_device_id: string | null;
   prompt: string;
   devices: WorkspaceDeviceRecord[];
+  /** v0.4 custom actions (untrusted on load; revalidated per manifest). */
+  custom_actions?: unknown[];
 }
 
 interface OpenRealityProjectFile {
@@ -1302,6 +1307,8 @@ export default function Home() {
   const [workspaceDevices, setWorkspaceDevices] = useState<WorkspaceDeviceRecord[]>([defaultWorkspaceDevice]);
   const [importedAssets, setImportedAssets] = useState<DeviceAsset[]>([]);
   const [assetImportOpen, setAssetImportOpen] = useState(false);
+  const [actionComposerOpen, setActionComposerOpen] = useState(false);
+  const [customActions, setCustomActions] = useState<ActionManifest[]>([]);
   const [selectedWorkspaceDeviceId, setSelectedWorkspaceDeviceId] = useState<string | null>(defaultWorkspaceDevice.id);
   const [consoleLogs, setConsoleLogs] = useState<string[]>(startupLogs('en'));
   const [llmChipState, setLlmChipState] = useState<'checking' | 'online' | 'offline' | 'compiling'>('checking');
@@ -1552,8 +1559,9 @@ export default function Home() {
     selected_scenario_id: selectedScenario.id,
     selected_workspace_device_id: selectedWorkspaceDeviceId,
     prompt,
-    devices: workspaceDevices
-  }), [language, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
+    devices: workspaceDevices,
+    custom_actions: customActions
+  }), [customActions, language, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
 
   const buildProjectFile = useCallback((): OpenRealityProjectFile => ({
     project: {
@@ -1605,6 +1613,15 @@ export default function Home() {
       };
     }));
     setSelectedWorkspaceDeviceId(workspace.selected_workspace_device_id);
+    // Custom actions are untrusted data on load: revalidate each against the
+    // loaded profile; invalid ones are dropped loudly, never repaired.
+    const loadedActions: ActionManifest[] = [];
+    for (const raw of workspace.custom_actions ?? []) {
+      const checked = validateActionManifest(raw, nextProfile.deviceMeta, BUILTIN_INTENT_IDS);
+      if (checked.ok) loadedActions.push(checked.manifest);
+      else showNotice('warning', noticeMessage(workspace.language, `自定义动作被拒绝（${checked.code}）：${checked.detail}`, `Custom action rejected (${checked.code}): ${checked.detail}`));
+    }
+    setCustomActions(loadedActions);
     setSelectedProfileId(nextProfile.id);
     setDeviceType(nextProfile.deviceMeta.device_type);
     setScenarioId(nextScenario.id);
@@ -1958,7 +1975,8 @@ export default function Home() {
     setPrompt(nextPrompt);
   }, [cancelActiveWork, clearRuntimeDecision]);
 
-  const runScenario = useCallback(async () => {
+  const runScenario = useCallback(async (options?: { manifestRun?: { taskDsl: TaskDSL; actionId: string; label: string } }) => {
+    const manifestRun = options?.manifestRun;
     if (liveRunActiveRef.current) {
       showNotice('warning', noticeMessage(language, '\u5f53\u524d\u6267\u884c\u6b63\u5728\u8fd0\u884c\uff0c\u8bf7\u5148\u505c\u6b62\u6216\u7b49\u5f85\u5b8c\u6210\u3002', 'A run is already active. Stop it or wait for completion.'));
       return;
@@ -2007,12 +2025,12 @@ export default function Home() {
         ? selectedScenario
         : getScenarioForProfile(runProfile.id, selectedScenario.mode)
     );
-    const runPrompt = prompt.trim() || getLocalizedPrompt(runScenarioDefinition, language);
+    const runPrompt = manifestRun ? manifestRun.label : (prompt.trim() || getLocalizedPrompt(runScenarioDefinition, language));
     const runTargetLabel = targetWorkspaceAsset
       ? localizeDisplayName(language, targetWorkspaceAsset.manifest.display_name)
       : localizeDeviceType(language, runProfile.deviceMeta.device_type);
     let llmCompile: CompileWithFallbackResult | undefined;
-    if (runProfile.deviceMeta.device_type === 'robot_arm' && llmChipStateRef.current === 'online') {
+    if (!manifestRun && runProfile.deviceMeta.device_type === 'robot_arm' && llmChipStateRef.current === 'online') {
       if (!llmCompilerRef.current) {
         llmCompilerRef.current = new LlmTaskCompiler({ baseUrl: LLM_COMPILER_BASE_URL, model: LLM_COMPILER_MODEL });
       }
@@ -2036,7 +2054,8 @@ export default function Home() {
         prompt: runPrompt,
         locale: language,
         deviceState: targetWorkspaceDevice?.current_state ?? null,
-        llmCompile
+        llmCompile,
+        manifestCompile: manifestRun ? { taskDsl: manifestRun.taskDsl, actionId: manifestRun.actionId } : undefined
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : localUnknownError(language);
@@ -2695,6 +2714,9 @@ export default function Home() {
           <button type="button" title={t(language, 'app_quick_start')} onClick={reopenFirstRunGuide} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[13px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
             {t(language, 'app_quick_start')}
           </button>
+          <button type="button" onClick={() => setActionComposerOpen(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
+            {language === 'zh' ? '自定义动作' : 'Actions'}{customActions.length > 0 ? ` (${customActions.length})` : ''}
+          </button>
           </div>
           <div className="flex h-full shrink-0 items-center gap-1.5 border-l border-border-panel px-3">
           {/* Run/Stop live ONLY in the AI command terminal now (UI audit B2);
@@ -2883,6 +2905,28 @@ export default function Home() {
         <AssetImportWizard
           onImport={handleImportedAsset}
           onClose={() => setAssetImportOpen(false)}
+        />
+      )}
+      {actionComposerOpen && (
+        <ActionComposer
+          language={language}
+          deviceMeta={effectiveSelectedProfile.deviceMeta}
+          actions={customActions}
+          onSave={(manifest) => {
+            setCustomActions((current) => [...current.filter((item) => item.action_id !== manifest.action_id), manifest]);
+          }}
+          onDelete={(actionId) => setCustomActions((current) => current.filter((item) => item.action_id !== actionId))}
+          onRun={(manifest, taskDsl) => {
+            setActionComposerOpen(false);
+            void runScenario({
+              manifestRun: {
+                taskDsl,
+                actionId: manifest.action_id,
+                label: language === 'zh' ? manifest.display_name.zh : manifest.display_name.en
+              }
+            });
+          }}
+          onClose={() => setActionComposerOpen(false)}
         />
       )}
     </div>
