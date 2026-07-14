@@ -5,7 +5,7 @@
   "device_type": "robot_arm",
   "safety": {
     "declared_risk": "low",
-    "required_sensors": ["distance"],
+    "required_sensors": [],
     "envelope": { "max_speed": "normal", "max_force": "low" }
   },
   "steps": [

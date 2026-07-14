@@ -10,14 +10,16 @@
  * runtime safety pipeline as any prompt. This component never executes
  * anything itself.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import {
+  ACTION_MANIFEST_LIGHT_COLORS,
   expandManifestToTaskDsl,
   validateActionManifest
 } from '@/lib/action-manifest/ActionManifest';
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { exportActionLibrary, importActionLibrary } from '@/lib/action-manifest/ActionLibrary';
+import { getReferenceActionRecipe } from '@/lib/action-manifest/ReferenceRecipes';
 import type { DeviceMeta } from '@/types/deviceMeta';
 import type { TaskDSL } from '@/types/taskDsl';
 
@@ -31,6 +33,7 @@ interface StepDraft {
   target: string;
   speed: '' | 'slow' | 'normal' | 'fast';
   force: '' | 'low' | 'medium' | 'high';
+  value: string;
 }
 
 export interface ActionComposerProps {
@@ -53,12 +56,19 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
   const [nameEn, setNameEn] = useState('');
   const [maxSpeed, setMaxSpeed] = useState<'slow' | 'normal' | 'fast'>('slow');
   const [maxForce, setMaxForce] = useState<'low' | 'medium' | 'high'>('low');
-  const [steps, setSteps] = useState<StepDraft[]>([{ action: 'move_to_pose', target: '', speed: 'slow', force: '' }]);
+  const [steps, setSteps] = useState<StepDraft[]>([newStepDraft(deviceMeta.capabilities[0] ?? '')]);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const capabilities = deviceMeta.capabilities as readonly string[];
   const knownTargets = deviceMeta.constraints.known_targets ?? [];
+
+  useEffect(() => {
+    // A draft belongs to one device profile. Keeping primitives from the
+    // previous profile would create a misleading, invalid editor state.
+    setSteps([newStepDraft(deviceMeta.capabilities[0] ?? '')]);
+    setFeedback(null);
+  }, [deviceMeta.profile_id, deviceMeta.capabilities]);
 
   const draftManifest = useMemo(() => ({
     manifest_version: 1 as const,
@@ -74,7 +84,8 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
       action: step.action,
       ...(step.target ? { target: step.target } : {}),
       ...(step.speed ? { speed: step.speed } : {}),
-      ...(step.force ? { force: step.force } : {})
+      ...(step.force ? { force: step.force } : {}),
+      ...(step.value !== '' ? { value: parseStepValue(step.action, step.value) } : {})
     }))
   }), [actionId, nameZh, nameEn, deviceMeta.device_type, maxSpeed, maxForce, steps]);
 
@@ -82,6 +93,35 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
     () => validateActionManifest(draftManifest, deviceMeta, BUILTIN_INTENT_IDS),
     [draftManifest, deviceMeta]
   );
+  const hasReferenceRecipe = getReferenceActionRecipe(deviceMeta.device_type) !== null;
+
+  const loadReferenceRecipe = () => {
+    const raw = getReferenceActionRecipe(deviceMeta.device_type);
+    if (!raw) {
+      setFeedback({ ok: false, text: zh ? '此设备类型没有参考 recipe。' : 'No reference recipe for this device type.' });
+      return;
+    }
+    // Bundled examples are still proposals, never trusted code/data.
+    const checked = validateActionManifest(raw, deviceMeta, BUILTIN_INTENT_IDS);
+    if (!checked.ok) {
+      setFeedback({ ok: false, text: `${checked.code}: ${checked.detail}` });
+      return;
+    }
+    const recipe = checked.manifest;
+    setActionId(recipe.action_id);
+    setNameZh(recipe.display_name.zh);
+    setNameEn(recipe.display_name.en);
+    setMaxSpeed(recipe.safety.envelope.max_speed);
+    setMaxForce(recipe.safety.envelope.max_force);
+    setSteps(recipe.steps.map((step) => ({
+      action: step.action,
+      target: step.target ?? '',
+      speed: step.speed ?? '',
+      force: step.force ?? '',
+      value: step.value === undefined ? defaultValueForAction(step.action) : String(step.value)
+    })));
+    setFeedback({ ok: true, text: zh ? `已载入参考 recipe：${recipe.display_name.zh}` : `Loaded reference recipe: ${recipe.display_name.en}` });
+  };
 
   const save = () => {
     if (!validation.ok) {
@@ -181,7 +221,14 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
 
           {/* Editor */}
           <section className="rounded-[3px] border border-border-panel bg-[#181A1D] p-3">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{zh ? '新建动作' : 'New action'}</div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{zh ? '新建动作' : 'New action'}</div>
+              {hasReferenceRecipe && (
+                <button type="button" onClick={loadReferenceRecipe} className="h-6 border border-border px-2 text-[11px] font-semibold text-text-secondary hover:bg-surface-raised">
+                  {zh ? '载入参考 recipe' : 'Load reference recipe'}
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1 text-[11px] text-text-secondary">
                 action_id（snake_case）
@@ -222,7 +269,7 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
                 <span className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{zh ? '步骤（基元）' : 'Steps (primitives)'}</span>
                 <button
                   type="button"
-                  onClick={() => setSteps((current) => current.length >= 16 ? current : [...current, { action: 'move_to_pose', target: '', speed: 'slow', force: '' }])}
+                  onClick={() => setSteps((current) => current.length >= 16 ? current : [...current, newStepDraft(capabilities[0] ?? '')])}
                   className="h-6 rounded-[3px] border border-border-panel px-2 text-[11px] text-text-secondary hover:bg-[#2B2D31]"
                 >
                   {zh ? '+ 加一步' : '+ Add step'}
@@ -232,7 +279,7 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
                 {steps.map((step, index) => (
                   <div key={index} className="flex flex-wrap items-center gap-1.5">
                     <span className="w-5 text-right text-[11px] text-text-muted">{index + 1}.</span>
-                    <select value={step.action} onChange={(event) => updateStep(setSteps, index, { action: event.target.value })} className={inputClass}>
+                    <select value={step.action} onChange={(event) => updateStep(setSteps, index, { action: event.target.value, value: defaultValueForAction(event.target.value) })} className={inputClass}>
                       {capabilities.map((capability) => <option key={capability} value={capability}>{capability}</option>)}
                     </select>
                     <select value={step.target} onChange={(event) => updateStep(setSteps, index, { target: event.target.value })} className={inputClass}>
@@ -247,6 +294,7 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
                       <option value="">force?</option>
                       {(['low', 'medium', 'high'] as const).map((value) => <option key={value} value={value}>{value}</option>)}
                     </select>
+                    <ActionValueEditor language={language} step={step} onChange={(value) => updateStep(setSteps, index, { value })} />
                     <button
                       type="button"
                       onClick={() => setSteps((current) => current.length <= 1 ? current : current.filter((_, i) => i !== index))}
@@ -283,6 +331,53 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
       </div>
     </div>
   );
+}
+
+function defaultValueForAction(action: string): string {
+  if (action === 'set_light') return 'true';
+  if (action === 'set_brightness') return '45';
+  if (action === 'set_color') return 'warm_white';
+  return '';
+}
+
+function newStepDraft(action: string): StepDraft {
+  return { action, target: '', speed: 'slow', force: '', value: defaultValueForAction(action) };
+}
+
+function parseStepValue(action: string, value: string): string | number | boolean {
+  if (action === 'set_light') return value === 'true';
+  if (action === 'set_brightness') return Number(value);
+  return value;
+}
+
+function ActionValueEditor({
+  language,
+  step,
+  onChange
+}: {
+  language: 'zh' | 'en';
+  step: StepDraft;
+  onChange: (value: string) => void;
+}) {
+  if (step.action === 'set_light') {
+    return (
+      <select aria-label={language === 'zh' ? '开关值' : 'On/off value'} value={step.value} onChange={(event) => onChange(event.target.value)} className={inputClass}>
+        <option value="true">on / true</option>
+        <option value="false">off / false</option>
+      </select>
+    );
+  }
+  if (step.action === 'set_brightness') {
+    return <input aria-label={language === 'zh' ? '亮度值' : 'Brightness value'} type="number" min={0} max={100} step={1} value={step.value} onChange={(event) => onChange(event.target.value)} className={`${inputClass} w-24`} />;
+  }
+  if (step.action === 'set_color') {
+    return (
+      <select aria-label={language === 'zh' ? '颜色值' : 'Color value'} value={step.value} onChange={(event) => onChange(event.target.value)} className={inputClass}>
+        {ACTION_MANIFEST_LIGHT_COLORS.map((color) => <option key={color} value={color}>{color}</option>)}
+      </select>
+    );
+  }
+  return <span className="px-1 text-[11px] text-text-muted">{language === 'zh' ? '无参数值' : 'no value'}</span>;
 }
 
 function localName(manifest: ActionManifest, language: 'zh' | 'en') {

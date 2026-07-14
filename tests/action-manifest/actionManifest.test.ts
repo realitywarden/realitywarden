@@ -8,7 +8,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { validateActionManifest, expandManifestToTaskDsl } from '../../lib/action-manifest/ActionManifest';
 import { exportActionLibrary, importActionLibrary } from '../../lib/action-manifest/ActionLibrary';
-import type { DeviceMeta } from '../../types/deviceMeta';
+import { createAdapterCommand } from '../../lib/adapter/AdapterCommandCompiler';
+import { SmartLightActionModel } from '../../lib/action-runtime/models/SmartLightActionModel';
+import { CameraSensorActionModel } from '../../lib/action-runtime/models/CameraSensorActionModel';
+import { runSafetyRuntime } from '../../lib/safety/SafetyRuntime';
+import type { DeviceGeometry, DeviceMeta } from '../../types/deviceMeta';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`ASSERTION FAILED: ${message}`);
@@ -24,6 +28,28 @@ const robotArmMeta = JSON.parse(
   fs.readFileSync(resolveRepoFile(path.join('profiles', 'virtual-robot-arm', 'device.meta.json')), 'utf8')
 ) as DeviceMeta;
 
+function readJson<T>(relative: string): T {
+  return JSON.parse(fs.readFileSync(resolveRepoFile(relative), 'utf8')) as T;
+}
+
+const referenceRecipes = [
+  {
+    name: 'robot arm',
+    profile: 'virtual-robot-arm',
+    recipe: 'scan_left_to_right.json'
+  },
+  {
+    name: 'smart light',
+    profile: 'virtual-smart-light',
+    recipe: 'focus_work_light.json'
+  },
+  {
+    name: 'camera sensor',
+    profile: 'virtual-camera-sensor',
+    recipe: 'inspect_then_capture.json'
+  }
+] as const;
+
 const BUILTINS = new Set(['move_object', 'return_home', 'inspect', 'throw_object', 'organize_workspace']);
 
 function goodManifest() {
@@ -34,7 +60,7 @@ function goodManifest() {
     device_type: 'robot_arm',
     safety: {
       declared_risk: 'low',
-      required_sensors: ['distance'],
+      required_sensors: [],
       envelope: { max_speed: 'normal', max_force: 'low' }
     },
     steps: [
@@ -140,6 +166,72 @@ const tests: Array<[string, () => void]> = [
   ['unknown action-library envelope fields rejected', () => {
     const imported = importActionLibrary({ format: 'realitywarden.action-library', version: 1, exported_at: new Date().toISOString(), actions: [goodManifest()], autorun: true }, robotArmMeta, BUILTINS);
     assert(!imported.ok && imported.code === 'invalid_library', `got ${JSON.stringify(imported)}`);
+  }],
+  ['three reference-device recipes validate, expand, pass safety, and execute semantically', () => {
+    for (const fixture of referenceRecipes) {
+      const meta = readJson<DeviceMeta>(path.join('profiles', fixture.profile, 'device.meta.json'));
+      const geometry = readJson<DeviceGeometry>(path.join('profiles', fixture.profile, 'geometry.json'));
+      const raw = readJson<unknown>(path.join('examples', 'action-manifests', fixture.recipe));
+      const validated = validateActionManifest(raw, meta, BUILTINS);
+      assert(validated.ok, `${fixture.name} reference recipe must validate: ${JSON.stringify(validated)}`);
+      const expanded = expandManifestToTaskDsl(validated.manifest, meta, fixture.name);
+      assert(expanded.ok, `${fixture.name} reference recipe must expand`);
+      const safety = runSafetyRuntime(meta, expanded.taskDsl);
+      assert(safety.status === 'pass', `${fixture.name} reference recipe must pass normal simulation safety: ${JSON.stringify(safety.blocked_reasons)}`);
+
+      let state: Record<string, unknown> = { ...meta.runtime_state };
+      const model = fixture.profile === 'virtual-smart-light'
+        ? new SmartLightActionModel()
+        : fixture.profile === 'virtual-camera-sensor'
+          ? new CameraSensorActionModel()
+          : null;
+      for (const step of expanded.taskDsl.steps) {
+        const command = createAdapterCommand(meta, step);
+        assert(command.allowed, `${fixture.name} primitive ${step.action} must stay capability-declared`);
+        if (model) {
+          const plan = model.plan({ command, deviceMeta: meta, geometry, currentState: state });
+          assert(!plan.validation.blocked, `${fixture.name} primitive ${step.action} must produce an executable semantic plan`);
+          state = plan.end_state;
+        }
+      }
+      if (fixture.profile === 'virtual-smart-light') {
+        assert(state.brightness === 55 && state.color === 'warm_white', 'smart-light recipe must preserve typed brightness/color values through expansion and execution');
+      }
+      if (fixture.profile === 'virtual-camera-sensor') {
+        assert(state.frames_captured === 1 && state.status === 'captured', 'camera recipe must execute inspect then capture semantics');
+      }
+    }
+  }],
+  ['reference recipes are profile-specific and cross-device import is rejected', () => {
+    const lightRecipe = readJson<unknown>(path.join('examples', 'action-manifests', 'focus_work_light.json'));
+    const result = validateActionManifest(lightRecipe, robotArmMeta, BUILTINS);
+    assert(!result.ok && result.code === 'device_type_mismatch', `cross-device recipe must reject explicitly, got ${JSON.stringify(result)}`);
+  }],
+  ['untrusted primitive values require an explicit type and range policy', () => {
+    const lightMeta = readJson<DeviceMeta>(path.join('profiles', 'virtual-smart-light', 'device.meta.json'));
+    const base = readJson<Record<string, unknown>>(path.join('examples', 'action-manifests', 'focus_work_light.json'));
+    const cases = [
+      { action: 'set_light', target: 'lamp', speed: 'slow', value: 'true' },
+      { action: 'set_brightness', target: 'lamp', speed: 'slow', value: 101 },
+      { action: 'set_color', target: 'lamp', speed: 'slow', value: 'strobe' }
+    ];
+    for (const step of cases) {
+      const result = validateActionManifest({ ...base, steps: [step] }, lightMeta, BUILTINS);
+      assert(!result.ok && result.code === 'invalid_value', `invalid ${step.action} value must default-reject: ${JSON.stringify(result)}`);
+    }
+
+    const cameraMeta = readJson<DeviceMeta>(path.join('profiles', 'virtual-camera-sensor', 'device.meta.json'));
+    const cameraBase = readJson<Record<string, unknown>>(path.join('examples', 'action-manifests', 'inspect_then_capture.json'));
+    const undeclaredValue = validateActionManifest({
+      ...cameraBase,
+      steps: [{ action: 'read_sensor', target: 'camera_view', speed: 'slow', value: 'trust_me' }]
+    }, cameraMeta, BUILTINS);
+    assert(!undeclaredValue.ok && undeclaredValue.code === 'invalid_value', 'a primitive without a declared value policy must reject injected values');
+
+    const proposedInterlock = goodManifest();
+    (proposedInterlock.safety as { required_sensors: string[] }).required_sensors = ['caller_owned_distance'];
+    const sensorResult = validateActionManifest(proposedInterlock, robotArmMeta, BUILTINS);
+    assert(!sensorResult.ok && sensorResult.code === 'schema_rejected', 'untrusted manifests cannot introduce unenforced sensor requirements');
   }]
 ];
 

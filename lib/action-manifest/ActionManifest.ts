@@ -21,8 +21,10 @@ const FORCE_ORDER = { low: 0, medium: 1, high: 2 } as const;
 
 export type ManifestRejectionCode =
   | 'schema_rejected'
+  | 'device_type_mismatch'
   | 'unknown_primitive'
   | 'unknown_target'
+  | 'invalid_value'
   | 'envelope_exceeds_profile'
   | 'name_collision';
 
@@ -42,6 +44,7 @@ const manifestStepSchema = z.object({
   target: z.string().optional(),
   speed: z.enum(['slow', 'normal', 'fast']).optional(),
   force: z.enum(['low', 'medium', 'high']).optional(),
+  value: z.union([z.string().max(64), z.number().finite(), z.boolean()]).optional(),
   zone: z.string().optional(),
   note: z.string().optional()
 }).strict();
@@ -54,7 +57,10 @@ export const actionManifestSchema = z.object({
   device_type: z.string().min(1),
   safety: z.object({
     declared_risk: z.enum(['low', 'medium', 'high']),
-    required_sensors: z.array(z.string()),
+    // Reserved in manifest v1. Real safety interlocks are profile/capability
+    // owned and cannot be introduced by an untrusted manifest. Until a
+    // profile-authoritative binding exists, non-empty proposals fail closed.
+    required_sensors: z.array(z.string()).max(0, 'required_sensors is reserved in v1 and must be empty'),
     envelope: z.object({
       max_speed: z.enum(['slow', 'normal', 'fast']),
       max_force: z.enum(['low', 'medium', 'high'])
@@ -86,6 +92,14 @@ export function validateActionManifest(
   }
   const manifest = parsed.data;
 
+  if (manifest.device_type !== deviceMeta.device_type) {
+    return {
+      ok: false,
+      code: 'device_type_mismatch',
+      detail: `manifest device_type "${manifest.device_type}" does not match selected profile "${deviceMeta.device_type}"`
+    };
+  }
+
   if (builtinIntentIds.has(manifest.action_id)) {
     return {
       ok: false,
@@ -110,6 +124,14 @@ export function validateActionManifest(
         ok: false,
         code: 'unknown_target',
         detail: `steps[${index}].target "${step.target}" is not a known target of this device`
+      };
+    }
+    const valueError = validatePrimitiveValue(step.action, step.value);
+    if (valueError) {
+      return {
+        ok: false,
+        code: 'invalid_value',
+        detail: `steps[${index}].value: ${valueError}`
       };
     }
   }
@@ -157,6 +179,7 @@ export function expandManifestToTaskDsl(
       target: step.target,
       speed: step.speed,
       force: step.force,
+      value: step.value,
       zone: step.zone,
       note: step.note
     });
@@ -170,4 +193,32 @@ export function expandManifestToTaskDsl(
       steps
     }
   };
+}
+
+export const ACTION_MANIFEST_LIGHT_COLORS = [
+  'white', 'warm_white', 'cool_white', 'red', 'green', 'blue', 'amber'
+] as const;
+const SAFE_LIGHT_COLORS = new Set<string>(ACTION_MANIFEST_LIGHT_COLORS);
+
+/**
+ * Action values are untrusted command arguments. A primitive may consume a
+ * value only when this module has an explicit policy for its type/range.
+ * Unknown value-bearing primitives fail closed instead of forwarding an
+ * arbitrary payload into an adapter.
+ */
+function validatePrimitiveValue(action: string, value: string | number | boolean | undefined): string | null {
+  if (action === 'set_light') {
+    return typeof value === 'boolean' ? null : 'set_light requires a boolean';
+  }
+  if (action === 'set_brightness') {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+      ? null
+      : 'set_brightness requires a finite number in [0, 100]';
+  }
+  if (action === 'set_color') {
+    return typeof value === 'string' && SAFE_LIGHT_COLORS.has(value)
+      ? null
+      : `set_color requires one of: ${Array.from(SAFE_LIGHT_COLORS).join(', ')}`;
+  }
+  return value === undefined ? null : `${action} has no declared value policy; value is rejected`;
 }

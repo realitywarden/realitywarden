@@ -109,6 +109,11 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
   - `robot_arm`
   - `smart_light`
   - `camera_sensor`
+- **Custom actions across all three runnable paths**
+  - strict profile-specific Action Manifests with typed smart-light values
+  - built-in reference recipes can be loaded in Action Composer and are
+    revalidated before use
+  - examples: [`examples/action-manifests`](./examples/action-manifests)
 
 ## Develop in simulation, deploy to real hardware
 

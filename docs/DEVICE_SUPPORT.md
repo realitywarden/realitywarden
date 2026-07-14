@@ -8,9 +8,9 @@ The goal is to be explicit about what is runnable, what is only visual scaffoldi
 
 | Device Type | UI Display | Main Run Enabled | Natural Language | Visual Feedback | Status | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `robot_arm` | Yes | Yes | Yes | Yes | Public Alpha | Main golden-path demo |
-| `smart_light` | Yes | Yes | Limited zh/en | Yes | Public Alpha | Low-risk simulation only |
-| `camera_sensor` | Yes | Yes | Limited zh/en | Yes | Public Alpha | Low-risk simulation only |
+| `robot_arm` | Yes | Yes | Yes | Yes | Public Alpha | Golden path + reference custom action |
+| `smart_light` | Yes | Yes | Limited zh/en | Yes | Public Alpha | Low-risk simulation + typed reference action |
+| `camera_sensor` | Yes | Yes | Limited zh/en | Yes | Public Alpha | Low-risk simulation + reference action |
 | `mobile_robot` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
 | `conveyor_belt` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
 | `plc_cabinet` | Yes | No | No | No main run | Coming Soon | Asset/workspace scaffold only |
@@ -57,7 +57,8 @@ Unsupported prompts must fail clearly and must not silently fall back.
 
 The following are out of scope for the current public alpha:
 
-- real device execution
+- general-purpose or production-certified real device execution (the separate
+  evidence-locked ESP32 reference rig remains the only real-hardware path)
 - industrial control guarantees
 - certified safety for hardware
 - autonomous multi-device orchestration

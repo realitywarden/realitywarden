@@ -22,7 +22,8 @@
 - **Windows 安装包 v0.3.0 ✅**：`npm run desktop:pack` 已生成 `release/RealityWarden-0.3.0-Setup.exe`（NSIS x64，165911345 bytes，SHA256 `ED01B73AA0B31EDADCA09DB326073D890FD61FC360A0503D8C8ED5505F4E0D7F`）。产物包含 `dist-electron-runtime` 同源安全链、Next 生产运行时、`firmware/prebuilt` SHA256 配对与 3 个 Windows serialport 原生绑定；asar/unpacked/品牌资源检查、exe FileVersion/ProductVersion 0.3.0 与 `win-unpacked/RealityWarden.exe --prod --smoke-test` 均通过。
 - **UI 真机执行路径 ✅（成品主线）**：REAL HARDWARE 面板新增“真机执行”区。主进程运行时 require `dist-electron-runtime`（build-electron 同时编译根项目）——与 CLI/测试**同一份**编译后安全链（采样→保守中值→SafetyMonitor→gate→ticket→transport），ipc 层零协议复制、零手搓 actuation 帧（desktop 回归断言此契约）。执行默认 `real_execution_locked`：`docs/acceptance/evidence/` 集齐 4 份验收 JSON 才解锁（或 ORS_REAL_EXECUTION=enabled 台架督导模式），且每次执行需 UI 显式勾选确认。结果带 executionMode=real_hardware + hardwareSignalSent + 审计。
 - **v0.4 自定义动作 ✅（Action Composer）**：顶栏“自定义动作”打开可视化编辑器——基元步骤（能力/目标/速度/力度下拉）+ 安全包络选择，实时 `validateActionManifest` 校验（越权包络拒绝不收窄、内建意图重名拒绝、未知目标拒绝）；保存进工作区文件（加载时重新校验，非法即拒并提示）；“运行（仿真）”经 `expandManifestToTaskDsl` 展开为基元 TaskDSL，走与任意指令**完全相同**的运行时安全管线（LocalRuntime 新增 `manifest` 编译器来源，审计如实标注，绝不伪装成 llm/rules）。
-- **v0.4 动作库 JSON ✅**：Action Composer 支持严格版本化的 `realitywarden.action-library` 导入/导出。导入逐条重新执行权威 `validateActionManifest`，任一非法动作整包原子拒绝；重复 ID、已有动作覆盖、未知包字段均显式拒绝，不做静默覆盖或收窄放行。动作库测试由 10 项扩至 15 项。
+- **v0.4 动作库 JSON ✅**：Action Composer 支持严格版本化的 `realitywarden.action-library` 导入/导出。导入逐条重新执行权威 `validateActionManifest`，任一非法动作整包原子拒绝；重复 ID、已有动作覆盖、未知包字段均显式拒绝，不做静默覆盖或收窄放行。
+- **v0.4 三设备参考 recipe ✅**：Robot Arm / Smart Light / Camera Sensor 各有可载入参考动作；Action Composer 按当前 profile 初始化基元并一键载入匹配 recipe，载入前仍执行权威校验。Manifest 新增精确 `device_type` 匹配与 `value` 默认拒绝策略；智能灯仅允许 boolean 开关、0–100 有限亮度及声明颜色，参数完整保留到 TaskDSL/语义执行。Action Manifest 套件由 15 项增至 **18 项**，覆盖跨设备导入、恶意参数及三 recipe 安全/语义执行。
 - **v0.4 3D 禁区编辑 ✅**：3D Workspace 将选中设备的 `forbidden_zones` 渲染为红色空间标记；编辑模式基于 profile `known_targets` 显示候选区，可点击 3D 标记或列表切换。修改复用 `updateWorkspaceDevice`，立即废弃旧报告、回放和 Workspace Validation；Runtime/Safety 仍消费同一份 constraints，未增加执行旁路。
 - **旧 Adapter 清理 ✅**：确认 `RealDeviceAdapter.ts`、`MockDeviceTransport.ts`、`DeviceTransport.ts` 零生产引用后删除。Virtual Lab 继续由 `SimulatorAdapter + AdapterInterface` 承载；真机契约升级为 `HardwareExecutionGate` 唯一签发私有 ticket、`Esp32DeviceAdapter` 强制验票、`RealDeviceTransport.sendActuation` 分离裸发送，相关源码断言同步收紧，文档不再宣传可自由调用的通用真机 AdapterInterface。
 - 零配置接入：REAL HARDWARE 面板新增“自动检测”——扫描全部串口→只读探测识别固件（diagnose_hardware，旧固件回退 read_distance）→显示版本/传感器/设备时钟状态→给出中文修复建议（`lib/hardware/SetupAdvisor.ts`，与排障文档同源）→无阻断项自动连接。
@@ -55,8 +56,8 @@
 
 ## 下一步
 
-1. **v0.4 剩余项**：补第二、第三参考设备 recipe，并继续开发者动作易用性收口。
-2. **v0.5 准备**：手册/PDF → 本地 LLM 草拟 DeviceProfile，必须人工复核且默认仿真-only。
+1. **v0.5 主线**：手册/PDF → 本地 LLM 草拟 DeviceProfile + Action Manifest，必须保留原始提取、人工复核且默认 simulation-only。
+2. **成品化持续项**：继续清理评估文档陈旧语义、安装包验包与可访问性/错误恢复细节。
 3. **发布操作（所有者）**：可选代码签名、tag、上传安装包与 SHA256；这些外部动作不改变软件完成状态。
 
 ## 待决策事项

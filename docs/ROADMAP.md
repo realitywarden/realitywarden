@@ -49,7 +49,7 @@ software release pipeline.
 - clarify how future adapters, simulation packs, safety rules, audit
   templates, and deployment workflows form around the protocol
 
-## In Progress: v0.4 — Your Device, Your Actions
+## Completed: v0.4 — Your Device, Your Actions
 
 - completed: versioned Action Manifest composer and primitive expansion through
   the unchanged safety pipeline
@@ -59,10 +59,15 @@ software release pipeline.
 - completed: sensor polling/subscription with a fresh evidence generation per
   primitive; failed reads and latched clock/frozen faults interrupt a sequence
   with zero further actuation frames
-- next: second and third reference-device recipes and remaining
-  developer-facing action ergonomics
+- completed: Robot Arm, Smart Light, and Camera Sensor reference recipes;
+  exact device-profile matching; typed/ranged smart-light values; one-click
+  recipe loading through the same validator; semantic execution coverage
 
-## Later: v0.5–v0.6 (detail in PRODUCT_VISION.md)
+The v0.4 gate is green: the cooperating-malicious suite rejects unsafe
+proposals, polling interruption proves zero later frames, all three recipes
+pass their normal safety path, and the full repository verify chain passes.
+
+## Next: v0.5–v0.6 (detail in PRODUCT_VISION.md)
 
 - v0.5: manual import — datasheet/PDF to draft DeviceProfile via local LLM,
   human-reviewed, simulation-first enablement

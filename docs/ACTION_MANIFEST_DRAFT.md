@@ -1,8 +1,7 @@
-# Action Manifest — Design Draft (v0)
+# Action Manifest — Implemented Design (v0.4)
 
-Status: APPROVED 2026-07-08 (all three decision points resolved; delegated to
-and decided by the assistant, confirmed by owner). Implementation targets
-v0.4 and does not start before real-device acceptance closes v0.2/v0.3.
+Status: IMPLEMENTED 2026-07-14. Physical-device acceptance remains optional
+field evidence and is not an implementation gate.
 
 ## Goal
 
@@ -34,7 +33,7 @@ Consequences:
 3. A custom action interrupted mid-sequence by an interlock stops with zero
    further frames (requires the v0.4 sensor subscription model).
 
-## Manifest shape (proposed)
+## Manifest shape
 
 ```json
 {
@@ -44,7 +43,7 @@ Consequences:
   "device_type": "robot_arm",
   "safety": {
     "declared_risk": "low",
-    "required_sensors": ["distance"],
+    "required_sensors": [],
     "envelope": { "max_speed": "normal", "max_force": "low" }
   },
   "steps": [
@@ -63,11 +62,26 @@ ZERO weight (recomputed by rules, same as LLM risk_level); an undeclared
 only be equal to or tighter than the device profile's — looser is rejected,
 never clamped.
 
+`steps[].value` is accepted only when the primitive has an explicit policy.
+Current runnable policies are: `set_light` boolean, `set_brightness` finite
+number in `[0, 100]`, and `set_color` from the declared safe color set. Values
+on undeclared primitives are rejected rather than forwarded. The manifest
+`device_type` must exactly match the selected profile.
+
+`safety.required_sensors` is reserved in manifest v1 and must be empty. Real
+interlocks are owned by authoritative device capability declarations, never by
+an untrusted action. A future manifest version may reference profile-declared
+sensor contracts; v1 rejects non-empty proposals instead of pretending to
+enforce them.
+
 ## Storage & UI
 
 - Manifests live beside the workspace project file; import/export as JSON.
 - Capability editor UI: pick primitives, set per-step params from dropdowns
   bounded by the profile (no free-text params in v0).
+- Action Composer offers a profile-matched reference recipe for Robot Arm,
+  Smart Light, and Camera Sensor. Bundled recipes are still revalidated as
+  untrusted proposals before populating the editor.
 - Custom actions surface in the prompt layer as new known intents; the LLM
   compiler's system prompt gains their ids automatically (they are data).
 
@@ -80,6 +94,10 @@ never clamped.
    frames, audit shows the stop reason.
 3. Equivalence: a manifest reproducing an existing canonical task must yield
    the same decision as the keyword path.
+
+Implemented evidence: 18 Action Manifest tests cover the malicious suite,
+atomic libraries, three profile-specific recipes, semantic execution for the
+new smart-light/camera recipes, device-type mismatch, and typed value rejection.
 
 ## Decisions (confirmed 2026-07-08)
 
