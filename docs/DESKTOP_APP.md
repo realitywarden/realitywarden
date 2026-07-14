@@ -177,7 +177,7 @@ release/RealityWarden-<version>-Setup.exe
 Current verified Public Alpha installer artifact:
 
 ```text
-release/RealityWarden-0.1.1-Setup.exe
+release/RealityWarden-0.3.0-Setup.exe
 ```
 
 If `electron-builder` is missing, the command now fails explicitly instead of exiting successfully without producing an installer.

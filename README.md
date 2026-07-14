@@ -43,19 +43,18 @@ If Physical AI becomes locked inside a few closed stacks, fewer companies can pa
 
 RealityWarden is designed for the opposite direction: more devices, more adapters, more Reality Assets, more integration work, more deployment work, and a wider developer ecosystem around AI-controlled physical systems.
 
-**Current status**
+**Current status — v0.3.0 Public Alpha**
 
 - Public Alpha
 - the main simulation workbench never touches hardware
 - a first, tightly gated REAL hardware path exists for one bench rig
   (ESP32 + SG90 servo + HC-SR04 — see
   [docs/REAL_HARDWARE_ESP32.md](./docs/REAL_HARDWARE_ESP32.md)); it runs only
-  through an audited safety gate, and blocked commands can never reach the wire
+  through an evidence lock, per-run operator confirmation, and an audited
+  safety gate; blocked commands can never reach the wire
 - no production hardware control, no industrial safety certification
 
-![Real hardware safety invariants — 17/17 passing](./docs/assets/verify-17-invariants.png)
-
-Real hardware safety invariants — 17/17 passing. Run `npm run verify` to reproduce.
+Real-hardware safety invariants — **39/39 passing**, plus **5/5** virtual-loopback scenarios. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
 
 **Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 
@@ -95,7 +94,7 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
 
 ## What is implemented now
 
-- **Simulation-only Local Runtime gate**
+- **Simulation-first Local Runtime gate**
   - Prompt -> Runtime decision -> `TaskDSL` -> `AdapterPlan` -> dry-run -> simulation
 - **Safety Governor**
   - blocks unsafe, unsupported, ambiguous, and not-runnable requests before simulation dispatch
@@ -105,7 +104,7 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
   - execution path is captured in lab reports instead of disappearing inside UI-only state
 - **Adapter boundary**
   - simulation adapters exist
-  - real adapters remain disabled
+  - one reference ESP32 rig exists behind a separate ticketed `HardwareExecutionGate`, evidence lock, sensor interlocks, and per-run operator confirmation
 - **Runnable simulation paths**
   - `robot_arm`
   - `smart_light`
@@ -118,7 +117,7 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
 Simulation is where workflows are built, tested, replayed, and audited before any device is involved. The simulation workbench itself remains a **simulation-only Public Alpha**.
 No hardware required.
 
-Same protocol for simulation and future real devices.
+Simulation and hardware share capability/safety semantics but deliberately use separate execution interfaces; a generic simulation adapter cannot actuate hardware.
 
 ## Runnable devices
 

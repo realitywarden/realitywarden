@@ -1,10 +1,10 @@
 # Windows Trial Guide
 
-Use this guide when you want to try the current `v0.1.1 Public Alpha` on Windows.
+Use this guide when you want to try the current `v0.3.0 Public Alpha` on Windows.
 
-This is an early **simulation-only desktop prototype**.
+This is a **simulation-first desktop application**. The normal evaluation path requires no hardware.
 
-It is not real-device control software.
+The separately marked REAL HARDWARE panel supports only the documented ESP32 reference rig behind an evidence lock and safety gate. This is not general-purpose or production-certified device control.
 
 ## What You Can Actually Run
 
@@ -25,7 +25,7 @@ Other built-in device families are visible in the workspace, but they are still:
 If you already have a packaged installer, the expected Windows installer file looks like:
 
 ```text
-RealityWarden-0.1.1-Setup.exe
+RealityWarden-0.3.0-Setup.exe
 ```
 
 Install flow:
@@ -54,7 +54,7 @@ npm run desktop:pack
 Expected output:
 
 ```text
-release/RealityWarden-0.1.1-Setup.exe
+release/RealityWarden-0.3.0-Setup.exe
 ```
 
 If you only want to run the desktop shell from source in a production-like mode without generating an installer:

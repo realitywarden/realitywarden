@@ -165,7 +165,9 @@ because each pillar's trust mechanics are the foundation of the next.
 
 ### v0.3 — Real hardware in the product
 
-Prerequisite: four-scenario real-device acceptance passed on v0.2.
+Prerequisite: automated real-hardware invariants, virtual-loopback scenarios,
+package verification, and smoke tests pass. Physical reference-kit acceptance
+is optional field evidence, never a development or release gate.
 
 - Wire `lib/hardware/` into the main UI: device panel with explicit
   `REAL HARDWARE` identity, connection wizard, port selection (invariant 6).

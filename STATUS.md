@@ -17,9 +17,9 @@
 
 ## 当前状态（2026-07-14 更新）
 
-- 版本：v0.2 close-out。v0.3 软件项已完成（LLM 编译器接线、REAL HARDWARE 只读面板、一键烧录待硬件）。
+- 版本：**v0.3.0 Public Alpha 发布收口**。v0.3 软件项已完成（LLM 编译器 UI、独立 REAL HARDWARE 安全边界、一键烧录）；v0.4 的 Action Manifest、动作库 JSON 与 3D 禁区编辑已提前完成。
 - **持续开发令（2026-07-14，所有者指示）**：取消真机验收前置条件，持续开发到软件成品；六条安全不变量、默认拦截和自动验证门禁不变。
-- **Windows 安装包 ✅**：`npm run desktop:pack` 生成 `release/RealityWarden-0.1.1-Setup.exe`（NSIS x64）。产物包含 `dist-electron-runtime` 同源安全链、Next 生产运行时、`firmware/prebuilt`（镜像 SHA256 随包复验）与 3 个 serialport Windows 原生绑定；exe/安装器/卸载器使用 RealityWarden 图标与 0.1.1 版本资源。builder 完成后自动检查 asar/unpacked/固件/原生模块/安装包，且 `win-unpacked/RealityWarden.exe --prod --smoke-test` 安装态启动通过。
+- **Windows 安装包 v0.3.0 ✅**：`npm run desktop:pack` 已生成 `release/RealityWarden-0.3.0-Setup.exe`（NSIS x64，165911345 bytes，SHA256 `ED01B73AA0B31EDADCA09DB326073D890FD61FC360A0503D8C8ED5505F4E0D7F`）。产物包含 `dist-electron-runtime` 同源安全链、Next 生产运行时、`firmware/prebuilt` SHA256 配对与 3 个 Windows serialport 原生绑定；asar/unpacked/品牌资源检查、exe FileVersion/ProductVersion 0.3.0 与 `win-unpacked/RealityWarden.exe --prod --smoke-test` 均通过。
 - **UI 真机执行路径 ✅（成品主线）**：REAL HARDWARE 面板新增“真机执行”区。主进程运行时 require `dist-electron-runtime`（build-electron 同时编译根项目）——与 CLI/测试**同一份**编译后安全链（采样→保守中值→SafetyMonitor→gate→ticket→transport），ipc 层零协议复制、零手搓 actuation 帧（desktop 回归断言此契约）。执行默认 `real_execution_locked`：`docs/acceptance/evidence/` 集齐 4 份验收 JSON 才解锁（或 ORS_REAL_EXECUTION=enabled 台架督导模式），且每次执行需 UI 显式勾选确认。结果带 executionMode=real_hardware + hardwareSignalSent + 审计。
 - **v0.4 自定义动作 ✅（Action Composer）**：顶栏“自定义动作”打开可视化编辑器——基元步骤（能力/目标/速度/力度下拉）+ 安全包络选择，实时 `validateActionManifest` 校验（越权包络拒绝不收窄、内建意图重名拒绝、未知目标拒绝）；保存进工作区文件（加载时重新校验，非法即拒并提示）；“运行（仿真）”经 `expandManifestToTaskDsl` 展开为基元 TaskDSL，走与任意指令**完全相同**的运行时安全管线（LocalRuntime 新增 `manifest` 编译器来源，审计如实标注，绝不伪装成 llm/rules）。
 - **v0.4 动作库 JSON ✅**：Action Composer 支持严格版本化的 `realitywarden.action-library` 导入/导出。导入逐条重新执行权威 `validateActionManifest`，任一非法动作整包原子拒绝；重复 ID、已有动作覆盖、未知包字段均显式拒绝，不做静默覆盖或收窄放行。动作库测试由 10 项扩至 15 项。
@@ -54,10 +54,9 @@
 
 ## 下一步
 
-1. **UI 信息架构重构**：完成 `docs/ui/2026-07-11-ui-audit.md` C 系列与 E 系列，收敛导航、面板层级、设计 token 和字号层级。
-2. **v0.4 深化**：动作库 JSON 导入/导出；`forbidden_zones` 在 3D 工作区可视化编辑。
-3. **成品清理**：旧 adapter 已删除；继续处理剩余安全 P2 与文档语义。
-4. **发布收口**：安装包持续验包与 smoke，补齐成品文档、版本和发布说明。真机验收可做但不阻塞任何一项。
+1. **v0.4 剩余项**：实现传感器 polling/subscription 模型，保持设备时间戳、冻结检测和默认拦截语义。
+2. **v0.5 准备**：手册/PDF → 本地 LLM 草拟 DeviceProfile，必须人工复核且默认仿真-only。
+3. **发布操作（所有者）**：可选代码签名、tag、上传安装包与 SHA256；这些外部动作不改变软件完成状态。
 
 ## 待决策事项
 

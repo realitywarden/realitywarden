@@ -1,12 +1,12 @@
 # Evaluation Guide
 
-This guide is for the current `v0.1.1 Public Alpha`.
+This guide is for the current `v0.3.0 Public Alpha`.
 
 Use it when you want a clean first evaluation of the product without guessing which prompts or device paths are actually supported.
 
 ## What This Alpha Is
 
-RealityWarden Desktop is currently a **simulation-only** desktop prototype for physical AI workflows.
+RealityWarden Desktop is a **simulation-first** Physical AI workbench. The main AI Command workflow is simulation-only and requires no hardware. A separate REAL HARDWARE boundary exists only for the documented ESP32 reference rig and remains evidence-locked, sensor-gated, operator-confirmed, and visibly distinct.
 
 Runnable device paths in the current Public Alpha:
 
@@ -20,7 +20,7 @@ Everything else in the workspace should be treated as:
 - protocol surface
 - Coming Soon runtime coverage
 
-It is **not** real-device control.
+It is **not** general-purpose or production-certified real-device control.
 
 ## Best First-Run Path
 

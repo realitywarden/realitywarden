@@ -10,7 +10,7 @@
 
 ## 🔴 红线(违反 = 事故,无例外)
 
-六条安全不变量,有 37 条测试守着,**只能收紧不能放宽**:
+六条安全不变量,有 39 条真机安全测试 + 5 条虚拟回环场景守着,**只能收紧不能放宽**:
 
 1. **单一受控通路**:actuation 帧只能经 `HardwareExecutionGate` 走 ticket 路径(`lib/hardware/internal/actuation.ts` 是 gate 私有,ESLint 禁止外部 import;`SerialEsp32Transport.send()` 会拒绝 actuation 命令)。任何地方都不许手搓 `move_to_angle` 帧。
 2. **默认拦截**:传感器数据缺失/过期/非法/冻结/缺设备时钟 ⇒ 拦截执行。互锁要求权威地长在 `ESP32_SERVO_RIG_CAPABILITIES` 里,调用方不能绕过。
@@ -27,7 +27,7 @@
 npx tsc -p tsconfig.json --noEmit        # 根项目
 npx tsc -p tsconfig.next.json --noEmit   # app + components
 npx tsc -p electron/tsconfig.json --noEmit
-npm run test:real-hardware               # 37 条安全不变量,必须全绿
+npm run test:real-hardware               # 39 条安全不变量,必须全绿
 npm run test:virtual-loopback            # 全链路 e2e(5 场景)
 node lib/desktop/runDesktopTests.js      # 含 IPC 契约断言
 node lib/conformance/runConformance.js   # 产品契约(断言源码字符串,改 UI 前先查)
@@ -59,6 +59,6 @@ npm run verify                           # 全量(慢,提交前跑一次)
 1. **安装包打包 ✅**:electron-builder 产出 Windows 安装包,把 `dist-electron-runtime`、`firmware/prebuilt`、serialport 原生模块打进产物;版本号、图标;构建后自动验包并跑过安装态 smoke。
 2. **UI 信息架构重构**(`docs/ui/2026-07-11-ui-audit.md` C 系列剩余项 + E 系列视觉一致性:设计 token 收敛、字号层级)。
 3. v0.4 深化:动作库导入/导出(JSON,已有 schema)、禁区(forbidden_zones)在 3D 工作区可视化编辑。
-4. **成品清理进行中**:旧 adapter 已删除；安全自审 P1/P2 全部收口（含三态发送证据与开环物理未验证语义）；下一步集中处理成品发布文档、版本与发布说明，不等待真机验收。
+4. **v0.3.0 发布收口 ✅**:版本、发布说明、试用/评估文档与路线图已对齐；`RealityWarden-0.3.0-Setup.exe` 已通过包内容、版本资源与安装态 smoke。下一步按 v0.4 继续传感器 polling/subscription，不等待真机验收。
 
 git:提交按功能单元、message 说明验证结果;所有者本机负责 push。

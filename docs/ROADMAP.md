@@ -25,7 +25,7 @@ every item below.
 Physical reference-kit validation remains an optional field check documented in
 `REAL_HARDWARE_ESP32.md`; it is not a product-completion or development gate.
 
-## Next: v0.3 — Real Hardware in the Product
+## Completed: v0.3 — Real Hardware in the Product
 
 - wire `lib/hardware/` into the main UI: explicit `REAL HARDWARE` device
   identity + connection wizard
@@ -34,6 +34,10 @@ Physical reference-kit validation remains an optional field check documented in
 - one-click firmware flashing MVP for the reference kit
 - keep simulation the default path; real hardware is always opt-in and
   visibly distinct
+
+The v0.3.0 Public Alpha installer is the release-closure artifact for this
+milestone. Physical rig evidence remains optional and does not block the
+software release pipeline.
 
 ## Next: Ecosystem Surface
 
@@ -45,10 +49,18 @@ Physical reference-kit validation remains an optional field check documented in
 - clarify how future adapters, simulation packs, safety rules, audit
   templates, and deployment workflows form around the protocol
 
-## Later: v0.4–v0.6 (detail in PRODUCT_VISION.md)
+## In Progress: v0.4 — Your Device, Your Actions
 
-- v0.4: user-defined actions (declarative Action Manifest + capability
-  editor), sensor polling/subscription model
+- completed: versioned Action Manifest composer and primitive expansion through
+  the unchanged safety pipeline
+- completed: strict atomic action-library JSON import/export
+- completed: 3D forbidden-zone visualization and editing backed by profile
+  constraints
+- next: sensor polling/subscription model and remaining developer-facing action
+  ergonomics
+
+## Later: v0.5–v0.6 (detail in PRODUCT_VISION.md)
+
 - v0.5: manual import — datasheet/PDF to draft DeviceProfile via local LLM,
   human-reviewed, simulation-first enablement
 - v0.6: ecosystem marketplace alpha — declarative assets only, signed,

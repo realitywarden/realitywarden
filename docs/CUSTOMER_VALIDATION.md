@@ -4,9 +4,9 @@ This document is for customer discovery and paid pilot validation. It is not a f
 
 Current product boundary:
 
-- simulation-only
-- no real device execution
-- early prototype
+- simulation-first main workbench
+- one separately gated ESP32 reference rig, not general device support
+- Public Alpha
 - current runnable paths:
   - `robot_arm`
   - `smart_light`
@@ -62,7 +62,7 @@ Keep the walkthrough honest and narrow:
 3. show a blocked unsafe path
 4. show that only some devices are runnable today
 5. show the runtime decision and lab report
-6. state clearly that real hardware is not enabled yet
+6. show the REAL HARDWARE boundary only as a reference-rig proof path and state its evidence-lock, operator-confirmation, and non-certified limitations
 
 Do not demo Coming Soon devices as if they are supported.
 
@@ -106,7 +106,7 @@ A realistic first paid pilot would likely include:
 It should not promise:
 
 - production deployment
-- real hardware control in the first engagement
+- customer hardware control in the first engagement without a separately scoped, reviewed adapter and safety contract
 - broad device support
 - certified industrial safety
 

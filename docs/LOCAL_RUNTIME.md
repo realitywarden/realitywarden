@@ -116,11 +116,11 @@ That is not a marketing phrase. It is a hard boundary.
 - `AdapterPlan` exists
 - audit logging exists
 - dry-run enforcement exists
-- real adapters are disabled
+- this LocalRuntime dispatches simulation only; reference hardware uses the separate `HardwareExecutionGate`
 
 ### What is not true
 
-- no real device execution
+- no real device execution through this simulation LocalRuntime
 - no production hardware control
 - no certified industrial safety guarantee
 - no claim that every device family is runnable

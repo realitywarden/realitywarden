@@ -6,8 +6,8 @@ It is not a generic website, not a cloud dashboard, and not only a robot arm dem
 
 Current product boundary:
 
-- simulation-only
-- no real device execution
+- simulation-first main workbench
+- one separately gated ESP32 reference-hardware path; no general real-device support
 - no production hardware control
 - no certified industrial safety guarantee
 - current runnable paths are limited to `robot_arm`, `smart_light`, and `camera_sensor`
@@ -64,7 +64,7 @@ The current Public Alpha uses `robot_arm` as the strongest visible path, but the
 Today the alpha can:
 
 1. accept natural-language input in the desktop runtime
-2. compile supported tasks into a simulation-only execution path
+2. compile supported tasks into the default simulation execution path
 3. show runtime decisions and blocked reasons before execution
 4. simulate limited runnable devices:
    - `robot_arm`
@@ -77,7 +77,7 @@ Today the alpha can:
 
 Today the alpha cannot:
 
-1. execute real hardware
+1. execute arbitrary/customer hardware outside the documented reference rig
 2. claim production deployment readiness
 3. support all device families shown in the asset library
 4. provide certified industrial safety
@@ -101,12 +101,12 @@ The monetization wedge is not “chat with your robot.” It is reducing the cos
 
 The right current statement is:
 
-RealityWarden is an early simulation-first Physical AI desktop runtime prototype for understanding, validating, and auditing device workflows before real hardware execution.
+RealityWarden is a simulation-first Physical AI desktop runtime for understanding, validating, and auditing device workflows, with one separately gated reference-hardware proof path.
 
 The wrong current statement would be:
 
 - production-ready industrial control platform
-- real hardware execution product
+- general real hardware execution product
 - certified safety runtime
 - universal multi-device AI operating system
 

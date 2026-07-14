@@ -1,105 +1,52 @@
-# Public Launch Copy
+# Public Launch Copy — v0.3.0 Public Alpha
 
-Use these drafts for public posts. Keep the boundary clear: this is a simulation-only Public Alpha, not real device execution.
+Use these drafts for public posts. Keep the boundary explicit: the main
+workbench is simulation-first; one ESP32 reference rig has a separate,
+evidence-locked REAL HARDWARE path. This is not general hardware control or a
+certified safety product.
 
-## X / Twitter Short Post
+## Short post
 
 AI should not touch the physical world directly.
 
-RealityWarden is a simulation-first desktop runtime for Physical AI workflows:
+RealityWarden v0.3.0 Public Alpha is a local desktop runtime for Physical AI:
 
-- natural language goals
-- device capability checks
-- safety-gated simulation
-- Reality Asset packages
-- no real device execution yet
+- natural-language and custom actions
+- capability and safety governance
+- 3D simulation, replay, and audit evidence
+- strict Reality Asset/action-library validation
+- one independently gated ESP32 reference-hardware path
 
-Public Alpha:
+The main workflow requires no hardware. The reference rig remains opt-in,
+sensor-gated, operator-confirmed, and visibly marked REAL HARDWARE.
+
+https://github.com/ZqiEE/open-reality-studio
+## Technical post
+
+RealityWarden v0.3.0 routes supported intent through a local Runtime Kernel,
+World Model, Safety Governor, TaskDSL, AdapterPlan, and audit trail before
+dispatch.
+
+The simulation workbench supports `robot_arm`, `smart_light`, and
+`camera_sensor`. Other built-in families remain Coming Soon/non-runnable.
+
+For the documented ESP32 + SG90 + HC-SR04 bench rig, real actuation exists only
+behind an evidence lock, per-run operator confirmation, sensor interlocks,
+HardwareExecutionGate, and a private ticketed transport path. Delivery evidence
+distinguishes not-sent, attempted/unconfirmed, and device-acknowledged. SG90
+acknowledgement is open-loop and never presented as physical-position proof.
+
+Public Alpha; no general hardware compatibility, production deployment claim,
+or industrial safety certification.
+
 https://github.com/ZqiEE/open-reality-studio
 
-## X / Twitter Technical Variant
+## Chinese short intro
 
-Released RealityWarden Public Alpha.
+RealityWarden v0.3.0 Public Alpha 是一个 simulation-first 的 Physical AI 桌面运行时。
 
-It is a local desktop prototype for testing Physical AI workflows before real hardware:
+它把自然语言/自定义动作送入设备能力检查、安全治理、TaskDSL、3D 仿真、回放和审计，而不是让 AI 直接控制设备。主工作流无需硬件；文档中的 ESP32 + SG90 + HC-SR04 参考台架拥有独立的 REAL HARDWARE 危险边界，必须经过证据锁、逐次人工确认、传感器互锁和私有 ticket 安全门。
 
-- Runtime Kernel
-- Capability Contracts
-- Safety Governor
-- TaskDSL
-- simulation playback
-- Reality Asset Developer Kit
+当前不是通用硬件控制产品，不提供物理到位反馈证明，也没有工业安全认证。
 
-Simulation-only for now:
-https://github.com/ZqiEE/open-reality-studio
-
-## Reddit / Hacker News Long Post
-
-I am building RealityWarden, a simulation-first desktop runtime for Physical AI workflows.
-
-The idea is simple: AI should not send commands directly to physical devices. Before anything reaches reality, the system should understand the goal, check the target device's capabilities, simulate the action, block unsafe commands, and leave an audit trail.
-
-The current Public Alpha includes:
-
-- runnable simulation path for `robot_arm`
-- limited low-risk simulation path for `smart_light`
-- limited read-only/capture simulation path for `camera_sensor`
-- Runtime Kernel for capability and safety decisions
-- Reality Asset packages for describing devices
-- local validation for third-party Reality Assets
-
-Current boundaries:
-
-- simulation-only
-- no real device execution
-- no production hardware control
-- no certified industrial safety guarantee
-- other devices remain Coming Soon
-
-GitHub:
-https://github.com/ZqiEE/open-reality-studio
-
-I am looking for feedback on the runtime boundary, device asset format, and the first developer onboarding path.
-
-## GitHub Discussions Intro
-
-RealityWarden is a simulation-first desktop runtime for Physical AI workflows.
-
-The project explores the runtime layer between AI agents and physical devices:
-
-- Natural Language
-- Runtime Kernel
-- World Model
-- Capability Contract
-- Safety Governor
-- TaskDSL
-- Simulation Runtime
-- Adapter Boundary
-- Lab Report / Audit / Replay
-
-The current Public Alpha is intentionally narrow and honest: `robot_arm`, `smart_light`, and `camera_sensor` have runnable simulation paths. Other device families are Coming Soon. Real device execution is not enabled.
-
-Feedback wanted:
-
-- Is the Reality Asset Package format clear?
-- Which low-risk devices should be modeled next?
-- What would make this easier for developers to try?
-
-## Chinese Short Intro
-
-RealityWarden 是一个 simulation-first 的 Physical AI 桌面运行时原型。
-
-核心想法是：AI 不应该直接控制现实设备。真正接触硬件之前，系统应该先理解目标、检查设备能力、仿真执行、拦截危险指令，并留下审计记录。
-
-当前 Public Alpha 支持：
-
-- `robot_arm` 仿真运行路径
-- `smart_light` 低风险仿真路径
-- `camera_sensor` 只读/捕获仿真路径
-- Reality Asset 设备资产包
-- 本地验证工具
-
-边界也很明确：当前不支持真实设备执行，不是生产级硬件控制系统。
-
-GitHub:
 https://github.com/ZqiEE/open-reality-studio

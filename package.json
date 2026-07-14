@@ -1,8 +1,8 @@
 {
   "name": "open-reality-interface",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "private": true,
-  "description": "Early desktop runtime prototype for physical AI simulation.",
+  "description": "Safety-governed desktop runtime for Physical AI simulation and explicitly gated reference hardware.",
   "author": "ZqiEE",
   "main": "dist-electron/main.js",
   "scripts": {

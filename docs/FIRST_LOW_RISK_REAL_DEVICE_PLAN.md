@@ -1,15 +1,18 @@
 # First Low-Risk Real Device Plan
 
-This document is a plan only.
+> Archived historical plan. It predates the separately gated ESP32 reference
+> hardware path and is not a statement of the current v0.3.0 product boundary.
+
+This document was a plan only.
 
 It does **not** enable real device execution.
 It does **not** add real adapter code.
 It does **not** turn `realAdapterEnabled` on.
 
-Current boundary remains:
+Boundary when this plan was written:
 
 - simulation-first
-- no real device execution
+- real device execution was not yet implemented
 - no production hardware control
 - no certified industrial safety guarantee
 
