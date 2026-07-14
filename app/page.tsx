@@ -10,6 +10,7 @@ import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { LabConfigurator } from '@/components/LabConfigurator';
 import { RealHardwarePanel } from '@/components/RealHardwarePanel';
 import { EvidenceSidebar } from '@/components/EvidenceSidebar';
+import { AppHeader } from '@/components/AppHeader';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
 import type { UiLanguage } from '@/components/LabConfigurator';
 import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
@@ -2596,89 +2597,26 @@ export default function Home() {
 
   return (
     <div className="industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary">
-      <div className="flex h-9 w-full select-none items-center border-b border-border-panel bg-bg-panel">
-        <div className="flex h-full w-[240px] shrink-0 items-center gap-2 border-r border-border-panel px-3 text-[11px] font-semibold text-text-primary xl:w-[280px]">
-          <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-text-muted-strong">{t(language, 'app_project')}</div>
-            <div className="max-w-[160px] truncate text-[13px] font-semibold text-text-primary">{projectName}</div>
-          </div>
-          <span className={`ml-auto rounded-[3px] border px-1.5 py-0.5 text-[11px] ${workspaceBlocked ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : workspaceWarnings > 0 ? 'border-status-warning-edge bg-status-warning-surface text-status-warning' : 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft'}`}>
-            {language === 'zh'
-              ? workspaceBlocked ? '\u9884\u68c0\u963b\u65ad' : workspaceWarnings > 0 ? `\u9884\u68c0 ${workspaceWarnings} \u9879\u8b66\u544a` : '\u9884\u68c0\u901a\u8fc7'
-              : workspaceBlocked ? 'Preflight Blocked' : workspaceWarnings > 0 ? `${workspaceWarnings} Warnings` : 'Preflight Passed'}
-          </span>
-        </div>
-        <div className="flex h-full min-w-0 flex-1 items-center justify-between">
-          {/* Decluttered toolbar (UI audit C4, owner-approved): file operations
-              live in one Project menu; the terminal is the single Run entry. */}
-          <div className="flex min-w-0 items-center gap-1.5 px-3">
-          <details className="relative">
-            <summary className="flex h-7 cursor-pointer select-none list-none items-center rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-              {language === 'zh' ? '项目' : 'Project'} <span className="ml-1 text-[10px] text-text-secondary">▾</span>
-            </summary>
-            <div className="absolute left-0 top-8 z-50 flex w-44 flex-col border border-border-panel bg-bg-panel py-1 shadow-lg">
-              {([
-                [t(language, 'app_new'), () => newProject()],
-                [t(language, 'app_open'), () => void openProject()],
-                [t(language, 'app_import_asset'), () => setAssetImportOpen(true)],
-                [t(language, 'app_save_project'), () => void saveWorkspace(false)],
-                [t(language, 'app_save_as'), () => void saveWorkspace(true)],
-                // Restore Last autosaved workspace entry for desktop conformance checks.
-                [t(language, 'app_restore'), () => restoreLastWorkspace()]
-              ] as Array<[string, () => void]>).map(([label, action]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={(event) => {
-                    (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                    action();
-                  }}
-                  className="px-3 py-1.5 text-left text-[13px] text-text-primary hover:bg-[#2B2D31]"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </details>
-          <button type="button" title={t(language, 'app_quick_start')} onClick={reopenFirstRunGuide} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[13px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
-            {t(language, 'app_quick_start')}
-          </button>
-          <button type="button" onClick={() => setActionComposerOpen(true)} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31]">
-            {language === 'zh' ? '自定义动作' : 'Actions'}{customActions.length > 0 ? ` (${customActions.length})` : ''}
-          </button>
-          </div>
-          <div className="flex h-full shrink-0 items-center gap-1.5 border-l border-border-panel px-3">
-          {/* Run/Stop live ONLY in the AI command terminal now (UI audit B2);
-              the toolbar keeps the result chip + exports. */}
-          <span title={language === 'zh' ? '\u4e0a\u6b21\u8fd0\u884c\u7684\u6700\u7ec8\u7ed3\u679c\uff1b\u7ec8\u7aef\u5fbd\u7ae0\u663e\u793a\u547d\u4ee4\u6d41\u72b6\u6001\uff0cGovernor \u663e\u793a\u7f16\u8bd1\u51b3\u7b56\u3002' : 'Final result of the last run; the terminal badge shows command-flow state, the Governor shows the compile decision.'} className={`h-7 rounded-[3px] border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${labReport?.result === 'blocked' ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : replayPlaying ? 'border-status-running-edge bg-status-warning-surface text-status-running' : labReport?.result === 'pass' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-border-panel bg-[#232529] text-text-secondary'}`}>
-            {labReport?.result === 'blocked' ? t(language, 'status_safety_blocked') : replayPlaying ? t(language, 'status_playing_motion') : labReport?.result === 'pass' ? t(language, 'status_executed') : t(language, 'status_idle')}
-          </span>
-          <span className="mx-1 h-6 w-px bg-border-panel" />
-          <div className="relative w-20">
-            <select value={language} onChange={(event) => handleLanguageChange(event.target.value as UiLanguage)} aria-label={language === 'zh' ? '界面语言' : 'Interface language'} className="h-7 w-full appearance-none border border-border bg-surface-raised px-2 text-[12px] text-text-primary">
-              <option value="zh">中文</option>
-              <option value="en">English</option>
-            </select>
-          </div>
-          <button type="button" onClick={() => void exportCurrentLabReport()} disabled={!labReport} className="h-7 rounded-[3px] border border-border-panel bg-[#232529] px-3 text-[13px] font-semibold text-text-primary hover:bg-[#2B2D31] disabled:opacity-40">
-            {t(language, 'app_export_report')}
-          </button>
-          <button type="button" onClick={() => void exportDeploymentConfig()} className="h-7 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[13px] font-semibold text-[#38BDF8] hover:bg-[#0F2E45]">
-            {t(language, 'app_export_adapter_package')}
-          </button>
-          </div>
-          <input
-            ref={workspaceFileInputRef}
-            type="file"
-            accept=".json,.ors-lab.json"
-            className="hidden"
-            onChange={(event) => {
-              void loadWorkspaceFile(event.target.files?.[0] ?? null);
-              event.currentTarget.value = '';
-            }}
-          />
-        </div>
-      </div>
+      <AppHeader
+        language={language}
+        projectName={projectName}
+        preflight={workspaceBlocked ? 'blocked' : workspaceWarnings > 0 ? 'warning' : 'passed'}
+        warningCount={workspaceWarnings}
+        result={labReport?.result === 'blocked' ? 'blocked' : replayPlaying ? 'running' : labReport?.result === 'pass' ? 'executed' : 'idle'}
+        customActionCount={customActions.length}
+        hasReport={Boolean(labReport)}
+        onNew={newProject}
+        onOpen={() => void openProject()}
+        onImportAsset={() => setAssetImportOpen(true)}
+        onSave={() => void saveWorkspace(false)}
+        onSaveAs={() => void saveWorkspace(true)}
+        onRestore={restoreLastWorkspace}
+        onQuickStart={reopenFirstRunGuide}
+        onActions={() => setActionComposerOpen(true)}
+        onExportReport={() => void exportCurrentLabReport()}
+        onExportAdapter={() => void exportDeploymentConfig()}
+        onLanguageChange={handleLanguageChange}
+      />
       {operatorNotice && (
         <div className="pointer-events-none fixed left-1/2 top-12 z-50 max-w-[420px] -translate-x-1/2 border border-border-panel bg-bg-panel px-3 py-2 text-[13px] font-semibold shadow-lg">
           <span className={operatorNotice.severity === 'success' ? 'text-status-executed' : operatorNotice.severity === 'warning' ? 'text-status-running' : operatorNotice.severity === 'error' ? 'text-status-blocked' : 'text-[#0066CC]'}>
