@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { validateActionManifest, expandManifestToTaskDsl } from '../../lib/action-manifest/ActionManifest';
+import { exportActionLibrary, importActionLibrary } from '../../lib/action-manifest/ActionLibrary';
 import type { DeviceMeta } from '../../types/deviceMeta';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -115,6 +116,30 @@ const tests: Array<[string, () => void]> = [
     delete manifest.safety;
     const result = validateActionManifest(manifest, robotArmMeta, BUILTINS);
     assert(!result.ok && result.code === 'schema_rejected', `got ${JSON.stringify(result)}`);
+  }],
+  ['action library export/import round trip revalidates manifests', () => {
+    const validated = validateActionManifest(goodManifest(), robotArmMeta, BUILTINS);
+    assert(validated.ok, 'fixture validates before export');
+    const imported = importActionLibrary(JSON.parse(exportActionLibrary([validated.manifest])), robotArmMeta, BUILTINS);
+    assert(imported.ok && imported.actions.length === 1 && imported.actions[0].action_id === validated.manifest.action_id, 'round trip preserves validated action');
+  }],
+  ['MALICIOUS: library import is atomic when one action is invalid', () => {
+    const bad = goodManifest();
+    bad.safety.envelope = { max_speed: 'fast', max_force: 'high' };
+    const imported = importActionLibrary({ format: 'realitywarden.action-library', version: 1, exported_at: new Date().toISOString(), actions: [goodManifest(), bad] }, robotArmMeta, BUILTINS);
+    assert(!imported.ok && imported.code === 'invalid_action', `got ${JSON.stringify(imported)}`);
+  }],
+  ['duplicate library action ids rejected', () => {
+    const imported = importActionLibrary({ format: 'realitywarden.action-library', version: 1, exported_at: new Date().toISOString(), actions: [goodManifest(), goodManifest()] }, robotArmMeta, BUILTINS);
+    assert(!imported.ok && imported.code === 'duplicate_action', `got ${JSON.stringify(imported)}`);
+  }],
+  ['existing action ids never overwritten by import', () => {
+    const imported = importActionLibrary({ format: 'realitywarden.action-library', version: 1, exported_at: new Date().toISOString(), actions: [goodManifest()] }, robotArmMeta, BUILTINS, new Set(['scan_left_to_right']));
+    assert(!imported.ok && imported.code === 'existing_action', `got ${JSON.stringify(imported)}`);
+  }],
+  ['unknown action-library envelope fields rejected', () => {
+    const imported = importActionLibrary({ format: 'realitywarden.action-library', version: 1, exported_at: new Date().toISOString(), actions: [goodManifest()], autorun: true }, robotArmMeta, BUILTINS);
+    assert(!imported.ok && imported.code === 'invalid_library', `got ${JSON.stringify(imported)}`);
   }]
 ];
 

@@ -2815,6 +2815,7 @@ export default function Home() {
           onSave={(manifest) => {
             setCustomActions((current) => [...current.filter((item) => item.action_id !== manifest.action_id), manifest]);
           }}
+          onImport={(manifests) => setCustomActions((current) => [...current, ...manifests])}
           onDelete={(actionId) => setCustomActions((current) => current.filter((item) => item.action_id !== actionId))}
           onRun={(manifest, taskDsl) => {
             setActionComposerOpen(false);

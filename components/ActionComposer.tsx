@@ -10,13 +10,14 @@
  * runtime safety pipeline as any prompt. This component never executes
  * anything itself.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import {
   expandManifestToTaskDsl,
   validateActionManifest
 } from '@/lib/action-manifest/ActionManifest';
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
+import { exportActionLibrary, importActionLibrary } from '@/lib/action-manifest/ActionLibrary';
 import type { DeviceMeta } from '@/types/deviceMeta';
 import type { TaskDSL } from '@/types/taskDsl';
 
@@ -37,6 +38,7 @@ export interface ActionComposerProps {
   deviceMeta: DeviceMeta;
   actions: ActionManifest[];
   onSave: (manifest: ActionManifest) => void;
+  onImport: (manifests: ActionManifest[]) => void;
   onDelete: (actionId: string) => void;
   onRun: (manifest: ActionManifest, taskDsl: TaskDSL) => void;
   onClose: () => void;
@@ -44,7 +46,7 @@ export interface ActionComposerProps {
 
 const inputClass = 'h-7 rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 text-[12px] text-text-primary outline-none focus:border-[#0284C7]';
 
-export function ActionComposer({ language, deviceMeta, actions, onSave, onDelete, onRun, onClose }: ActionComposerProps) {
+export function ActionComposer({ language, deviceMeta, actions, onSave, onImport, onDelete, onRun, onClose }: ActionComposerProps) {
   const zh = language === 'zh';
   const [actionId, setActionId] = useState('');
   const [nameZh, setNameZh] = useState('');
@@ -53,6 +55,7 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onDelete
   const [maxForce, setMaxForce] = useState<'low' | 'medium' | 'high'>('low');
   const [steps, setSteps] = useState<StepDraft[]>([{ action: 'move_to_pose', target: '', speed: 'slow', force: '' }]);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const capabilities = deviceMeta.capabilities as readonly string[];
   const knownTargets = deviceMeta.constraints.known_targets ?? [];
@@ -98,6 +101,32 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onDelete
     onRun(manifest, expanded.taskDsl);
   };
 
+  const importLibrary = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const imported = importActionLibrary(JSON.parse(await file.text()) as unknown, deviceMeta, BUILTIN_INTENT_IDS, new Set(actions.map((action) => action.action_id)));
+      if (!imported.ok) {
+        setFeedback({ ok: false, text: `${imported.code}: ${imported.detail}` });
+        return;
+      }
+      onImport(imported.actions);
+      setFeedback({ ok: true, text: zh ? `已导入 ${imported.actions.length} 个动作` : `Imported ${imported.actions.length} actions` });
+    } catch (error) {
+      setFeedback({ ok: false, text: `invalid_json: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  };
+
+  const exportLibrary = () => {
+    if (actions.length === 0) return;
+    const url = URL.createObjectURL(new Blob([exportActionLibrary(actions)], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'realitywarden-action-library.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setFeedback({ ok: true, text: zh ? `已导出 ${actions.length} 个动作` : `Exported ${actions.length} actions` });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
       <div className="flex max-h-[86vh] w-[720px] max-w-[94vw] flex-col overflow-hidden border border-border-panel bg-bg-panel shadow-2xl">
@@ -118,7 +147,14 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onDelete
         <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
           {/* Saved actions */}
           <section>
-            <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{zh ? '已保存' : 'Saved'} ({actions.length})</div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-text-secondary">{zh ? '已保存' : 'Saved'} ({actions.length})</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => importInputRef.current?.click()} className="h-7 border border-border px-2 text-[12px] font-semibold text-text-primary">{zh ? '导入 JSON' : 'Import JSON'}</button>
+                <button type="button" onClick={exportLibrary} disabled={actions.length === 0} className="h-7 border border-accent px-2 text-[12px] font-semibold text-accent disabled:opacity-40">{zh ? '导出动作库' : 'Export library'}</button>
+                <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importLibrary(event.target.files?.[0] ?? null); event.currentTarget.value = ''; }} />
+              </div>
+            </div>
             {actions.length === 0 ? (
               <div className="text-[12px] text-text-muted">{zh ? '还没有自定义动作。' : 'No custom actions yet.'}</div>
             ) : (
