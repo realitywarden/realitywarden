@@ -1,14 +1,16 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { ManualProfileExtractor, approveManualImport, type ManualExtractionProposal, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
+import { useEffect, useRef, useState } from 'react';
+import { ManualProfileExtractor, approveManualImport, manualExtractionProposalSchema, type ManualExtractionProposal, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
 import type { UiLanguage } from './LabConfigurator';
+import { SemanticDeviceStage } from './SemanticDeviceStage';
 
 interface Props {
   language: UiLanguage;
   builtinIntentIds: ReadonlySet<string>;
   existingRecords: readonly ManualImportRecord[];
   onSave: (record: ManualImportRecord) => void;
+  onEnable: (record: ManualImportRecord, confirmed: boolean) => { ok: true } | { ok: false; detail: string };
   onClose: () => void;
 }
 
@@ -32,19 +34,42 @@ async function sha256(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function ManualImportWizard({ language, builtinIntentIds, existingRecords, onSave, onClose }: Props) {
+export function ManualImportWizard({ language, builtinIntentIds, existingRecords, onSave, onEnable, onClose }: Props) {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
   const [source, setSource] = useState<{ fileName: string; mediaType: string; text: string; hash: string } | null>(null);
   const [proposal, setProposal] = useState<ManualExtractionProposal | null>(null);
   const [proposalJson, setProposalJson] = useState('');
   const [extraction, setExtraction] = useState<{ model: string; elapsed_ms: number; raw_output: string } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [enableConfirmed, setEnableConfirmed] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<ManualImportRecord | null>(null);
+  const [reviewMode, setReviewMode] = useState<'compare' | 'json' | 'raw'>('compare');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key !== 'Tab' || !modalRef.current) return;
+      const controls = Array.from(modalRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), summary, select:not([disabled])'))
+        .filter((control) => control.getClientRects().length > 0);
+      if (controls.length === 0) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => { document.removeEventListener('keydown', onKeyDown); previousFocus?.focus(); };
+  }, [onClose]);
+
   const chooseFile = async (file: File | undefined) => {
     if (!file) return;
-    setBusy(true); setError(null); setProposal(null); setConfirmed(false);
+    setBusy(true); setError(null); setProposal(null); setConfirmed(false); setSelectedRecord(null); setEnableConfirmed(false);
     try {
       if (file.size > 25 * 1024 * 1024) throw new Error(language === 'zh' ? '文件超过 25 MB 上限。' : 'File exceeds the 25 MB limit.');
       const text = (await extractFileText(file)).trim();
@@ -58,7 +83,7 @@ export function ManualImportWizard({ language, builtinIntentIds, existingRecords
 
   const generate = async () => {
     if (!source) return;
-    setBusy(true); setError(null); setProposal(null); setConfirmed(false);
+    setBusy(true); setError(null); setProposal(null); setConfirmed(false); setSelectedRecord(null); setEnableConfirmed(false);
     const result = await new ManualProfileExtractor().extract(source.text);
     setBusy(false);
     if (!result.ok) { setError(`${result.failure}: ${result.detail}`); return; }
@@ -90,16 +115,31 @@ export function ManualImportWizard({ language, builtinIntentIds, existingRecords
       forbidden_zones: record.device_meta.constraints.forbidden_zones, actions: record.action_manifests
     };
     setSource({ fileName: record.source.file_name, mediaType: record.source.media_type, text: record.source.extracted_text, hash: record.source.sha256 });
-    setProposal(restored); setProposalJson(JSON.stringify(restored, null, 2)); setExtraction(record.extraction); setConfirmed(false); setError(null);
+    setProposal(restored); setProposalJson(JSON.stringify(restored, null, 2)); setExtraction(record.extraction); setConfirmed(false); setEnableConfirmed(false); setSelectedRecord(record); setReviewMode('compare'); setError(null);
+  };
+
+  const updateProposalJson = (value: string) => {
+    setProposalJson(value); setConfirmed(false); setEnableConfirmed(false); setSelectedRecord(null);
+    try {
+      const checked = manualExtractionProposalSchema.safeParse(JSON.parse(value));
+      if (checked.success) setProposal(checked.data);
+    } catch { /* The Save action reports invalid JSON explicitly. */ }
+  };
+
+  const enable = () => {
+    if (!selectedRecord) return;
+    const result = onEnable(selectedRecord, confirmed && enableConfirmed);
+    if (!result.ok) { setError(result.detail); return; }
+    onClose();
   };
 
   const zh = language === 'zh';
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={zh ? '导入设备手册' : 'Import device manual'}>
+    <div ref={modalRef} data-manual-import-modal className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={zh ? '导入设备手册' : 'Import device manual'}>
       <section className="flex max-h-[calc(100vh-32px)] w-full max-w-4xl flex-col border border-border bg-surface shadow-xl">
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
           <div><h2 className="text-[15px] font-semibold">{zh ? '手册导入' : 'Manual Import'}</h2><p className="text-[11px] text-text-secondary">{zh ? '本地 LLM 提案 · 人工复核 · 仅仿真' : 'Local LLM proposal · human review · simulation only'}</p></div>
-          <button type="button" onClick={onClose} className="h-8 border border-border px-3 text-[13px]">{zh ? '关闭' : 'Close'}</button>
+          <button ref={closeRef} type="button" onClick={onClose} className="h-8 border border-border px-3 text-[13px]">{zh ? '关闭' : 'Close'}</button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="border-2 border-simulation bg-simulation/10 p-3 text-[13px] text-text-primary">
@@ -118,9 +158,17 @@ export function ManualImportWizard({ language, builtinIntentIds, existingRecords
               {!proposal ? <div className="flex min-h-[360px] items-center justify-center border border-dashed border-border text-[13px] text-text-secondary">{zh ? '选择手册并生成草案后，在此复核完整 JSON。' : 'Choose a manual and generate a draft to review its complete JSON here.'}</div> : (
                 <>
                   <div className="mb-2 flex items-center justify-between"><h3 className="text-[13px] font-semibold">{zh ? '人工复核草案' : 'Human review draft'}</h3><span className="text-[11px] text-text-secondary">{extraction?.model} · {extraction?.elapsed_ms}ms</span></div>
-                  <textarea value={proposalJson} onChange={(event) => { setProposalJson(event.target.value); setConfirmed(false); }} spellCheck={false} className="h-[360px] w-full resize-y border border-border bg-background p-3 font-mono text-[12px] leading-5 text-text-primary" />
-                  <details className="mt-3 border border-border bg-surface-raised p-3"><summary className="cursor-pointer text-[12px] font-semibold">{zh ? '原始模型输出（审计）' : 'Raw model output (audit)'}</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] text-text-secondary">{extraction?.raw_output}</pre></details>
+                  <div className="h-44 overflow-hidden border border-simulation bg-[#232529]" aria-label={zh ? '语义几何预览' : 'Semantic geometry preview'}>
+                    <SemanticDeviceStage language={language} deviceType={proposal.device_type} state={{ status: 'idle', current_position: 'simulation_origin' }} blocked={false} workspaceDevices={[{ id: 'manual-preview', label: proposal.display_name, deviceType: proposal.device_type, state: { status: 'idle' }, position: [0, 0.02, 0] }]} selectedWorkspaceDeviceId="manual-preview" />
+                  </div>
+                  <div className="border-x border-b border-simulation bg-simulation/10 px-2 py-1 text-[11px] text-text-secondary"><strong className="text-simulation">{zh ? '语义模板' : 'SEMANTIC TEMPLATE'}</strong> — {zh ? '非厂商 CAD，不证明尺寸、运动学或物理结果。' : 'Not vendor CAD; does not prove dimensions, kinematics, or physical outcomes.'}</div>
+                  <div className="mt-3 grid grid-cols-3 border border-border" role="tablist">{(['compare', 'json', 'raw'] as const).map((mode) => <button key={mode} type="button" role="tab" aria-selected={reviewMode === mode} onClick={() => setReviewMode(mode)} className={`h-8 text-[12px] font-semibold ${reviewMode === mode ? 'bg-surface-raised text-text-primary' : 'text-text-secondary'}`}>{mode === 'compare' ? (zh ? '来源对照' : 'Source compare') : mode === 'json' ? 'JSON' : (zh ? '原始输出' : 'Raw output')}</button>)}</div>
+                  {reviewMode === 'compare' && <div className="grid h-[230px] grid-cols-2 border-x border-b border-border"><div className="overflow-auto border-r border-border p-3"><div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{zh ? '提取原文' : 'Extracted source'}</div><pre className="whitespace-pre-wrap break-words text-[11px] leading-5 text-text-primary">{source?.text}</pre></div><div className="overflow-auto p-3"><div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-text-secondary">{zh ? '结构化提案（需逐项核对）' : 'Structured proposal (verify each field)'}</div><dl className="grid grid-cols-[96px_1fr] gap-x-2 gap-y-2 text-[12px]"><dt className="text-text-secondary">Manufacturer</dt><dd>{proposal.manufacturer}</dd><dt className="text-text-secondary">Model</dt><dd>{proposal.model}</dd><dt className="text-text-secondary">Type</dt><dd>{proposal.device_type}</dd><dt className="text-text-secondary">Capabilities</dt><dd className="break-words">{proposal.capabilities.join(', ')}</dd><dt className="text-text-secondary">Targets</dt><dd className="break-words">{proposal.known_targets.join(', ') || '-'}</dd><dt className="text-text-secondary">Envelope</dt><dd>{proposal.max_speed} / {proposal.force_limit}</dd><dt className="text-text-secondary">Actions</dt><dd>{proposal.actions.length}</dd></dl></div></div>}
+                  {reviewMode === 'json' && <textarea value={proposalJson} onChange={(event) => updateProposalJson(event.target.value)} spellCheck={false} className="h-[230px] w-full resize-none border-x border-b border-border bg-background p-3 font-mono text-[12px] leading-5 text-text-primary" />}
+                  {reviewMode === 'raw' && <pre className="h-[230px] overflow-auto whitespace-pre-wrap break-words border-x border-b border-border p-3 text-[11px] leading-5 text-text-secondary">{extraction?.raw_output}</pre>}
                   <label className="mt-3 flex items-start gap-2 border border-warning bg-warning/10 p-3 text-[12px]"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-0.5" /><span>{zh ? '我已将能力、目标、工作区、安全包络和动作逐项与原手册核对；保存内容仅用于语义仿真。' : 'I checked capabilities, targets, workspace, envelope, and actions against the source; this record is for semantic simulation only.'}</span></label>
+                  {selectedRecord && !selectedRecord.virtual_lab?.enabled && <div className="mt-3 border-2 border-simulation p-3"><div className="text-[13px] font-semibold text-simulation">{zh ? '第二道门：启用到 Virtual Lab' : 'Second gate: enable in Virtual Lab'}</div><label className="mt-2 flex items-start gap-2 text-[12px]"><input type="checkbox" checked={enableConfirmed} onChange={(event) => setEnableConfirmed(event.target.checked)} className="mt-0.5" /><span>{zh ? '我确认拥有该手册的使用权，并理解几何是通用语义模板；启用仅创建仿真资产，不安装或连接真实设备 Adapter。' : 'I confirm source usage rights and understand geometry is generic; enablement creates only a simulation asset and never installs or connects a real-device adapter.'}</span></label><button type="button" onClick={enable} disabled={!confirmed || !enableConfirmed} className="mt-3 h-9 w-full bg-simulation px-3 text-[13px] font-semibold text-black disabled:opacity-40">{zh ? '启用并添加到 Virtual Lab' : 'Enable and add to Virtual Lab'}</button></div>}
+                  {selectedRecord?.virtual_lab?.enabled && <div className="mt-3 border border-simulation bg-simulation/10 p-3 text-[12px] text-simulation">{zh ? '已启用到 Virtual Lab（仅仿真）。' : 'Enabled in Virtual Lab (simulation only).'}</div>}
                 </>
               )}
             </div>

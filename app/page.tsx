@@ -12,7 +12,7 @@ import { RealHardwarePanel } from '@/components/RealHardwarePanel';
 import { EvidenceSidebar } from '@/components/EvidenceSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { ManualImportWizard } from '@/components/ManualImportWizard';
-import { validateStoredManualImport, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
+import { enableManualImportForVirtualLab, restoreEnabledManualSimulationAsset, validateStoredManualImport, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
 import type { UiLanguage } from '@/components/LabConfigurator';
 import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
@@ -1245,6 +1245,7 @@ export default function Home() {
   const [manualImportOpen, setManualImportOpen] = useState(false);
   const [customActions, setCustomActions] = useState<ActionManifest[]>([]);
   const [manualImports, setManualImports] = useState<ManualImportRecord[]>([]);
+  const [manualSimulationAssets, setManualSimulationAssets] = useState<DeviceAsset[]>([]);
   const [selectedWorkspaceDeviceId, setSelectedWorkspaceDeviceId] = useState<string | null>(defaultWorkspaceDevice.id);
   const [consoleLogs, setConsoleLogs] = useState<string[]>(startupLogs('en'));
   const [llmChipState, setLlmChipState] = useState<'checking' | 'online' | 'offline' | 'compiling'>('checking');
@@ -1295,7 +1296,7 @@ export default function Home() {
     () => getWorkspaceIssues(workspaceDevices, labReport, workspaceValidation, language),
     [labReport, language, workspaceDevices, workspaceValidation]
   );
-  const availableAssets = useMemo(() => [...builtInDeviceAssets, ...importedAssets], [importedAssets]);
+  const availableAssets = useMemo(() => [...builtInDeviceAssets, ...importedAssets, ...manualSimulationAssets], [importedAssets, manualSimulationAssets]);
   const workspaceBlocked = workspaceIssues.some((issue) => issue.severity === 'blocked');
   const workspaceWarnings = workspaceIssues.filter((issue) => issue.severity === 'warning').length;
 
@@ -1535,7 +1536,7 @@ export default function Home() {
     const nextScenario = deviceScenarios.find((scenario) => scenario.id === workspace.selected_scenario_id) ?? getScenarioForProfile(nextProfile.id, 'safe');
     const nextRunnable = isRunnableDeviceV01(nextProfile.deviceMeta.device_type);
     setLanguage(workspace.language);
-    setWorkspaceDevices(workspace.devices.map((device, index) => {
+    const loadedWorkspaceDevices = workspace.devices.map((device, index) => {
       const profile = deviceProfiles.find((item) => item.id === device.profileId) ?? getFirstProfileForType(device.deviceType);
       return {
         ...device,
@@ -1548,8 +1549,7 @@ export default function Home() {
           forbidden_zones: device.config?.forbidden_zones ?? profile.deviceMeta.constraints.forbidden_zones
         }
       };
-    }));
-    setSelectedWorkspaceDeviceId(workspace.selected_workspace_device_id);
+    });
     // Custom actions are untrusted data on load: revalidate each against the
     // loaded profile; invalid ones are dropped loudly, never repaired.
     const loadedActions: ActionManifest[] = [];
@@ -1560,12 +1560,35 @@ export default function Home() {
     }
     setCustomActions(loadedActions);
     const loadedManualImports: ManualImportRecord[] = [];
+    const loadedManualAssets: DeviceAsset[] = [];
+    const claimedManualAssetIds = new Set<string>();
     for (const raw of workspace.manual_imports ?? []) {
+      if (raw && typeof raw === 'object') {
+        const meta = (raw as { device_meta?: unknown }).device_meta;
+        if (meta && typeof meta === 'object' && typeof (meta as { profile_id?: unknown }).profile_id === 'string') claimedManualAssetIds.add((meta as { profile_id: string }).profile_id);
+      }
       const checked = validateStoredManualImport(raw, BUILTIN_INTENT_IDS);
-      if (checked.ok) loadedManualImports.push(checked.record);
-      else showNotice('warning', noticeMessage(workspace.language, `手册导入记录被拒绝：${checked.detail}`, `Manual import record rejected: ${checked.detail}`));
+      if (!checked.ok) {
+        showNotice('warning', noticeMessage(workspace.language, `手册导入记录被拒绝：${checked.detail}`, `Manual import record rejected: ${checked.detail}`));
+        continue;
+      }
+      if (checked.record.virtual_lab?.enabled) {
+        const restored = restoreEnabledManualSimulationAsset({ record: checked.record, templateAssets: builtInDeviceAssets, builtinIntentIds: BUILTIN_INTENT_IDS });
+        if (!restored.ok) {
+          showNotice('warning', noticeMessage(workspace.language, `已启用手册资产被拒绝：${restored.detail}`, `Enabled manual asset rejected: ${restored.detail}`));
+          continue;
+        }
+        loadedManualAssets.push(restored.asset);
+      }
+      loadedManualImports.push(checked.record);
     }
+    const enabledManualAssetIds = new Set(loadedManualAssets.map((asset) => asset.manifest.asset_id));
+    const filteredWorkspaceDevices = loadedWorkspaceDevices.filter((device) => !device.assetId || !claimedManualAssetIds.has(device.assetId) || enabledManualAssetIds.has(device.assetId));
+    if (filteredWorkspaceDevices.length !== loadedWorkspaceDevices.length) showNotice('warning', noticeMessage(workspace.language, '未通过 simulation-only 启用校验的手册设备已从工作区移除。', 'Manual devices without valid simulation-only enablement were removed from the workspace.'));
+    setWorkspaceDevices(filteredWorkspaceDevices);
+    setSelectedWorkspaceDeviceId(filteredWorkspaceDevices.some((device) => device.id === workspace.selected_workspace_device_id) ? workspace.selected_workspace_device_id : filteredWorkspaceDevices[0]?.id ?? null);
     setManualImports(loadedManualImports);
+    setManualSimulationAssets(loadedManualAssets);
     setSelectedProfileId(nextProfile.id);
     setDeviceType(nextProfile.deviceMeta.device_type);
     setScenarioId(nextScenario.id);
@@ -1583,7 +1606,7 @@ export default function Home() {
     setWorkspaceValidation(null);
     setSelectedSnapshot(null);
     setCurrentActionFrame(null);
-  }, [cancelActiveWork, clearRuntimeDecision]);
+  }, [cancelActiveWork, clearRuntimeDecision, showNotice]);
 
   const applyProjectFile = useCallback((project: OpenRealityProjectFile, filePath?: string | null) => {
     applyWorkspaceFile(project.workspace);
@@ -2360,6 +2383,7 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setCustomActions([]);
     setManualImports([]);
+    setManualSimulationAssets([]);
     setReplayIndex(0);
     showNotice('info', noticeMessage(language, '\u5df2\u65b0\u5efa\u672a\u547d\u540d\u5de5\u7a0b\u3002', 'Created a new untitled project.'));
   }, [cancelActiveWork, clearRuntimeDecision, language, showNotice]);
@@ -2612,7 +2636,7 @@ export default function Home() {
   }, [effectiveSelectedProfile, labReport?.result, prompt, replayPlaying, runPreviewTask, selectedScenario.mode, selectedWorkspaceDeviceId, semanticWorkspaceDevices]);
 
   return (
-    <div className="industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary">
+    <div className={`industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary ${manualImportOpen ? 'manual-import-active' : ''}`}>
       <AppHeader
         language={language}
         projectName={projectName}
@@ -2857,8 +2881,39 @@ export default function Home() {
           builtinIntentIds={BUILTIN_INTENT_IDS}
           existingRecords={manualImports}
           onSave={(record) => {
+            const previouslyEnabled = manualImports.some((item) => item.device_meta.profile_id === record.device_meta.profile_id && item.virtual_lab?.enabled);
             setManualImports((current) => [...current.filter((item) => item.device_meta.profile_id !== record.device_meta.profile_id), record]);
-            showNotice('success', noticeMessage(language, '已保存仅仿真的手册提案；真实硬件保持禁用。', 'Saved simulation-only manual proposal; real hardware remains disabled.'));
+            setManualSimulationAssets((current) => current.filter((asset) => asset.manifest.asset_id !== record.device_meta.profile_id));
+            if (previouslyEnabled) {
+              setWorkspaceDevices((current) => {
+                const next = current.filter((device) => device.assetId !== record.device_meta.profile_id);
+                setSelectedWorkspaceDeviceId((selected) => next.some((device) => device.id === selected) ? selected : next[0]?.id ?? null);
+                return next;
+              });
+            }
+            showNotice('success', noticeMessage(language, previouslyEnabled ? '提案已更新；旧仿真实例已移除，需重新通过第二道启用确认。' : '已保存仅仿真的手册提案；真实硬件保持禁用。', previouslyEnabled ? 'Proposal updated; old simulation instances were removed and second-gate enablement is required again.' : 'Saved simulation-only manual proposal; real hardware remains disabled.'));
+          }}
+          onEnable={(record, confirmed) => {
+            const template = builtInDeviceAssets.find((asset) => asset.manifest.device_type === record.device_meta.device_type);
+            if (!template) return { ok: false, detail: language === 'zh' ? '缺少匹配的可信语义几何模板。' : 'No matching trusted semantic geometry template.' };
+            const enabled = enableManualImportForVirtualLab({ record, templateAsset: template, builtinIntentIds: BUILTIN_INTENT_IDS, confirmed });
+            if (!enabled.ok) return enabled;
+            const nextDevice = createWorkspaceDevice(enabled.asset.manifest.device_type, workspaceDevices.length, language, enabled.asset);
+            const baseProfile = getFirstProfileForType(enabled.asset.manifest.device_type);
+            const nextScenario = getScenarioForProfile(baseProfile.id, 'safe');
+            const nextPrompt = isRunnableDeviceV01(enabled.asset.manifest.device_type) ? getLocalizedPrompt(nextScenario, language) : comingSoonPrompt(language, enabled.asset.manifest.device_type);
+            setManualImports((current) => [...current.filter((item) => item.device_meta.profile_id !== enabled.record.device_meta.profile_id), enabled.record]);
+            setManualSimulationAssets((current) => [...current.filter((asset) => asset.manifest.asset_id !== enabled.asset.manifest.asset_id), enabled.asset]);
+            setWorkspaceDevices((current) => [...current, nextDevice]);
+            setSelectedWorkspaceDeviceId(nextDevice.id);
+            setDeviceType(enabled.asset.manifest.device_type);
+            setSelectedProfileId(baseProfile.id);
+            setScenarioId(nextScenario.id);
+            setPrompt(nextPrompt);
+            setCommandStatus({ kind: isRunnableDeviceV01(enabled.asset.manifest.device_type) ? 'ready' : 'coming_soon', message: isRunnableDeviceV01(enabled.asset.manifest.device_type) ? readyMessageForPrompt(language, enabled.asset.manifest.device_type, nextPrompt) : comingSoonMessage(language, enabled.asset.manifest.device_type) });
+            setLabReport(null); setWorkspaceValidation(null); setSelectedSnapshot(null); setCurrentActionFrame(null); setLivePlaybackEvents([]); setLiveAdapterCommands([]); setReplayIndex(0);
+            showNotice('success', noticeMessage(language, '已通过第二道确认并添加到 Virtual Lab；执行模式仍为 simulation。', 'Second-gate confirmation passed and asset added to Virtual Lab; execution mode remains simulation.'));
+            return { ok: true };
           }}
           onClose={() => setManualImportOpen(false)}
         />

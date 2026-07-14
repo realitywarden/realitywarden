@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { ManualProfileExtractor, approveManualImport, validateStoredManualImport, type ManualExtractionProposal } from '../../lib/manual-import/ManualProfileImport';
+import { ManualProfileExtractor, approveManualImport, enableManualImportForVirtualLab, restoreEnabledManualSimulationAsset, validateStoredManualImport, type ManualExtractionProposal } from '../../lib/manual-import/ManualProfileImport';
+import type { DeviceAsset } from '../../lib/assets/DeviceAsset';
 
 const builtins = new Set(['move_red_cube']);
 const proposal = (): ManualExtractionProposal => ({
@@ -14,8 +15,24 @@ const proposal = (): ManualExtractionProposal => ({
   }]
 });
 
-function source() { return { file_name: 'manual.pdf', media_type: 'application/pdf', sha256: 'abc123', extracted_text: 'authoritative manual text' }; }
+function source() { return { file_name: 'manual.pdf', media_type: 'application/pdf', sha256: 'a'.repeat(64), extracted_text: 'authoritative manual text' }; }
 function extraction() { return { model: 'test-model', elapsed_ms: 1, raw_output: JSON.stringify(proposal()) }; }
+function templateAsset(deviceType: DeviceAsset['manifest']['device_type'] = 'robot_arm'): DeviceAsset {
+  return {
+    manifest: { asset_id: `template-${deviceType}`, display_name: 'Trusted semantic template', category: 'template', device_type: deviceType, license: 'MIT', brand: 'generic', source: 'test', visual_model: { type: 'procedural_fallback', path: null }, allowed_use: ['simulation'] },
+    deviceMeta: {} as DeviceAsset['deviceMeta'],
+    geometry: {
+      table: { width: 2, depth: 2, height: 0.1 }, robot: { base_position: [0, 0, 0], arm_segments: [0.5, 0.5], gripper_size: 0.1 },
+      objects: { red_cube: { position: [0, 0, 0], size: 0.1 }, blue_cube: { position: [0, 0, 0], size: 0.1 }, glass_cup: { position: [0, 0, 0], radius: 0.1, height: 0.2 } },
+      zones: {}, workspace: { x_min: -2, x_max: 2, y_min: 0, y_max: 2, z_min: -2, z_max: 2 }, camera: { position: [2, 2, 2], target: [0, 0, 0] }
+    },
+    adapterManifest: { adapter_id: 'simulator-template', adapter_type: 'simulator', interface: 'AdapterInterface', supported_commands: [], transport: 'virtual-device-runtime', real_device_enabled: false },
+    scenarios: {
+      safe: { id: 'safe', device_profile: 'template', initial_state: {}, prompt: 'safe', expected_task_type: 'safe', unsafe_actions: [], expected_safety_result: 'pass', expected_state_after: {} },
+      unsafe: { id: 'unsafe', device_profile: 'template', initial_state: {}, prompt: 'unsafe', expected_task_type: 'unsafe', unsafe_actions: [], expected_safety_result: 'blocked', expected_state_after: {} }
+    }
+  };
+}
 
 async function run() {
   let count = 0;
@@ -50,6 +67,12 @@ async function run() {
     assert.equal(result.ok, false);
   });
 
+  await test('malformed source digest is rejected before profile creation', () => {
+    const result = approveManualImport({ proposal: proposal(), source: { ...source(), sha256: 'spoofed' }, extraction: extraction(), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.detail, /source audit/);
+  });
+
   await test('approved record is forced to simulator-only conservative safety', () => {
     const result = approveManualImport({ proposal: proposal(), source: source(), extraction: extraction(), builtinIntentIds: builtins, confirmed: true, now: '2026-07-14T00:00:00.000Z' });
     assert.equal(result.ok, true);
@@ -78,7 +101,47 @@ async function run() {
     assert.equal(checked.ok, false);
   });
 
-  console.log(`Manual import tests: ${count}/7 passed`);
+  await test('Virtual Lab enablement requires a separate confirmation', () => {
+    const approved = approveManualImport({ proposal: proposal(), source: source(), extraction: extraction(), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(approved.ok, true);
+    if (!approved.ok) return;
+    const enabled = enableManualImportForVirtualLab({ record: approved.record, templateAsset: templateAsset(), builtinIntentIds: builtins, confirmed: false });
+    assert.equal(enabled.ok, false);
+  });
+
+  await test('mismatched geometry template fails closed', () => {
+    const approved = approveManualImport({ proposal: proposal(), source: source(), extraction: extraction(), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(approved.ok, true);
+    if (!approved.ok) return;
+    const enabled = enableManualImportForVirtualLab({ record: approved.record, templateAsset: templateAsset('smart_light'), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(enabled.ok, false);
+  });
+
+  await test('enabled asset remains simulator-only and does not expand capabilities', () => {
+    const approved = approveManualImport({ proposal: proposal(), source: source(), extraction: extraction(), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(approved.ok, true);
+    if (!approved.ok) return;
+    const enabled = enableManualImportForVirtualLab({ record: approved.record, templateAsset: templateAsset(), builtinIntentIds: builtins, confirmed: true, now: '2026-07-14T01:00:00.000Z' });
+    assert.equal(enabled.ok, true);
+    if (!enabled.ok) return;
+    assert.equal(enabled.asset.adapterManifest.real_device_enabled, false);
+    assert.deepEqual(enabled.asset.adapterManifest.supported_commands, proposal().capabilities);
+    assert.deepEqual(enabled.asset.deviceMeta.supported_adapters, ['simulator']);
+    assert.deepEqual(enabled.asset.geometry.workspace, proposal().workspace);
+  });
+
+  await test('enabled record restores only with its trusted template id', () => {
+    const approved = approveManualImport({ proposal: proposal(), source: source(), extraction: extraction(), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(approved.ok, true);
+    if (!approved.ok) return;
+    const enabled = enableManualImportForVirtualLab({ record: approved.record, templateAsset: templateAsset(), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(enabled.ok, true);
+    if (!enabled.ok) return;
+    assert.equal(restoreEnabledManualSimulationAsset({ record: enabled.record, templateAssets: [templateAsset()], builtinIntentIds: builtins }).ok, true);
+    assert.equal(restoreEnabledManualSimulationAsset({ record: enabled.record, templateAssets: [templateAsset('smart_light')], builtinIntentIds: builtins }).ok, false);
+  });
+
+  console.log(`Manual import tests: ${count}/12 passed`);
 }
 
 void run().catch((error) => { console.error(error); process.exitCode = 1; });

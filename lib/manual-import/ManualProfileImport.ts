@@ -4,9 +4,10 @@
  */
 import { z } from 'zod';
 import { actionManifestSchema, validateActionManifest, type ActionManifest } from '../action-manifest/ActionManifest';
-import { DeviceCapabilitySchema, DeviceMetaSchema, DeviceTypeSchema } from '../schemas/deviceMeta.schema';
+import { DeviceCapabilitySchema, DeviceGeometrySchema, DeviceMetaSchema, DeviceTypeSchema } from '../schemas/deviceMeta.schema';
 import type { DeviceCapability, DeviceMeta, DeviceType } from '../../types/deviceMeta';
 import type { FetchLike } from '../compiler/llm/LlmTaskCompiler';
+import type { DeviceAsset } from '../assets/DeviceAsset';
 
 const SPEEDS = ['slow', 'normal', 'fast'] as const;
 const FORCES = ['low', 'medium', 'high'] as const;
@@ -57,6 +58,12 @@ export interface ManualImportRecord {
   extraction: { model: string; elapsed_ms: number; raw_output: string };
   device_meta: DeviceMeta;
   action_manifests: ActionManifest[];
+  virtual_lab?: {
+    enabled: true;
+    execution_mode: 'simulation';
+    confirmed_at: string;
+    geometry_template_asset_id: string;
+  };
 }
 
 export type ManualExtractionResult =
@@ -124,6 +131,8 @@ export function approveManualImport(input: {
   now?: string;
 }): { ok: true; record: ManualImportRecord } | { ok: false; detail: string } {
   if (!input.confirmed) return { ok: false, detail: 'explicit human review confirmation is required' };
+  if (!input.source.file_name || !input.source.media_type || !/^[a-f0-9]{64}$/.test(input.source.sha256) || !input.source.extracted_text || input.source.extracted_text.length > MAX_MANUAL_CHARS) return { ok: false, detail: 'manual source audit is invalid or oversized' };
+  if (!input.extraction.model || !input.extraction.raw_output || input.extraction.raw_output.length > MAX_RAW_OUTPUT_CHARS || !Number.isFinite(input.extraction.elapsed_ms) || input.extraction.elapsed_ms < 0) return { ok: false, detail: 'model extraction audit is invalid or oversized' };
   const p = manualExtractionProposalSchema.safeParse(input.proposal);
   if (!p.success) return { ok: false, detail: p.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') };
   const allowed = new Set(capabilitiesByType[p.data.device_type]);
@@ -131,10 +140,11 @@ export function approveManualImport(input: {
   if (new Set(p.data.capabilities).size !== p.data.capabilities.length) return { ok: false, detail: 'duplicate capabilities are rejected' };
   if (new Set(p.data.known_targets).size !== p.data.known_targets.length || new Set(p.data.forbidden_zones).size !== p.data.forbidden_zones.length) return { ok: false, detail: 'duplicate targets or forbidden zones are rejected' };
   if (new Set(p.data.actions.map((action) => action.action_id)).size !== p.data.actions.length) return { ok: false, detail: 'duplicate action ids are rejected' };
-  const slug = `${p.data.manufacturer}-${p.data.model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'manual-device';
+  const slug = `${p.data.manufacturer}-${p.data.model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) || 'manual-device';
+  const profileId = `manual-${slug}-${input.source.sha256.slice(0, 12)}`;
   const deviceMeta = DeviceMetaSchema.parse({
-    profile_id: `manual-${slug}`, profile_version: '1.0.0', manufacturer: p.data.manufacturer, model: p.data.model,
-    device_id: `simulation-${slug}`, device_type: p.data.device_type, simulator_profile: `${p.data.device_type}_semantic_v1`,
+    profile_id: profileId, profile_version: '1.0.0', manufacturer: p.data.manufacturer, model: p.data.model,
+    device_id: `simulation-${profileId}`, device_type: p.data.device_type, simulator_profile: `${p.data.device_type}_semantic_v1`,
     simulator_fidelity: { level: 'semantic', validates: ['declared capabilities and governed action manifests'], limitations: ['Manual-import profile uses semantic simulation only; geometry and physical outcomes are not verified.'] },
     supported_adapters: ['simulator'], risk_class: 'high', display_name: p.data.display_name,
     capabilities: p.data.capabilities, constraints: { workspace: p.data.workspace, max_speed: p.data.max_speed, force_limit: p.data.force_limit, forbidden_zones: p.data.forbidden_zones, known_targets: p.data.known_targets },
@@ -156,7 +166,13 @@ export function validateStoredManualImport(raw: unknown, builtinIntentIds: Reado
   if (record.record_version !== 1 || record.profile_source !== 'manual_import' || record.simulation_only !== true || record.human_review?.confirmed !== true) return { ok: false, detail: 'invalid provenance, review, or simulation-only marker' };
   const meta = DeviceMetaSchema.safeParse(record.device_meta);
   if (!meta.success || meta.data.supported_adapters.length !== 1 || meta.data.supported_adapters[0] !== 'simulator') return { ok: false, detail: 'stored profile is invalid or not simulation-only' };
-  if (!record.source?.extracted_text || record.source.extracted_text.length > MAX_MANUAL_CHARS || !record.source.sha256 || !record.extraction?.raw_output || record.extraction.raw_output.length > MAX_RAW_OUTPUT_CHARS) return { ok: false, detail: 'raw source or extraction audit is missing or oversized' };
+  if (!record.source?.file_name || !record.source.media_type || !record.source.extracted_text || record.source.extracted_text.length > MAX_MANUAL_CHARS || !/^[a-f0-9]{64}$/.test(record.source.sha256 ?? '') || !record.extraction?.model || !record.extraction.raw_output || record.extraction.raw_output.length > MAX_RAW_OUTPUT_CHARS || !Number.isFinite(record.extraction.elapsed_ms) || record.extraction.elapsed_ms < 0) return { ok: false, detail: 'raw source or extraction audit is missing, malformed, or oversized' };
+  if (record.virtual_lab !== undefined && (
+    record.virtual_lab.enabled !== true
+    || record.virtual_lab.execution_mode !== 'simulation'
+    || !record.virtual_lab.confirmed_at
+    || !record.virtual_lab.geometry_template_asset_id
+  )) return { ok: false, detail: 'invalid Virtual Lab enablement marker' };
   const actions: ActionManifest[] = [];
   for (const rawAction of record.action_manifests ?? []) {
     const checked = validateActionManifest(rawAction, meta.data as DeviceMeta, builtinIntentIds);
@@ -164,6 +180,95 @@ export function validateStoredManualImport(raw: unknown, builtinIntentIds: Reado
     actions.push(checked.manifest);
   }
   return { ok: true, record: { ...record, device_meta: meta.data as DeviceMeta, action_manifests: actions } as ManualImportRecord };
+}
+
+export function enableManualImportForVirtualLab(input: {
+  record: ManualImportRecord;
+  templateAsset: DeviceAsset;
+  builtinIntentIds: ReadonlySet<string>;
+  confirmed: boolean;
+  now?: string;
+}): { ok: true; record: ManualImportRecord; asset: DeviceAsset } | { ok: false; detail: string } {
+  if (!input.confirmed) return { ok: false, detail: 'explicit Virtual Lab enablement confirmation is required' };
+  const checked = validateStoredManualImport(input.record, input.builtinIntentIds);
+  if (!checked.ok) return checked;
+  if (input.templateAsset.manifest.device_type !== checked.record.device_meta.device_type) return { ok: false, detail: 'geometry template device type mismatch' };
+  if (input.templateAsset.adapterManifest.real_device_enabled !== false || input.templateAsset.adapterManifest.adapter_type !== 'simulator') return { ok: false, detail: 'geometry template must be simulation-only' };
+  const record: ManualImportRecord = {
+    ...checked.record,
+    virtual_lab: {
+      enabled: true,
+      execution_mode: 'simulation',
+      confirmed_at: input.now ?? new Date().toISOString(),
+      geometry_template_asset_id: input.templateAsset.manifest.asset_id
+    }
+  };
+  const asset = buildManualSimulationAsset(record, input.templateAsset);
+  const assetError = validateGeneratedManualAsset(asset);
+  if (assetError) return { ok: false, detail: `generated simulation asset rejected: ${assetError}` };
+  return { ok: true, record, asset };
+}
+
+export function restoreEnabledManualSimulationAsset(input: {
+  record: ManualImportRecord;
+  templateAssets: readonly DeviceAsset[];
+  builtinIntentIds: ReadonlySet<string>;
+}): { ok: true; asset: DeviceAsset } | { ok: false; detail: string } {
+  const checked = validateStoredManualImport(input.record, input.builtinIntentIds);
+  if (!checked.ok) return checked;
+  if (!checked.record.virtual_lab?.enabled) return { ok: false, detail: 'manual proposal is not enabled for Virtual Lab' };
+  const template = input.templateAssets.find((asset) => asset.manifest.asset_id === checked.record.virtual_lab?.geometry_template_asset_id);
+  if (!template || template.manifest.device_type !== checked.record.device_meta.device_type || template.adapterManifest.real_device_enabled !== false) return { ok: false, detail: 'trusted simulation geometry template is missing or mismatched' };
+  const asset = buildManualSimulationAsset(checked.record, template);
+  const assetError = validateGeneratedManualAsset(asset);
+  return assetError ? { ok: false, detail: assetError } : { ok: true, asset };
+}
+
+function validateGeneratedManualAsset(asset: DeviceAsset): string | null {
+  const meta = DeviceMetaSchema.safeParse(asset.deviceMeta);
+  if (!meta.success) return meta.error.issues.map((issue) => `device_meta.${issue.path.join('.')}: ${issue.message}`).join('; ');
+  const geometry = DeviceGeometrySchema.safeParse(asset.geometry);
+  if (!geometry.success) return geometry.error.issues.map((issue) => `geometry.${issue.path.join('.')}: ${issue.message}`).join('; ');
+  if (asset.manifest.allowed_use.includes('real_hardware') || asset.adapterManifest.adapter_type !== 'simulator' || asset.adapterManifest.real_device_enabled !== false || asset.deviceMeta.supported_adapters.length !== 1 || asset.deviceMeta.supported_adapters[0] !== 'simulator') return 'asset is not structurally simulation-only';
+  if (asset.adapterManifest.supported_commands.some((command) => !asset.deviceMeta.capabilities.includes(command as DeviceCapability))) return 'adapter commands exceed the reviewed capability set';
+  return null;
+}
+
+function buildManualSimulationAsset(record: ManualImportRecord, template: DeviceAsset): DeviceAsset {
+  const id = record.device_meta.profile_id;
+  const source = `manual_import:${record.source.sha256}`;
+  return {
+    manifest: {
+      asset_id: id,
+      display_name: record.device_meta.display_name,
+      category: 'manual_import',
+      device_type: record.device_meta.device_type,
+      license: 'user-provided; usage rights confirmed by operator',
+      brand: 'user-owned',
+      source,
+      visual_model: { type: 'procedural_fallback', path: null },
+      allowed_use: ['simulation', 'development', 'testing'],
+      simulator_fidelity: 'semantic',
+      risk_class: 'high'
+    },
+    deviceMeta: record.device_meta,
+    geometry: {
+      ...template.geometry,
+      workspace: record.device_meta.constraints.workspace
+    },
+    adapterManifest: {
+      adapter_id: `simulator-${id}`,
+      adapter_type: 'simulator',
+      interface: 'AdapterInterface',
+      supported_commands: [...record.device_meta.capabilities],
+      transport: 'virtual-device-runtime',
+      real_device_enabled: false
+    },
+    scenarios: {
+      safe: { ...template.scenarios.safe, id: `${id}-safe`, device_profile: id },
+      unsafe: { ...template.scenarios.unsafe, id: `${id}-unsafe`, device_profile: id }
+    }
+  };
 }
 
 function buildExtractionPrompt(): string {

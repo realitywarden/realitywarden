@@ -25,3 +25,28 @@ The proposal is stored under `workspace.manual_imports` in the desktop project
 file. Every stored record and proposed manifest is revalidated when the project
 is loaded. A tampered record that adds any adapter other than `simulator` is
 rejected in full and reported to the operator.
+
+## Review and Virtual Lab enablement
+
+The review surface provides three authoritative views: extracted source beside
+the structured fields, editable proposal JSON, and the verbatim model output.
+It also renders a semantic 3D preview using the trusted built-in template for
+the proposed device type. This geometry is visibly identified as a generic
+template: it is not vendor CAD and does not prove dimensions, kinematics, or a
+physical outcome.
+
+Saving the reviewed proposal does **not** enable it. The operator must reopen
+the saved record and pass a second confirmation covering source usage rights,
+generic-geometry limitations, and simulation-only execution. Only then is a
+user-owned asset added to the Asset Library and 3D Workspace.
+
+The generated asset:
+
+- has `execution_mode: "simulation"` and `real_device_enabled: false`;
+- exposes only the capabilities already accepted during manual review;
+- uses a trusted geometry template with an exactly matching device type;
+- retains the proposal workspace constraints rather than expanding them to the
+  template's constraints;
+- is removed on proposal edits, requiring the second gate again; and
+- is rejected and removed from a restored workspace if its enablement or
+  template reference is missing, malformed, or mismatched.
