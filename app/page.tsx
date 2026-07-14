@@ -728,7 +728,7 @@ function BottomConsole({
   );
 }
 
-function AICommandTerminal({
+function CommandDock({
   language,
   prompt,
   running,
@@ -760,8 +760,7 @@ function AICommandTerminal({
   onQuickStart: (path: QuickStartPath) => void;
   onRun: () => void;
   onStop: () => void;
-  }) {
-    const supportSummary = publicAlphaSupportLabel(language);
+}) {
   const labels = {
     label: t(language, 'ai_command'),
     placeholder: t(language, 'prompt_placeholder'),
@@ -799,15 +798,6 @@ function AICommandTerminal({
   const guidedPlaceholder = primaryStarter
     ? `${primaryStarter} · ${t(language, 'command_result_workspace_above')}`
     : labels.placeholder;
-  const observationHint =
-    status.kind === 'running'
-      ? t(language, 'command_observe_running')
-      : status.kind === 'completed'
-        ? t(language, 'command_observe_completed')
-        : status.kind === 'blocked' || status.kind === 'failed'
-          ? t(language, 'command_observe_blocked')
-          : t(language, 'command_observe_ready');
-
   const llmChipText =
     llmChip.state === 'online' ? `LLM: ${llmChip.model}`
       : llmChip.state === 'compiling' ? (language === 'zh' ? 'LLM 编译中…' : 'LLM compiling…')
@@ -822,13 +812,24 @@ function AICommandTerminal({
   };
 
   return (
-    <section className="flex flex-none flex-col gap-1.5 border-t border-[#313338] border-b border-[#23262B] bg-[#15171A] px-3 py-2 shadow-[0_-12px_24px_rgba(0,0,0,0.22)]">
-      <div className="flex items-start gap-2.5">
-        <div className="w-20 shrink-0 pt-2.5 text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{labels.label}</div>
-        <div className="flex min-h-[3.75rem] min-w-0 flex-1 items-stretch rounded-[3px] border border-[#313338] bg-[#0B0C0E] focus-within:border-[#0284C7]">
-          <div className="flex shrink-0 items-center border-r border-[#313338] px-2 font-mono text-[11px] font-bold text-[#7DD3FC]">
-            USER &gt;
-          </div>
+    <section data-component="CommandDock" className="flex flex-none flex-col gap-2 border-y border-border bg-surface px-3 py-2">
+      <div className="flex min-w-0 items-center gap-3">
+        <h2 className="rw-text-title shrink-0 text-text-primary">{labels.label}</h2>
+        <div className={`inline-flex h-6 shrink-0 items-center border px-2 text-[12px] font-bold uppercase tracking-wide ${badgeClass}`} aria-live="polite" data-command-state={status.kind}>
+          {badgeText}
+        </div>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-[12px]">
+          <span className="shrink-0 text-text-secondary">{t(language, 'active_workspace_device')}:</span>
+          <span className="truncate font-semibold text-text-primary" title={runTargetLabel}>{runTargetLabel}</span>
+          <span className={`shrink-0 border px-1.5 py-0.5 font-bold ${runTargetRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
+            {runTargetRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 items-stretch gap-2">
+        <div className="flex min-h-[60px] min-w-0 flex-1 items-stretch border border-border-strong bg-background focus-within:border-accent">
+          <div className="flex shrink-0 items-center border-r border-border px-2 font-mono text-[11px] font-bold text-simulation">USER &gt;</div>
           <textarea
             value={prompt}
             onChange={(event) => onPromptChange(event.target.value)}
@@ -839,8 +840,8 @@ function AICommandTerminal({
               }
             }}
             spellCheck={false}
-            rows={3}
-            className="min-h-[3.5rem] max-h-40 flex-1 resize-y border-0 bg-transparent px-3 py-2 font-mono text-[13px] leading-5 text-[#E6EAF0] outline-none placeholder:text-[#5F6670]"
+            rows={2}
+            className="min-h-[58px] max-h-32 min-w-0 flex-1 resize-y border-0 bg-transparent px-3 py-2 font-mono text-[13px] leading-5 text-text-primary outline-none placeholder:text-text-muted"
             placeholder={guidedPlaceholder}
           />
         </div>
@@ -848,151 +849,78 @@ function AICommandTerminal({
           type="button"
           disabled={running || !runTargetRunnable}
           onClick={submit}
-          className="h-9 rounded-[3px] border border-[#075985] bg-[#0066CC] px-4 text-[13px] font-medium text-white hover:bg-[#0A74DA] disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-10 self-start border border-accent bg-accent px-5 text-[13px] font-semibold text-[#061018] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {running ? labels.running : labels.run}
         </button>
         <button
           type="button"
           onClick={onStop}
-          className="h-9 rounded-[3px] border border-[#5A2B2B] px-3 text-[13px] font-medium text-[#F87171] hover:bg-[#2A1111]"
+          className="h-10 self-start border border-status-blocked-edge px-4 text-[13px] font-semibold text-status-blocked-soft hover:bg-status-blocked-surface"
         >
           {labels.stop}
         </button>
-        <button
-          type="button"
-          disabled
-          title={language === 'zh' ? '\u591a\u8def\u5f84\u9a8c\u8bc1\u5c06\u5728\u540e\u7eed\u7248\u672c\u63d0\u4f9b\u3002' : 'Multi-path validation ships in a later version.'}
-          className="h-9 rounded-[3px] border border-border-panel px-3 text-[13px] font-medium text-text-secondary opacity-40"
-        >
-          {labels.validate}
-        </button>
-        <div className="min-w-[170px] max-w-[280px] shrink-0">
-          <div className={`inline-flex h-6 items-center rounded-[3px] border px-2 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>{badgeText}</div>
-          <div className="mt-0.5 truncate text-[11px] text-text-secondary" title={status.message}>{status.message}</div>
-          <div
-            className={`mt-0.5 inline-flex h-5 max-w-full items-center truncate rounded-[3px] border px-1.5 font-mono text-[11px] ${llmChip.state === 'online' || llmChip.state === 'compiling' ? 'border-status-running-edge text-status-running' : 'border-border-panel text-text-secondary'}`}
-            title={llmChipTitle}
-          >
-            {llmChipText}
-          </div>
-            {/* Context details collapsed by default (UI audit C2): the
-                terminal keeps input + Run/Stop + one status badge visible. */}
-            <details className="mt-0.5">
-              <summary className="cursor-pointer select-none text-[11px] text-text-muted hover:text-text-secondary">
-                {language === 'zh' ? '目标与说明' : 'Target & notes'} · <span className="text-text-primary">{runTargetLabel}</span>
-              </summary>
-              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
-                <span className="font-semibold text-text-secondary">{t(language, 'active_workspace_device')}:</span>
-                <span className="truncate text-text-primary" title={runTargetLabel}>{runTargetLabel}</span>
-                <span className={`rounded-[3px] border px-1.5 py-0.5 font-bold ${runTargetRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
-                  {runTargetRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
-                </span>
-              </div>
-              <div className="mt-0.5 text-[11px] text-[#9BD4FF]">{t(language, 'workspace_selection_run_same')}</div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-[#8A94A0]">
-                <span>{t(language, 'command_target_notice')}</span>
-                <span className="text-[#4B5563]">|</span>
-                <span>{t(language, 'command_safe_blocked_notice')}</span>
-              </div>
-            </details>
-            {!runTargetRunnable && (
-              <div className="mt-0.5 text-[11px] text-status-warning">
-                {t(language, 'welcome_protocol_only')}
-              </div>
-            )}
-            {!runTargetRunnable && (
-              <div className="mt-0.5 text-[11px] text-status-warning">
-                {t(language, 'select_runnable_target_hint')}
-              </div>
-            )}
-          </div>
-        </div>
-      {!runTargetRunnable && (
-        <div className="ml-20 rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-3 py-2">
-          <div className="text-[11px] font-semibold text-status-warning">{t(language, 'asset_only_runtime_title')}</div>
-          <div className="mt-1 text-[11px] leading-4 text-[#E5C76B]">{t(language, 'asset_only_runtime_detail')}</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-[#D6B457]">{t(language, 'jump_to_runnable_path')}</span>
-            {quickStartPaths.map((path) => (
-              <button
-                key={`jump-${path.id}`}
-                type="button"
-                onClick={() => onQuickStart(path)}
-                className="rounded-[3px] border border-[#85611B] bg-[#33260F] px-2 py-1 text-[11px] font-semibold text-[#F8D77A] hover:bg-[#3F3013]"
-              >
-                {localizeDeviceType(language, path.deviceType)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      <div className="ml-20 flex min-h-5 items-center gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'starter_commands')}</div>
-        {/* Wrap instead of a hidden horizontal scrollbar (UI audit A4). */}
-        <div className="flex flex-1 flex-wrap items-center gap-1.5">
-          {primaryStarter && (
-            <span className="shrink-0 text-[11px] text-[#5F6670]">{t(language, 'command_try_first')}</span>
-          )}
-          {starterPrompts.length > 0 ? starterPrompts.map((starter) => (
-            <button
-              key={`${runTargetDeviceType}-${starter}`}
-              type="button"
-              onClick={() => onPromptChange(starter)}
-              title={starter}
-              className="max-w-[420px] truncate rounded-[3px] border border-border-panel bg-[#232529] px-2 py-[3px] text-[11px] font-medium text-text-primary hover:bg-[#2B2D31]"
-            >
-              {starter}
-            </button>
-          )) : (
-            <div className="pt-1 text-[11px] text-text-muted">{t(language, 'no_starter_commands')}</div>
-          )}
-        </div>
       </div>
-      {activeQuickStart && (
-        <div className="ml-20 hidden rounded-[3px] border border-border-panel bg-[#181A1D] px-3 py-1 2xl:block">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'guided_evaluation')}</span>
-            <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-2 py-0.5 text-[11px] font-semibold text-[#38BDF8]">
-              {t(language, 'current_path')}: {activeQuickStart.title}
-            </span>
-            <span className={`rounded-[3px] border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${badgeClass}`}>
-              {badgeText}
-            </span>
-            <span className="min-w-0 max-w-full flex-1 truncate text-[11px] text-[#C7D2DA]" title={activeQuickStart.expected}>
-              <span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_expected')}:</span> {activeQuickStart.expected}
-            </span>
-              {nextQuickStart && (
-              <button
-                type="button"
-                onClick={() => onQuickStart(nextQuickStart)}
-                className="rounded-[3px] border border-border-panel bg-[#232529] px-2 py-1 text-[11px] font-semibold text-text-primary hover:bg-[#2B2D31]"
-              >
-                {t(language, 'try_next')}
-              </button>
-            )}
-          </div>
-          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-4 text-[#A7B0BA]">
-            <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_proof')}:</span> {activeQuickStart.proof}</span>
-            <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'quick_start_validates')}:</span> {activeQuickStart.validates}</span>
-            {nextQuickStart && (
-              <span><span className="font-semibold text-[#E6EAF0]">{t(language, 'next_path')}:</span> {nextQuickStart.title}</span>
-            )}
-          </div>
-          {!running && status.kind === 'ready' && (
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold text-[#9BD4FF]">{t(language, 'quick_start_next_step')}</span>
-              <button
-                type="button"
-                onClick={onRun}
-                className="rounded-[3px] border border-[#075985] bg-[#0284C7] px-2 py-1 text-[11px] font-semibold text-white hover:bg-[#0369A1]"
-              >
-                {t(language, 'quick_start_run_now')}
-              </button>
+
+      <details className="border-t border-border pt-1">
+        <summary className="cursor-pointer select-none text-[12px] font-semibold text-text-secondary hover:text-text-primary">
+          {language === 'zh' ? '命令详情' : 'Command details'}
+          <span className="ml-2 font-normal text-text-muted">{language === 'zh' ? '编译器、诊断、快捷路径与示例' : 'compiler, diagnostics, quick paths & examples'}</span>
+        </summary>
+        <div className="custom-scrollbar mt-2 grid max-h-[28vh] grid-cols-2 gap-3 overflow-y-auto border border-border bg-background p-3 text-[12px] max-[1280px]:grid-cols-1">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-text-secondary">{language === 'zh' ? '编译来源' : 'Compiler source'}</span>
+              <span className={`inline-flex h-5 max-w-full items-center truncate border px-1.5 font-mono text-[11px] ${llmChip.state === 'online' || llmChip.state === 'compiling' ? 'border-status-running-edge text-status-running' : 'border-border text-text-secondary'}`} title={llmChipTitle}>
+                {llmChipText}
+              </span>
             </div>
-          )}
+            <div>
+              <div className="font-semibold text-text-secondary">{language === 'zh' ? '诊断说明' : 'Diagnostic note'}</div>
+              <div className="mt-1 text-text-primary">{status.message}</div>
+              <div className="mt-1 text-text-secondary">{t(language, 'workspace_selection_run_same')} · {t(language, 'command_safe_blocked_notice')}</div>
+            </div>
+            <button type="button" disabled title={language === 'zh' ? '多路径验证将在后续版本提供。' : 'Multi-path validation ships in a later version.'} className="h-7 border border-border px-2 text-[12px] text-text-secondary opacity-40">
+              {labels.validate}
+            </button>
+          </div>
+
+          <div className="min-w-0 space-y-2">
+            <div className="font-semibold text-text-secondary">{t(language, 'starter_commands')}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {starterPrompts.length > 0 ? starterPrompts.map((starter) => (
+                <button key={`${runTargetDeviceType}-${starter}`} type="button" onClick={() => onPromptChange(starter)} title={starter} className="max-w-full truncate border border-border bg-surface-raised px-2 py-1 text-[12px] text-text-primary">
+                  {starter}
+                </button>
+              )) : <span className="text-text-muted">{t(language, 'no_starter_commands')}</span>}
+            </div>
+            {!runTargetRunnable && (
+              <div className="border border-status-warning-edge bg-status-warning-surface p-2 text-status-warning">
+                <div className="font-semibold">{t(language, 'asset_only_runtime_title')}</div>
+                <div className="mt-1 text-text-secondary">{t(language, 'asset_only_runtime_detail')}</div>
+                <div className="mt-2 text-[11px] font-bold uppercase tracking-wide">{t(language, 'jump_to_runnable_path')}</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {quickStartPaths.map((path) => (
+                    <button key={`jump-${path.id}`} type="button" onClick={() => onQuickStart(path)} className="border border-status-warning-edge px-2 py-1 text-[12px] font-semibold text-status-warning">
+                      {localizeDeviceType(language, path.deviceType)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {activeQuickStart && (
+              <div className="border border-border bg-surface p-2 text-text-secondary">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-text-muted">{t(language, 'guided_evaluation')}</div>
+                <div className="font-semibold text-simulation">{t(language, 'current_path')}: {activeQuickStart.title}</div>
+                <div className="mt-1"><span className="font-semibold text-text-primary">{t(language, 'quick_start_expected')}:</span> {activeQuickStart.expected}</div>
+                <div className="mt-1"><span className="font-semibold text-text-primary">{t(language, 'quick_start_proof')}:</span> {activeQuickStart.proof}</div>
+                <div className="mt-1"><span className="font-semibold text-text-primary">{t(language, 'quick_start_validates')}:</span> {activeQuickStart.validates}</div>
+                {nextQuickStart && <button type="button" onClick={() => onQuickStart(nextQuickStart)} className="mt-2 border border-border px-2 py-1 text-text-primary">{t(language, 'next_path')}: {nextQuickStart.title} · {t(language, 'try_next')}</button>}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </details>
     </section>
   );
 }
@@ -2808,7 +2736,7 @@ export default function Home() {
                 )}
                 <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 mx-auto w-[min(980px,calc(100%-32px))]">
                   <div className="pointer-events-auto">
-                    <AICommandTerminal
+                    <CommandDock
                       language={language}
                       prompt={prompt}
                       running={running}

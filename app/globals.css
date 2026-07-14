@@ -116,7 +116,6 @@
     color: var(--color-text-primary);
   }
 
-  .industrial-workbench button,
   .industrial-workbench select,
   .industrial-workbench input,
   .industrial-workbench textarea {
@@ -125,7 +124,6 @@
     color: var(--color-text-primary) !important;
   }
 
-  .industrial-workbench button:hover,
   .industrial-workbench select:hover {
     background: var(--color-surface-raised) !important;
   }
