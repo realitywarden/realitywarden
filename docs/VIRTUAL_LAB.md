@@ -18,20 +18,19 @@ AI systems should not directly operate physical devices. A virtual lab gives tea
 
 ## Why Contributors Do Not Need Real Hardware
 
-Contributors can add and test devices by providing a profile, geometry, safety rules, simulator adapter entry, and scenarios. The Virtual Device Runtime uses those files to create a virtual device instance and run the same Safety Runtime and AdapterInterface that a real adapter would use.
+Contributors can add and test devices by providing a profile, geometry, safety rules, simulator adapter entry, and scenarios. The Virtual Device Runtime uses those files to create a virtual device instance and run the simulation `AdapterInterface`; real actuation remains behind its separate ticketed gate.
 
 ## Virtual Device And Real Device Relationship
 
-A Virtual Device is a software implementation of a Device Profile. A Real Device is hardware reached through a RealDeviceAdapter. Both share:
+A Virtual Device is a software implementation of a Device Profile. A Real Device is reached through `HardwareExecutionGate` and a ticketed hardware adapter. They share:
 
 - Device Profile
 - Task DSL
 - Safety Runtime
-- AdapterInterface
-- AdapterCommand
-- AdapterResult
+- capability and constraint semantics
+- audit identity and explicit execution mode
 
-RealDeviceAdapter is only a future real-device adapter boundary at this stage. It exists so the SDK can preserve the same protocol for future hardware work, but the current Studio workflow should remain Virtual Lab first.
+They deliberately do not share a freely callable execution interface: the hardware path requires the gate-private ticket and honest signal evidence.
 
 ## Device Profile Drives The Virtual Device
 
@@ -43,11 +42,11 @@ Every virtual profile declares `simulator_fidelity`. The current profiles are se
 
 This turns simulation scope into an auditable contract instead of an implicit assumption. Higher-fidelity profiles can later declare `kinematic` or `physics` and expand the `validates` list.
 
-## SimulatorAdapter And RealDeviceAdapter
+## Simulator And Hardware Adapter Boundaries
 
-`SimulatorAdapter` implements `AdapterInterface` against `VirtualDeviceInstance`. `RealDeviceAdapter` implements the same interface as an experimental future transport boundary and delegates hardware IO to `DeviceTransport`, which could later wrap serial, network, USB, ROS, PLC, or vendor SDKs.
+`SimulatorAdapter` implements `AdapterInterface` against `VirtualDeviceInstance`. Hardware adapters use `RealDeviceTransport` and may actuate only when `HardwareExecutionGate` supplies its private ticket.
 
-Real-device execution is not the current main path. Production hardware requires certified adapters, verified DeviceTransport implementations, and human supervision.
+Real-device execution is an explicit secondary path. Production hardware requires certified adapters, verified transports, evidence locking, and human supervision.
 
 ```text
 connect()

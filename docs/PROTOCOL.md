@@ -141,7 +141,7 @@ stop()
 emergencyStop()
 ```
 
-`SimulatorAdapter` implements this interface for virtual devices. `RealDeviceAdapter` remains a future/experimental boundary and is not the main UI path.
+`SimulatorAdapter` implements this interface for virtual devices. Real hardware uses the stricter ticketed `lib/hardware/` boundary; it cannot be invoked through a generic `AdapterInterface` reference.
 
 At protocol level this becomes `AdapterBinding`, which records which adapter interface and transport a Reality Asset is allowed to use.
 

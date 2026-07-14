@@ -2,7 +2,7 @@
 
 ## AdapterInterface
 
-Every simulator adapter and future real-device adapter must implement:
+Every simulator adapter implements:
 
 ```ts
 connect(): Promise<void>
@@ -14,34 +14,20 @@ stop(): Promise<AdapterResult>
 emergencyStop(): Promise<AdapterResult>
 ```
 
-This keeps the virtual lab and real hardware path aligned.
+This is the virtual-lab adapter contract. Real hardware intentionally uses a
+separate, stricter ticketed boundary described below.
 
 ## SimulatorAdapter
 
 `lib/virtual-lab/SimulatorAdapter.ts` implements `AdapterInterface` for `VirtualDeviceInstance`. It converts Task DSL steps into Adapter Commands, checks whether actions are supported by the selected Device Profile, applies state patches, and returns Adapter Results.
 
-## RealDeviceAdapter
+## Real Hardware Boundary
 
-`lib/adapter/RealDeviceAdapter.ts` implements the same `AdapterInterface` as `SimulatorAdapter`. This is an experimental future real-device adapter boundary. It delegates hardware-specific IO to a `DeviceTransport`, which can represent serial, USB, network, ROS, PLC, or vendor SDK transport.
-
-Safety Runtime still runs before execution, so the real adapter receives already-approved Adapter Commands.
-
-This layer is not a production hardware control feature. It requires a certified adapter, verified DeviceTransport, and human supervision.
-
-## DeviceTransport
-
-`DeviceTransport` is the hardware boundary below `RealDeviceAdapter`:
-
-```ts
-open(): Promise<void>
-close(): Promise<void>
-send(command: AdapterCommand): Promise<AdapterResult>
-readState(): Promise<Record<string, unknown>>
-stop(): Promise<AdapterResult>
-emergencyStop(): Promise<AdapterResult>
-```
-
-`MockDeviceTransport` is included for SDK-level adapter testing without hardware.
+Real hardware uses `lib/hardware/`: `HardwareExecutionGate` is the only issuer
+of the private actuation ticket, `Esp32DeviceAdapter` requires that ticket, and
+`RealDeviceTransport` separates read-only `send()` from ticketed
+`sendActuation()`. This preserves honest `signalSent` evidence and prevents a
+generic adapter reference from bypassing the safety gate.
 
 ## AdapterCommand
 
@@ -70,7 +56,7 @@ emergencyStop(): Promise<AdapterResult>
 2. Declare capabilities and constraints in `device.meta.json`.
 3. Add geometry or stage hints in `geometry.json`.
 4. Add safety rules in `safety.rules.ts`.
-5. Implement `simulator.adapter.ts` or a real adapter using `RealDeviceAdapter` plus a `DeviceTransport`.
+5. Implement `simulator.adapter.ts`. Hardware integrations must follow the ticketed `lib/hardware/` boundary and its dedicated safety tests.
 6. Add one safe and one unsafe scenario under `scenarios/`.
 7. Run `npm run test:virtual-lab` and `npm run verify`.
 

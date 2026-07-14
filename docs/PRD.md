@@ -20,4 +20,4 @@ The product goal is to let developers build, simulate, test, debug, replay, vali
 
 ## Explicit Boundary
 
-Real hardware control is not the current main UI path. RealDeviceAdapter remains a future certified adapter boundary.
+Real hardware is an explicit secondary path behind `HardwareExecutionGate`, a private actuation ticket, operator confirmation, and evidence locking. It is never represented by the simulation `AdapterInterface`.

@@ -121,7 +121,7 @@ Real Device execution is not enabled by default. The current product path is Vir
 Future Real Device execution must require:
 
 - certified adapter
-- verified DeviceTransport
+- verified RealDeviceTransport behind HardwareExecutionGate
 - Safety Runtime approval before transport execution
 - human supervision
 - emergency stop handling

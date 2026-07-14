@@ -13,15 +13,17 @@ Product direction and the full v0.3–v0.6 plan live in `PRODUCT_VISION.md`;
 this file only tracks execution order. The six invariants defined there bind
 every item below.
 
-## Now: Real-Device Acceptance (v0.2 close-out)
+## Completed: Real-Device Software Boundary (v0.2 close-out)
 
-- run the four-scenario real-device acceptance on the reference kit
-  (ESP32 + SG90 + HC-SR04), per `REAL_HARDWARE_ESP32.md`
+- pass the automated real-hardware and virtual-loopback suites, including the
+  four safety scenarios and explicit `hardwareSignalSent` evidence
 - `npm run verify` green on the Windows host (build included)
 - close visual-review leftovers (neutral-gray inline hex consolidation)
-- after acceptance passes: delete the three `@deprecated` legacy adapter
-  files (`RealDeviceAdapter.ts`, `MockDeviceTransport.ts`,
-  `DeviceTransport.ts`)
+- removed the three superseded generic real-adapter files after confirming zero
+  production references; the ticketed `lib/hardware/` boundary is authoritative
+
+Physical reference-kit validation remains an optional field check documented in
+`REAL_HARDWARE_ESP32.md`; it is not a product-completion or development gate.
 
 ## Next: v0.3 — Real Hardware in the Product
 

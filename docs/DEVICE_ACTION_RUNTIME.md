@@ -12,7 +12,7 @@ Task DSL -> Adapter Commands -> Device Action Runtime -> Virtual Device Motion /
 
 Future real device path:
 
-Task DSL -> Adapter Commands -> RealDeviceAdapter -> Real Device
+Hardware Command -> SafetyMonitor -> HardwareExecutionGate -> ticketed Hardware Adapter -> Real Device
 
 ## AdapterCommand To ActionPlan
 
