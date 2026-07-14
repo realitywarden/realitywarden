@@ -3,7 +3,15 @@
 import type { UiLanguage } from './LabConfigurator';
 
 export type OperatorNoticeSeverity = 'info' | 'success' | 'warning' | 'error';
-export type OperatorNoticeAction = 'discard_autosave';
+export type OperatorNoticeAction =
+  | 'discard_autosave'
+  | 'retry_project_save'
+  | 'retry_project_save_as'
+  | 'retry_project_open'
+  | 'choose_project_file'
+  | 'retry_export_adapter'
+  | 'retry_export_report'
+  | 'retry_export_asset';
 
 export interface OperatorNoticeState {
   id: number;

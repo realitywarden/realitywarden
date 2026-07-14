@@ -5,6 +5,7 @@ import { AuditPanel } from '@/components/AuditPanel';
 import { AutonomyDecisionPanel } from '@/components/AutonomyDecisionPanel';
 import { AssetImportWizard } from '@/components/AssetImportWizard';
 import { ActionComposer, BUILTIN_INTENT_IDS } from '@/components/ActionComposer';
+import { AccessibleDialogBoundary } from '@/components/AccessibleDialogBoundary';
 import { validateActionManifest } from '@/lib/action-manifest/ActionManifest';
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { LabConfigurator } from '@/components/LabConfigurator';
@@ -282,29 +283,19 @@ function startupLogs(language: UiLanguage) {
     : ['[INFO] RealityWarden ready.', '[INFO] Workspace initialized.', '[INFO] Default path ready: Robot Arm -> move the red cube to the back safe zone.'];
 }
 
-function exportLabReport(report: LabReport | null) {
-  if (!report) return;
-  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${report.lab_run_id}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
 function downloadJson(fileName: string, payload: unknown) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 const LLM_COMPILER_BASE_URL = 'http://127.0.0.1:11434';
@@ -1372,15 +1363,25 @@ export default function Home() {
     setOperatorNotice({ id: Date.now(), severity, message, ...options });
   }, []);
 
-  const handleNoticeAction = useCallback((action: OperatorNoticeAction) => {
-    if (action !== 'discard_autosave') return;
-    window.localStorage.removeItem(workspaceStorageKey);
-    showNotice('success', noticeMessage(language, '损坏的自动保存已清除；当前工作区未被修改。', 'Corrupted autosave cleared; the current workspace was not changed.'));
-  }, [language, showNotice]);
+  const closeAssetImport = useCallback(() => {
+    setAssetImportOpen(false);
+    window.setTimeout(() => document.querySelector<HTMLElement>('[data-file-menu-trigger]')?.focus(), 0);
+  }, []);
 
   const closeActionComposer = useCallback(() => {
     setActionComposerOpen(false);
     window.setTimeout(() => document.querySelector<HTMLElement>('[data-action-composer-trigger]')?.focus(), 0);
+  }, []);
+
+  const closeManualImport = useCallback(() => {
+    setManualImportOpen(false);
+    window.setTimeout(() => document.querySelector<HTMLElement>('[data-file-menu-trigger]')?.focus(), 0);
+  }, []);
+
+  const requestProjectFile = useCallback(() => {
+    if (!workspaceFileInputRef.current) return;
+    workspaceFileInputRef.current.value = '';
+    workspaceFileInputRef.current.click();
   }, []);
 
   const clearPlaybackTimers = useCallback(() => {
@@ -1786,16 +1787,23 @@ export default function Home() {
 
   const exportSelectedAssetConfig = useCallback(() => {
     if (!selectedWorkspaceDevice) return;
-    const asset = assetForId(availableAssets, selectedWorkspaceDevice.assetId);
-    downloadJson(`open-reality-selected-asset-${Date.now()}.json`, {
-      workspace_device: selectedWorkspaceDevice,
-      asset_manifest: asset?.manifest ?? null,
-      device_meta: asset?.deviceMeta ?? effectiveSelectedProfile.deviceMeta,
-      geometry: asset?.geometry ?? effectiveSelectedProfile.geometry,
-      adapter_manifest: asset?.adapterManifest ?? null,
-      scenarios: asset?.scenarios ?? null
-    });
-  }, [availableAssets, effectiveSelectedProfile, selectedWorkspaceDevice]);
+    try {
+      const asset = assetForId(availableAssets, selectedWorkspaceDevice.assetId);
+      downloadJson(`open-reality-selected-asset-${Date.now()}.json`, {
+        workspace_device: selectedWorkspaceDevice,
+        asset_manifest: asset?.manifest ?? null,
+        device_meta: asset?.deviceMeta ?? effectiveSelectedProfile.deviceMeta,
+        geometry: asset?.geometry ?? effectiveSelectedProfile.geometry,
+        adapter_manifest: asset?.adapterManifest ?? null,
+        scenarios: asset?.scenarios ?? null
+      });
+      showNotice('success', noticeMessage(language, '所选资产配置已导出。', 'Selected asset configuration exported.'));
+    } catch (error) {
+      showNotice('error', noticeMessage(language, `导出所选资产失败：${error instanceof Error ? error.message : localUnknownError(language)}`, `Selected asset export failed: ${error instanceof Error ? error.message : localUnknownError(language)}`), {
+        action: { kind: 'retry_export_asset', label: language === 'zh' ? '重试导出' : 'Retry export' }
+      });
+    }
+  }, [availableAssets, effectiveSelectedProfile, language, selectedWorkspaceDevice, showNotice]);
 
   const handleLanguageChange = useCallback((nextLanguage: UiLanguage) => {
     consoleLogSessionRef.current += 1;
@@ -2398,18 +2406,25 @@ export default function Home() {
 
   const saveWorkspace = useCallback(async (saveAs = false) => {
     const project = buildProjectFile();
-    if (window.openReality) {
-      const result = saveAs
-        ? await window.openReality.project.saveAs(project)
-        : await window.openReality.project.save(project, projectFilePath);
-      if (!result.canceled && result.filePath) {
-        setProjectFilePath(result.filePath);
-        setProjectName(result.filePath.split(/[\\/]/).pop()?.replace(/\.openreality\.json$/i, '') || projectName);
-        showNotice('success', noticeMessage(language, '\u5de5\u7a0b\u5df2\u4fdd\u5b58\u3002', 'Project saved.'));
+    try {
+      if (window.openReality) {
+        const result = saveAs
+          ? await window.openReality.project.saveAs(project)
+          : await window.openReality.project.save(project, projectFilePath);
+        if (!result.canceled && result.filePath) {
+          setProjectFilePath(result.filePath);
+          setProjectName(result.filePath.split(/[\\/]/).pop()?.replace(/\.openreality\.json$/i, '') || projectName);
+          showNotice('success', noticeMessage(language, '\u5de5\u7a0b\u5df2\u4fdd\u5b58\u3002', 'Project saved.'));
+        }
+        return;
       }
-      return;
+      downloadJson(`open-reality-project-${Date.now()}.openreality.json`, project);
+      showNotice('success', noticeMessage(language, '工程文件已下载。', 'Project file downloaded.'));
+    } catch (error) {
+      showNotice('error', noticeMessage(language, `保存工程失败：${error instanceof Error ? error.message : localUnknownError(language)}`, `Save failed: ${error instanceof Error ? error.message : localUnknownError(language)}`), {
+        action: { kind: saveAs ? 'retry_project_save_as' : 'retry_project_save', label: language === 'zh' ? '重试保存' : 'Retry save' }
+      });
     }
-    downloadJson(`open-reality-project-${Date.now()}.openreality.json`, project);
   }, [buildProjectFile, language, projectFilePath, projectName, showNotice]);
 
   const loadWorkspaceFile = useCallback(async (file: File | null) => {
@@ -2424,13 +2439,15 @@ export default function Home() {
       }
       showNotice('success', noticeMessage(language, '\u5de5\u7a0b\u5df2\u6253\u5f00\u3002', 'Lab workspace opened.'));
     } catch (error) {
-      showNotice('error', noticeMessage(language, `\u6253\u5f00\u5de5\u7a0b\u5931\u8d25\uff1a${error instanceof Error ? error.message : '\u6587\u4ef6\u683c\u5f0f\u65e0\u6548'}`, `Open failed: ${error instanceof Error ? error.message : 'Invalid file format'}`));
+      showNotice('error', noticeMessage(language, `\u6253\u5f00\u5de5\u7a0b\u5931\u8d25\uff1a${error instanceof Error ? error.message : '\u6587\u4ef6\u683c\u5f0f\u65e0\u6548'}`, `Open failed: ${error instanceof Error ? error.message : 'Invalid file format'}`), {
+        action: { kind: 'choose_project_file', label: language === 'zh' ? '选择其他文件' : 'Choose another file' }
+      });
     }
   }, [applyProjectFile, applyWorkspaceFile, language, showNotice]);
 
   const openProject = useCallback(async () => {
     if (!window.openReality) {
-      workspaceFileInputRef.current?.click();
+      requestProjectFile();
       return;
     }
     try {
@@ -2439,9 +2456,11 @@ export default function Home() {
       applyProjectFile(result.project, result.filePath);
       showNotice('success', noticeMessage(language, '\u5de5\u7a0b\u5df2\u6253\u5f00\u3002', 'Project opened.'));
     } catch (error) {
-      showNotice('error', noticeMessage(language, `\u6253\u5f00\u5de5\u7a0b\u5931\u8d25\uff1a${error instanceof Error ? error.message : '\u6587\u4ef6\u683c\u5f0f\u65e0\u6548'}`, `Open failed: ${error instanceof Error ? error.message : 'Invalid file format'}`));
+      showNotice('error', noticeMessage(language, `\u6253\u5f00\u5de5\u7a0b\u5931\u8d25\uff1a${error instanceof Error ? error.message : '\u6587\u4ef6\u683c\u5f0f\u65e0\u6548'}`, `Open failed: ${error instanceof Error ? error.message : 'Invalid file format'}`), {
+        action: { kind: 'retry_project_open', label: language === 'zh' ? '重试打开' : 'Retry open' }
+      });
     }
-  }, [applyProjectFile, language, showNotice]);
+  }, [applyProjectFile, language, requestProjectFile, showNotice]);
 
   const restoreLastWorkspace = useCallback(() => {
     const rawWorkspace = window.localStorage.getItem(workspaceStorageKey);
@@ -2468,6 +2487,7 @@ export default function Home() {
   }, [applyWorkspaceFile, language, showNotice]);
 
   const exportDeploymentConfig = useCallback(async () => {
+    try {
     const readinessStatus = workspaceBlocked ? 'blocked' : workspaceWarnings > 0 ? 'warning' : 'pass';
     const basePackage = {
       package_type: 'open_reality_adapter_execution_package',
@@ -2535,17 +2555,45 @@ export default function Home() {
       workspaceBlocked ? 'warning' : 'success',
       noticeMessage(language, workspaceBlocked ? '\u914d\u7f6e\u5305\u5df2\u5bfc\u51fa\uff0c\u4f46\u9884\u68c0\u4ecd\u6709\u963b\u65ad\u9879\u3002' : '\u914d\u7f6e\u5305\u5df2\u5bfc\u51fa\u3002', workspaceBlocked ? 'Package exported with blocking preflight issues.' : 'Adapter package exported.')
     );
+    } catch (error) {
+      showNotice('error', noticeMessage(language, `导出 Adapter Package 失败：${error instanceof Error ? error.message : localUnknownError(language)}`, `Adapter Package export failed: ${error instanceof Error ? error.message : localUnknownError(language)}`), {
+        action: { kind: 'retry_export_adapter', label: language === 'zh' ? '重试导出' : 'Retry export' }
+      });
+    }
   }, [availableAssets, effectiveSelectedProfile.deviceMeta, labReport, language, prompt, selectedScenario.id, showNotice, workspaceBlocked, workspaceDevices, workspaceIssues, workspaceValidation, workspaceWarnings]);
 
   const exportCurrentLabReport = useCallback(async () => {
     if (!labReport) return;
-    if (window.openReality) {
-      const result = await window.openReality.export.labReport(labReport);
-      if (!result.canceled) showNotice('success', noticeMessage(language, '\u5b9e\u9a8c\u62a5\u544a\u5df2\u5bfc\u51fa\u3002', 'Lab Report exported.'));
+    try {
+      if (window.openReality) {
+        const result = await window.openReality.export.labReport(labReport);
+        if (!result.canceled) showNotice('success', noticeMessage(language, '\u5b9e\u9a8c\u62a5\u544a\u5df2\u5bfc\u51fa\u3002', 'Lab Report exported.'));
+        return;
+      }
+      downloadJson(`${labReport.lab_run_id}.json`, labReport);
+      showNotice('success', noticeMessage(language, '\u5b9e\u9a8c\u62a5\u544a\u5df2\u5bfc\u51fa\u3002', 'Lab Report exported.'));
+    } catch (error) {
+      showNotice('error', noticeMessage(language, `导出实验报告失败：${error instanceof Error ? error.message : localUnknownError(language)}`, `Lab Report export failed: ${error instanceof Error ? error.message : localUnknownError(language)}`), {
+        action: { kind: 'retry_export_report', label: language === 'zh' ? '重试导出' : 'Retry export' }
+      });
+    }
+  }, [labReport, language, showNotice]);
+
+  const handleNoticeAction = useCallback((action: OperatorNoticeAction) => {
+    setOperatorNotice(null);
+    if (action === 'discard_autosave') {
+      window.localStorage.removeItem(workspaceStorageKey);
+      showNotice('success', noticeMessage(language, '损坏的自动保存已清除；当前工作区未被修改。', 'Corrupted autosave cleared; the current workspace was not changed.'));
       return;
     }
-    exportLabReport(labReport);
-  }, [labReport, language, showNotice]);
+    if (action === 'retry_project_save') void saveWorkspace(false);
+    if (action === 'retry_project_save_as') void saveWorkspace(true);
+    if (action === 'retry_project_open') void openProject();
+    if (action === 'choose_project_file') requestProjectFile();
+    if (action === 'retry_export_adapter') void exportDeploymentConfig();
+    if (action === 'retry_export_report') void exportCurrentLabReport();
+    if (action === 'retry_export_asset') exportSelectedAssetConfig();
+  }, [exportCurrentLabReport, exportDeploymentConfig, exportSelectedAssetConfig, language, openProject, requestProjectFile, saveWorkspace, showNotice]);
 
   const stopRun = useCallback(() => {
     cancelActiveWork();
@@ -2675,6 +2723,15 @@ export default function Home() {
         onExportReport={() => void exportCurrentLabReport()}
         onExportAdapter={() => void exportDeploymentConfig()}
         onLanguageChange={handleLanguageChange}
+      />
+      <input
+        ref={workspaceFileInputRef}
+        data-project-file-input
+        type="file"
+        accept=".openreality.json,.json,application/json"
+        className="hidden"
+        tabIndex={-1}
+        onChange={(event) => void loadWorkspaceFile(event.target.files?.[0] ?? null)}
       />
       {operatorNotice && (
         <OperatorNotice language={language} notice={operatorNotice} onDismiss={() => setOperatorNotice(null)} onAction={handleNoticeAction} />
@@ -2862,10 +2919,12 @@ export default function Home() {
       </div>
       {assetImportOpen && (
         <div data-app-modal className="contents">
-          <AssetImportWizard
-            onImport={handleImportedAsset}
-            onClose={() => setAssetImportOpen(false)}
-          />
+          <AccessibleDialogBoundary label={language === 'zh' ? '导入设备资产' : 'Import device asset'} onClose={closeAssetImport}>
+            <AssetImportWizard
+              onImport={handleImportedAsset}
+              onClose={closeAssetImport}
+            />
+          </AccessibleDialogBoundary>
         </div>
       )}
       {actionComposerOpen && (
@@ -2934,7 +2993,7 @@ export default function Home() {
             showNotice('success', noticeMessage(language, '已通过第二道确认并添加到 Virtual Lab；执行模式仍为 simulation。', 'Second-gate confirmation passed and asset added to Virtual Lab; execution mode remains simulation.'));
             return { ok: true };
           }}
-            onClose={() => setManualImportOpen(false)}
+            onClose={closeManualImport}
           />
         </div>
       )}

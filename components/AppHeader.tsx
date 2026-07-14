@@ -15,24 +15,29 @@ interface FileMenuProps {
 }
 
 export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore }: FileMenuProps) {
-  const items: Array<[string, () => void]> = [
-    [t(language, 'app_new'), onNew],
-    [t(language, 'app_open'), onOpen],
-    [t(language, 'app_import_asset'), onImportAsset],
-    [language === 'zh' ? '导入设备手册…' : 'Import Device Manual…', onImportManual],
-    [t(language, 'app_save_project'), onSave],
-    [t(language, 'app_save_as'), onSaveAs],
-    [t(language, 'app_restore'), onRestore]
+  const items: Array<{ label: string; action: () => void }> = [
+    { label: t(language, 'app_new'), action: onNew },
+    { label: t(language, 'app_open'), action: onOpen },
+    { label: t(language, 'app_import_asset'), action: onImportAsset },
+    { label: language === 'zh' ? '导入设备手册…' : 'Import Device Manual…', action: onImportManual },
+    { label: t(language, 'app_save_project'), action: onSave },
+    { label: t(language, 'app_save_as'), action: onSaveAs },
+    { label: t(language, 'app_restore'), action: onRestore }
   ];
   return (
     <details className="relative">
-      <summary className="flex h-8 cursor-pointer select-none list-none items-center border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">
+      <summary data-file-menu-trigger className="flex h-8 cursor-pointer select-none list-none items-center border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">
         {language === 'zh' ? '文件' : 'File'} <span className="ml-2 text-[10px] text-text-secondary">▾</span>
       </summary>
       <div className="rw-floating-panel absolute left-0 top-9 z-50 flex w-48 flex-col py-1">
-        {items.map(([label, action]) => (
-          <button key={label} type="button" onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open'); action(); }} className="px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-raised">
-            {label}
+        {items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open'); item.action(); }}
+            className="px-3 py-2 text-left text-[13px] text-text-primary hover:bg-surface-raised"
+          >
+            {item.label}
           </button>
         ))}
       </div>

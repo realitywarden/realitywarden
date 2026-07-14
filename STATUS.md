@@ -55,11 +55,12 @@
 - **C1 左侧导航 ✅**：Device Navigator 与 Asset Library 拆为显式 Tab；Device Type / Profile / Scenario 归设备导航，资产搜索/拖放/添加归资产库，Public Alpha 支持说明随设备配置折叠，静态 Developer Preview 独立放入 Build boundaries。语言设置移至全局顶栏；左栏在 1180px 为 240px、1280px 起为 280px，关键能力不隐藏。
 - **C4 AppHeader ✅**：顶栏拆为 `AppHeader` / `FileMenu`，按项目身份与预检、文件操作、Quick Start/自定义动作、唯一运行结果、导出与语言分组；高度统一为 48px，FileMenu 浮层复用设计系统。Run/Stop 不进入顶栏，仍只属于 CommandDock。
 - **可访问恢复第一批 ✅**：操作通知按严重度使用 `status/polite` 或 `alert/assertive`，错误保持到人工关闭；损坏自动保存提供显式清除且不改当前工作区。Action Composer 具备可访问名称、Escape、Tab/Shift+Tab 圈闭与触发器回焦；所有模态统一抑制背景和 Three.js HTML 穿透。3D 世界标签被约束在工作区控件下层，不再覆盖 CommandDock。路由/全局/3D 崩溃面提供局部恢复 + 完整重载，并不再从 UI 异常伪造“硬件未发送”结论。新增 `test:accessibility` 接入 verify；1180×720 / 1440×900 动作编辑器实测完整，键盘路径通过。
+- **文件恢复与剩余导入模态 ✅**：Project Open / Save / Save As、Lab Report、Adapter Package 与所选资产配置导出均捕获桌面 IPC、文件系统和浏览器下载失败；错误通知保持可见并提供原操作重试，浏览器 Open 恢复入口允许重新选择同名文件。资产导入获得 dialog/Escape/Tab 圈闭，资产与手册导入均稳定回焦到仍可见的 File 菜单按钮；1180×720 与 1440×900 浏览器验收完整，控制台零 warning/error。未修改导入校验、安全逻辑或执行语义。
 
 ## 下一步
 
-1. **成品化持续项**：继续其余对话框、文件导入/导出失败的可访问性与上下文恢复（通知、Action Composer、崩溃边界第一批已完成）。
-2. **v0.5 后续**：为手册动作提供从已启用仿真资产进入 Action Composer 的显式安装/冲突审阅，不得自动安装动作或关联真实 adapter。
+1. **v0.5 后续**：为手册动作提供从已启用仿真资产进入 Action Composer 的显式安装/冲突审阅，不得自动安装动作或关联真实 adapter。
+2. **成品化持续项**：继续键盘遍历、窄窗口与高对比度审计，收敛资产导入向统一设计 token；不得覆盖尚未提交的资产预览健壮性改动。
 3. **发布操作（所有者）**：可选代码签名、tag、上传安装包与 SHA256；这些外部动作不改变软件完成状态。
 
 ## 待决策事项
