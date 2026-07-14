@@ -12,6 +12,7 @@ import type { UiLanguage } from './LabConfigurator';
 import { StatusPill } from './StatusPill';
 
 interface AuditPanelProps {
+  view?: 'all' | 'evidence' | 'inspector';
   language: UiLanguage;
   selectedProfile: DeviceProfile;
   selectedWorkspaceDevice: WorkspaceDeviceRecord | null;
@@ -1018,6 +1019,7 @@ function DeviceInspector({
 }
 
 export function AuditPanel({
+  view = 'all',
   language,
   selectedProfile,
   selectedWorkspaceDevice,
@@ -1040,22 +1042,30 @@ export function AuditPanel({
   const hasRun = Boolean(labReport);
   const blocked = safetyReport?.status === 'blocked';
 
+  const inspector = (
+    <DeviceInspector
+      language={language}
+      profile={selectedProfile}
+      isRunnable={isRunnable}
+      workspaceDeviceCount={workspaceDeviceCount}
+      workspaceValidation={workspaceValidation}
+      selectedWorkspaceDevice={selectedWorkspaceDevice}
+      selectedAsset={selectedAsset}
+      currentRunTargetLabel={currentRunTargetLabel}
+      onWorkspaceDeviceChange={onWorkspaceDeviceChange}
+      onWorkspaceDeviceRemove={onWorkspaceDeviceRemove}
+      onWorkspaceDeviceDuplicate={onWorkspaceDeviceDuplicate}
+      onSelectedAssetExport={onSelectedAssetExport}
+    />
+  );
+
+  if (view === 'inspector') {
+    return <aside className="custom-scrollbar h-full w-full overflow-y-auto bg-bg-panel">{inspector}</aside>;
+  }
+
   return (
     <aside className="custom-scrollbar flex h-full w-full shrink-0 flex-col overflow-y-auto bg-bg-panel">
-      <DeviceInspector
-        language={language}
-        profile={selectedProfile}
-        isRunnable={isRunnable}
-        workspaceDeviceCount={workspaceDeviceCount}
-        workspaceValidation={workspaceValidation}
-        selectedWorkspaceDevice={selectedWorkspaceDevice}
-        selectedAsset={selectedAsset}
-        currentRunTargetLabel={currentRunTargetLabel}
-        onWorkspaceDeviceChange={onWorkspaceDeviceChange}
-        onWorkspaceDeviceRemove={onWorkspaceDeviceRemove}
-        onWorkspaceDeviceDuplicate={onWorkspaceDeviceDuplicate}
-        onSelectedAssetExport={onSelectedAssetExport}
-      />
+      {view === 'all' && inspector}
 
       <section className="border-b border-[#E5E5EA] bg-[#F5F5F7] p-3">
         <div className="flex items-start justify-between gap-4">

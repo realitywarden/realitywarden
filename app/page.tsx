@@ -9,6 +9,7 @@ import { validateActionManifest } from '@/lib/action-manifest/ActionManifest';
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { LabConfigurator } from '@/components/LabConfigurator';
 import { RealHardwarePanel } from '@/components/RealHardwarePanel';
+import { EvidenceSidebar } from '@/components/EvidenceSidebar';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
 import type { UiLanguage } from '@/components/LabConfigurator';
 import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
@@ -2865,20 +2866,48 @@ export default function Home() {
             </>
           )}
         </div>
-        <aside className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border-panel bg-bg-panel">
-          {/* Governor takes real estate only when it has a decision to show
-              (UI audit C3); idle it collapses to its header + hint. */}
-          <div className={`${runtimeDecision ? 'h-[42%] min-h-[300px]' : 'max-h-[104px]'} shrink-0 overflow-hidden`}>
-            <AutonomyDecisionPanel
-              language={language}
-              prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
-              targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
-              targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
-              decision={runtimeDecision}
-            />
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
+        <EvidenceSidebar
+          language={language}
+          selectionKey={selectedWorkspaceDeviceId}
+          evidenceKey={runtimeDecisionContext?.prompt ?? labReport?.lab_run_id ?? (running ? 'running' : null)}
+          evidence={(
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <div className={`${runtimeDecision ? 'h-[44%] min-h-[280px]' : 'h-[104px]'} shrink-0 overflow-hidden`}>
+                <AutonomyDecisionPanel
+                  language={language}
+                  prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
+                  targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
+                  targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
+                  decision={runtimeDecision}
+                />
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <AuditPanel
+                  view="evidence"
+                  language={language}
+                  selectedProfile={selectedWorkspaceDevice ? effectiveSelectedProfile : selectedWorkspaceProfile}
+                  selectedWorkspaceDevice={selectedWorkspaceDevice}
+                  selectedAsset={selectedWorkspaceDevice?.assetId ? availableAssets.find((asset) => asset.manifest.asset_id === selectedWorkspaceDevice.assetId) ?? null : null}
+                  currentRunTargetLabel={currentRunTargetLabel}
+                  isRunnable={isRunnableDeviceV01(effectiveSelectedProfile.deviceMeta.device_type)}
+                  workspaceDeviceCount={workspaceDevices.length}
+                  workspaceValidation={workspaceValidation}
+                  onWorkspaceDeviceChange={updateWorkspaceDevice}
+                  onWorkspaceDeviceRemove={removeWorkspaceDevice}
+                  onWorkspaceDeviceDuplicate={duplicateWorkspaceDevice}
+                  onSelectedAssetExport={exportSelectedAssetConfig}
+                  labReport={labReport}
+                  safetyReport={labReport?.safety_report ?? null}
+                  selectedSnapshot={selectedSnapshot}
+                  onSnapshotSelect={selectSnapshot}
+                  onExportLabReport={() => void exportCurrentLabReport()}
+                />
+              </div>
+            </div>
+          )}
+          inspector={(
             <AuditPanel
+              view="inspector"
               language={language}
               selectedProfile={selectedWorkspaceDevice ? effectiveSelectedProfile : selectedWorkspaceProfile}
               selectedWorkspaceDevice={selectedWorkspaceDevice}
@@ -2897,9 +2926,9 @@ export default function Home() {
               onSnapshotSelect={selectSnapshot}
               onExportLabReport={() => void exportCurrentLabReport()}
             />
-          </div>
-          <RealHardwarePanel language={language} />
-        </aside>
+          )}
+          hardware={<RealHardwarePanel language={language} />}
+        />
       </div>
       {assetImportOpen && (
         <AssetImportWizard

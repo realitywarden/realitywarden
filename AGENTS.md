@@ -49,7 +49,9 @@ npm run verify                           # 全量(慢,提交前跑一次)
 - **不要多个 AI 会话同时写这个仓库**。历史上并发写入造成:源文件截断 ×3、git index 损坏 ×5、未提交编辑被 restore 抹掉 ×1。如果 `git status` 和文件实际内容矛盾,用 `git hash-object <file>` 对比 `git rev-parse HEAD:<file>` 验证,重建 index:`rm -f .git/index && git read-tree HEAD`。
 - 固件预编译镜像 `firmware/prebuilt/*.merged.bin` 有 sha256 companion,烧录脚本校验不过会拒绝——重编固件后必须同步更新 bin+sha256。
 
-## 当前进度与下一步(2026-07-11 交接时)
+## 当前进度与下一步(2026-07-14 所有者指示)
+
+**持续开发到成品，不等待真机验收。** 真机四场景仅是可选硬件证据，永远不得作为开发、功能解锁或发布工程的阻塞条件。六条安全不变量、证据锁和全部自动验证要求保持不变。
 
 已完成:安全审计 1.1/2.1/2.2/3.1/x.1/x.2 全修;零配置设备接入(自动检测+SetupAdvisor);一键烧录;UI 真机执行路径(证据锁);虚拟回环 e2e;UI 减重两批;v0.4 Action Composer(自定义动作,同管线);Windows NSIS 安装包(共享安全运行时+固件+serialport 原生绑定,安装态烟测通过)。
 
@@ -57,6 +59,6 @@ npm run verify                           # 全量(慢,提交前跑一次)
 1. **安装包打包 ✅**:electron-builder 产出 Windows 安装包,把 `dist-electron-runtime`、`firmware/prebuilt`、serialport 原生模块打进产物;版本号、图标;构建后自动验包并跑过安装态 smoke。
 2. **UI 信息架构重构**(`docs/ui/2026-07-11-ui-audit.md` C 系列剩余项 + E 系列视觉一致性:设计 token 收敛、字号层级)。
 3. v0.4 深化:动作库导入/导出(JSON,已有 schema)、禁区(forbidden_zones)在 3D 工作区可视化编辑。
-4. 验收后清理:删 3 个 `@deprecated` 旧 adapter(先查测试引用)。
+4. 成品清理:删 3 个 `@deprecated` 旧 adapter(先查测试引用),处理安全 P2 与发布文档;不等待真机验收。
 
 git:提交按功能单元、message 说明验证结果;所有者本机负责 push。

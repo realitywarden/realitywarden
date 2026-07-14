@@ -1,28 +1,24 @@
 # STATUS
 
-## 🚫 功能冻结令 / FEATURE FREEZE（2026-07-09，置顶生效）
+## ✅ 持续成品开发令 / CONTINUOUS PRODUCT DEVELOPMENT（2026-07-14，所有者置顶生效）
 
-**即刻起至 P0 真机四场景验收通过前，本仓库冻结一切新功能开发**，包括 Action Manifest 的后续扩展（能力编辑器、运行时意图注册、传感器订阅模型等全部暂停）。
+**不再以真机四场景验收作为继续开发、功能解锁或成品交付的前置条件。** 按路线图持续开发到软件成品；真机验收仅作为可选的硬件证据，不得再次阻塞 UI、运行时、Action Manifest 或发布工程。
 
-仅允许：
+每个功能单元仍必须遵守：
 
-- 修 bug
-- 验收相关的脚本与文档
+- 六条安全不变量只能收紧、不能放宽；真实执行默认拦截与证据锁不拆。
+- `AGENTS.md` 的定向验证 + `npm run verify` 全绿后才提交。
+- 提交按功能单元拆分，提交信息写明验证结果。
 
-已完成的 Action Manifest 代码（`lib/action-manifest/`、`manifest:validate` CLI、10 个测试）**保留但冻结**。
-
-解除条件：按 `docs/REAL_HARDWARE_ESP32.md` / 真机验收清单完成四场景验收（executed / angle 越界拦截 / 距离互锁拦截 / 传感器缺失拦截），四份审计日志存档。
-
-> FEATURE FREEZE: no new features until the P0 four-scenario real-device
-> acceptance passes. Bug fixes and acceptance-related scripts/docs only.
-> Completed Action Manifest code is retained but frozen.
+> OWNER OVERRIDE: physical acceptance is optional evidence, never a development gate.
+> Continue implementation to product completion while all automated safety and product gates stay green.
 
 ---
 
 ## 当前状态（2026-07-14 更新）
 
 - 版本：v0.2 close-out。v0.3 软件项已完成（LLM 编译器接线、REAL HARDWARE 只读面板、一键烧录待硬件）。
-- **冻结令修订（2026-07-11，所有者指示）**：真机接入易用性（零配置检测/一键烧录/诊断建议）纳入允许范围；六条安全不变量与验收 DoD 不变。
+- **持续开发令（2026-07-14，所有者指示）**：取消真机验收前置条件，持续开发到软件成品；六条安全不变量、默认拦截和自动验证门禁不变。
 - **Windows 安装包 ✅**：`npm run desktop:pack` 生成 `release/RealityWarden-0.1.1-Setup.exe`（NSIS x64）。产物包含 `dist-electron-runtime` 同源安全链、Next 生产运行时、`firmware/prebuilt`（镜像 SHA256 随包复验）与 3 个 serialport Windows 原生绑定；exe/安装器/卸载器使用 RealityWarden 图标与 0.1.1 版本资源。builder 完成后自动检查 asar/unpacked/固件/原生模块/安装包，且 `win-unpacked/RealityWarden.exe --prod --smoke-test` 安装态启动通过。
 - **UI 真机执行路径 ✅（成品主线）**：REAL HARDWARE 面板新增“真机执行”区。主进程运行时 require `dist-electron-runtime`（build-electron 同时编译根项目）——与 CLI/测试**同一份**编译后安全链（采样→保守中值→SafetyMonitor→gate→ticket→transport），ipc 层零协议复制、零手搓 actuation 帧（desktop 回归断言此契约）。执行默认 `real_execution_locked`：`docs/acceptance/evidence/` 集齐 4 份验收 JSON 才解锁（或 ORS_REAL_EXECUTION=enabled 台架督导模式），且每次执行需 UI 显式勾选确认。结果带 executionMode=real_hardware + hardwareSignalSent + 审计。
 - **v0.4 自定义动作 ✅（Action Composer）**：顶栏“自定义动作”打开可视化编辑器——基元步骤（能力/目标/速度/力度下拉）+ 安全包络选择，实时 `validateActionManifest` 校验（越权包络拒绝不收窄、内建意图重名拒绝、未知目标拒绝）；保存进工作区文件（加载时重新校验，非法即拒并提示）；“运行（仿真）”经 `expandManifestToTaskDsl` 展开为基元 TaskDSL，走与任意指令**完全相同**的运行时安全管线（LocalRuntime 新增 `manifest` 编译器来源，审计如实标注，绝不伪装成 llm/rules）。
@@ -41,22 +37,23 @@
 - **1.1 execute()/send() 结构性封装** — ✅ 完成（本次提交）。方案 B+ 双层：`lib/hardware/internal/actuation.ts` 的 gate 私有 ACTUATION_TICKET（unique symbol，index 不导出，ESLint 禁止外部 import）+ 运行期权威层——`SerialEsp32Transport.send()` 直接拒绝 actuation 帧（`actuation_requires_gate`），`sendActuation()` 校验 ticket（`invalid_actuation_ticket`），adapter 同样校验（防御纵深）。持有 adapter/transport 引用也无法发出 actuation 帧，"结构性单一通路"名副其实。只读命令（read_distance/diagnose_*）不受影响。
 - **x.1 / x.2 transport 硬化** — ✅ 完成（本次提交）。接收缓冲有界（oversized line 丢弃并记 protocolError）、重复 pending id 显式拒绝、requestTimeoutMs 构造期校验。
 - **附带收紧**（本次提交）：SafetyMonitor 增加 nowMs 非有限拒绝、override 去重与阈值校验、传感器类型/单位绑定校验（`sensor_type_mismatch`）、设备/主机时间戳非法与未来时间拒绝；中值读数取窗口内最旧时间戳（保守），StuckValueDetector 窗口参数校验。
-- 剩余 P2（2.3/3.1/4.1/5.2 + 4.2 文档化）— 归入"真机验收后处理"，冻结不动。
+- 剩余 P2（2.3/4.1/5.2 + 4.2 文档化）按成品路线图处理，不再等待真机验收。
 
 ### UI
-- UI 审查报告 `docs/ui/2026-07-11-ui-audit.md`；冻结期可修的第 1 批（重叠/截断/去重/i18n）已修复并提交（`12221af`）；信息架构重构留待验收后。
+- UI 审查报告 `docs/ui/2026-07-11-ui-audit.md`；第 1、2 批（重叠/截断/去重/i18n）已修复；信息架构与视觉一致性现为最高优先级。
+- **C3 右侧证据栏 ✅**：Runtime Governor 与审计证据合并为 `Audit & Governor`，设备配置拆入 `Device Inspector` Tab；设备选择变化一步打开 Inspector，新运行/新证据一步回到审计；`REAL HARDWARE` 始终位于 Tab 之外并保留独立黑黄危险边界。仅重组呈现与状态导航，未修改审计、安全门或真实执行逻辑。
 
 ## 下一步
 
-1. **（你）本机重刷固件 → 跑真机四场景验收**：`npm install serialport` 一次 → `npm run hardware:demo -- --port COMx`（场景 1+2）→ `--scenario 3`（手挡 <10cm）→ `--scenario 4`（拔传感器）。四份审计日志 JSON 存档 = DoD 证据。命令与接线详见 `真机验收清单.md` / `docs/REAL_HARDWARE_ESP32.md`。
-2. **验收通过 → 冻结令解除**，依次解锁：删 3 个 `@deprecated` 旧 adapter → 一键烧录 MVP → UI 真机执行路径 → v0.4 自定义动作（能力编辑器 + 意图注册，草案 `docs/ACTION_MANIFEST_DRAFT.md` 已批）。
-3. 冻结期内仍可做的软件活（若需要）：audit 1.1 轻量修（改 bug 范畴，改安全层须逐条批准）；虚拟串口回环 e2e；验收操作卡。
+1. **UI 信息架构重构**：完成 `docs/ui/2026-07-11-ui-audit.md` C 系列与 E 系列，收敛导航、面板层级、设计 token 和字号层级。
+2. **v0.4 深化**：动作库 JSON 导入/导出；`forbidden_zones` 在 3D 工作区可视化编辑。
+3. **成品清理**：确认测试引用后删除 3 个 `@deprecated` 旧 adapter；处理剩余安全 P2 与文档语义。
+4. **发布收口**：安装包持续验包与 smoke，补齐成品文档、版本和发布说明。真机验收可做但不阻塞任何一项。
 
 ## 待决策事项
 
-- **audit 1.1 方案**：execute()/send() 改模块私有还是 gate 专属 token？（未出方案，等你说要不要现在做）
 - **未推送 commit**：本会话所有提交需你本机 `git push`（sandbox 无外网）。截至归档，本地领先 origin 的提交见 `git log`；如遇 push 被拒先 `git pull --rebase`。
-- **P2 批量处理时机**：确认全部留到验收后，还是挑几条随手清。
+- **真机证据**：可随时补充，但不是任何软件开发、功能解锁或发布工作的阻塞项。
 
 ---
 
