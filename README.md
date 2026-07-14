@@ -55,8 +55,9 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
 - no production hardware control, no industrial safety certification
 - local PDF/Markdown/text manual import produces reviewable, simulation-only
   device proposals; a second explicit review is required before a generated
-  asset can enter Virtual Lab, and generated assets can never enable a real
-  adapter
+  asset can enter Virtual Lab; proposed actions require a separate explicit
+  conflict review before being copied into Action Composer, and generated
+  assets can never enable a real adapter
 
 Real-hardware safety invariants — **43/43 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
 

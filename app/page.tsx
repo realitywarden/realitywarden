@@ -1307,6 +1307,11 @@ export default function Home() {
     const baseProfile = asset ? profileFromAsset(asset) : selectedWorkspaceProfile;
     return applyWorkspaceDeviceConfig(baseProfile, selectedWorkspaceDevice);
   }, [availableAssets, selectedProfile, selectedWorkspaceDevice, selectedWorkspaceProfile]);
+  const selectedManualActionRecord = useMemo(() => manualImports.find((record) => (
+    record.virtual_lab?.enabled === true
+    && record.device_meta.profile_id === selectedWorkspaceDevice?.assetId
+    && record.device_meta.profile_id === effectiveSelectedProfile.deviceMeta.profile_id
+  )) ?? null, [effectiveSelectedProfile.deviceMeta.profile_id, manualImports, selectedWorkspaceDevice?.assetId]);
   const currentRunTargetLabel = useMemo(() => {
     if (selectedWorkspaceAsset) return localizeDisplayName(language, selectedWorkspaceAsset.manifest.display_name);
     if (selectedWorkspaceDevice) return localizeDisplayName(language, selectedWorkspaceDevice.label);
@@ -2937,6 +2942,8 @@ export default function Home() {
             setCustomActions((current) => [...current.filter((item) => item.action_id !== manifest.action_id), manifest]);
           }}
           onImport={(manifests) => setCustomActions((current) => [...current, ...manifests])}
+          manualActionRecord={selectedManualActionRecord}
+          onInstallManualActions={(manifests) => setCustomActions((current) => [...current, ...manifests])}
           onDelete={(actionId) => setCustomActions((current) => current.filter((item) => item.action_id !== actionId))}
           onRun={(manifest, taskDsl) => {
             setActionComposerOpen(false);
@@ -2991,6 +2998,15 @@ export default function Home() {
             setCommandStatus({ kind: isRunnableDeviceV01(enabled.asset.manifest.device_type) ? 'ready' : 'coming_soon', message: isRunnableDeviceV01(enabled.asset.manifest.device_type) ? readyMessageForPrompt(language, enabled.asset.manifest.device_type, nextPrompt) : comingSoonMessage(language, enabled.asset.manifest.device_type) });
             setLabReport(null); setWorkspaceValidation(null); setSelectedSnapshot(null); setCurrentActionFrame(null); setLivePlaybackEvents([]); setLiveAdapterCommands([]); setReplayIndex(0);
             showNotice('success', noticeMessage(language, '已通过第二道确认并添加到 Virtual Lab；执行模式仍为 simulation。', 'Second-gate confirmation passed and asset added to Virtual Lab; execution mode remains simulation.'));
+            return { ok: true };
+          }}
+          onReviewActions={(record) => {
+            if (!record.virtual_lab?.enabled) return { ok: false, detail: language === 'zh' ? '必须先通过第二道确认启用仿真资产。' : 'Enable the simulation asset through the second gate first.' };
+            const workspaceDevice = workspaceDevices.find((device) => device.assetId === record.device_meta.profile_id);
+            if (!workspaceDevice) return { ok: false, detail: language === 'zh' ? '请先从 Asset Library 将已启用的仿真资产添加到工作区。' : 'Add the enabled simulation asset to the workspace from Asset Library first.' };
+            setSelectedWorkspaceDeviceId(workspaceDevice.id);
+            setManualImportOpen(false);
+            setActionComposerOpen(true);
             return { ok: true };
           }}
             onClose={closeManualImport}

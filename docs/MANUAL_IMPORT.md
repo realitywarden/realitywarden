@@ -50,3 +50,26 @@ The generated asset:
 - is removed on proposal edits, requiring the second gate again; and
 - is rejected and removed from a restored workspace if its enablement or
   template reference is missing, malformed, or mismatched.
+
+## Optional action installation (third gate)
+
+Enabling a manual-derived asset does **not** install any proposed actions. To
+copy an action into the local custom-action library, the operator must select
+the enabled simulation asset and explicitly enter **Action Composer** review.
+The review shows the retained source file and SHA-256, every primitive step,
+safety envelope, required sensors, and any existing-ID conflict.
+
+Installation is a separate third confirmation with these invariants:
+
+- the stored manual record and every selected Action Manifest are revalidated
+  again at the installation commit point;
+- the current Action Composer profile must be the exact enabled manual profile
+  and must structurally expose only the `simulator` adapter;
+- existing action IDs, duplicate selections, unknown selections, invalid
+  targets, primitives, values, and envelopes are rejected without overwrite,
+  clamping, or partial installation of the selected batch;
+- only explicitly checked, conflict-free actions are copied; no action is
+  installed merely because a proposal or Virtual Lab asset was approved; and
+- the result contains Action Manifests only. It creates no adapter association,
+  grants no real-hardware authority, and every later run is expanded to
+  primitives and re-enters the normal governed runtime pipeline.

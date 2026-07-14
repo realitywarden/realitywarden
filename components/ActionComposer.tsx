@@ -20,6 +20,8 @@ import {
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { exportActionLibrary, importActionLibrary } from '@/lib/action-manifest/ActionLibrary';
 import { getReferenceActionRecipe } from '@/lib/action-manifest/ReferenceRecipes';
+import { installReviewedManualActions, reviewManualActionInstall } from '@/lib/manual-import/ManualActionInstall';
+import type { ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
 import type { DeviceMeta } from '@/types/deviceMeta';
 import type { TaskDSL } from '@/types/taskDsl';
 
@@ -42,6 +44,8 @@ export interface ActionComposerProps {
   actions: ActionManifest[];
   onSave: (manifest: ActionManifest) => void;
   onImport: (manifests: ActionManifest[]) => void;
+  manualActionRecord?: ManualImportRecord | null;
+  onInstallManualActions: (manifests: ActionManifest[]) => void;
   onDelete: (actionId: string) => void;
   onRun: (manifest: ActionManifest, taskDsl: TaskDSL) => void;
   onClose: () => void;
@@ -49,7 +53,7 @@ export interface ActionComposerProps {
 
 const inputClass = 'h-7 rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 text-[12px] text-text-primary outline-none focus:border-[#0284C7]';
 
-export function ActionComposer({ language, deviceMeta, actions, onSave, onImport, onDelete, onRun, onClose }: ActionComposerProps) {
+export function ActionComposer({ language, deviceMeta, actions, onSave, onImport, manualActionRecord, onInstallManualActions, onDelete, onRun, onClose }: ActionComposerProps) {
   const zh = language === 'zh';
   const [actionId, setActionId] = useState('');
   const [nameZh, setNameZh] = useState('');
@@ -58,6 +62,8 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
   const [maxForce, setMaxForce] = useState<'low' | 'medium' | 'high'>('low');
   const [steps, setSteps] = useState<StepDraft[]>([newStepDraft(deviceMeta.capabilities[0] ?? '')]);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [selectedManualActionIds, setSelectedManualActionIds] = useState<string[]>([]);
+  const [manualInstallConfirmed, setManualInstallConfirmed] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -127,7 +133,20 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
     () => validateActionManifest(draftManifest, deviceMeta, BUILTIN_INTENT_IDS),
     [draftManifest, deviceMeta]
   );
+  const manualActionReview = useMemo(() => manualActionRecord
+    ? reviewManualActionInstall({
+        record: manualActionRecord,
+        currentDeviceMeta: deviceMeta,
+        existingActions: actions,
+        builtinIntentIds: BUILTIN_INTENT_IDS
+      })
+    : null, [actions, deviceMeta, manualActionRecord]);
   const hasReferenceRecipe = getReferenceActionRecipe(deviceMeta.device_type) !== null;
+
+  useEffect(() => {
+    setSelectedManualActionIds([]);
+    setManualInstallConfirmed(false);
+  }, [manualActionRecord?.device_meta.profile_id, manualActionRecord?.source.sha256]);
 
   const loadReferenceRecipe = () => {
     const raw = getReferenceActionRecipe(deviceMeta.device_type);
@@ -188,6 +207,31 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
     } catch (error) {
       setFeedback({ ok: false, text: `invalid_json: ${error instanceof Error ? error.message : String(error)}` });
     }
+  };
+
+  const installManualActions = () => {
+    if (!manualActionRecord) return;
+    const installed = installReviewedManualActions({
+      record: manualActionRecord,
+      currentDeviceMeta: deviceMeta,
+      existingActions: actions,
+      builtinIntentIds: BUILTIN_INTENT_IDS,
+      selectedActionIds: selectedManualActionIds,
+      confirmed: manualInstallConfirmed
+    });
+    if (!installed.ok) {
+      setFeedback({ ok: false, text: installed.detail });
+      return;
+    }
+    onInstallManualActions(installed.actions);
+    setSelectedManualActionIds([]);
+    setManualInstallConfirmed(false);
+    setFeedback({
+      ok: true,
+      text: zh
+        ? `已显式安装 ${installed.actions.length} 个仅仿真动作；运行时仍会重新经过安全治理。`
+        : `Explicitly installed ${installed.actions.length} simulation-only actions; every run is still re-governed.`
+    });
   };
 
   const exportLibrary = () => {
@@ -252,6 +296,100 @@ export function ActionComposer({ language, deviceMeta, actions, onSave, onImport
               </div>
             )}
           </section>
+
+          {manualActionRecord && (
+            <section className="border-2 border-simulation bg-simulation/5 p-3" aria-labelledby="manual-action-install-title">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div id="manual-action-install-title" className="text-[13px] font-semibold text-simulation">
+                    {zh ? '手册动作安装审阅（仅仿真）' : 'Manual action installation review (simulation only)'}
+                  </div>
+                  <div className="mt-1 text-[12px] leading-5 text-text-secondary">
+                    {zh
+                      ? '这里只会把选中的动作复制到本地自定义动作库；不会自动安装、启用真实硬件或关联 Adapter。每次运行仍重新通过完整安全管线。'
+                      : 'This only copies selected actions into the local custom-action library. It never auto-installs, enables real hardware, or links an adapter. Every run traverses the full safety pipeline again.'}
+                  </div>
+                </div>
+                <span className="shrink-0 border border-simulation px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-simulation">SIMULATION ONLY</span>
+              </div>
+              <dl className="mt-2 grid grid-cols-[84px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[11px]">
+                <dt className="text-text-muted">{zh ? '来源' : 'Source'}</dt><dd className="truncate text-text-secondary">{manualActionRecord.source.file_name}</dd>
+                <dt className="text-text-muted">SHA-256</dt><dd className="truncate font-mono text-text-secondary">{manualActionRecord.source.sha256}</dd>
+                <dt className="text-text-muted">{zh ? '仿真档案' : 'Profile'}</dt><dd className="truncate text-text-secondary">{manualActionRecord.device_meta.profile_id}</dd>
+              </dl>
+
+              {!manualActionReview?.ok ? (
+                <div className="mt-3 border border-status-blocked-edge bg-status-blocked-surface p-2 text-[12px] text-status-blocked-soft" role="alert">
+                  {manualActionReview?.detail ?? (zh ? '无法审阅手册动作。' : 'Manual actions cannot be reviewed.')}
+                </div>
+              ) : manualActionReview.candidates.length === 0 ? (
+                <div className="mt-3 border border-border bg-surface-raised p-2 text-[12px] text-text-secondary">
+                  {zh ? '此手册提案没有动作可安装。' : 'This manual proposal contains no actions to install.'}
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {manualActionReview.candidates.map((candidate) => {
+                    const ready = candidate.status === 'ready';
+                    const selected = selectedManualActionIds.includes(candidate.actionId);
+                    return (
+                      <label key={candidate.actionId} className={`block border p-2 ${ready ? 'border-border bg-surface-raised' : 'border-status-blocked-edge bg-status-blocked-surface'}`}>
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            disabled={!ready}
+                            onChange={(event) => setSelectedManualActionIds((current) => event.target.checked
+                              ? [...current, candidate.actionId]
+                              : current.filter((actionId) => actionId !== candidate.actionId))}
+                            className="mt-0.5"
+                            aria-label={`${ready ? (zh ? '选择安装' : 'Select to install') : (zh ? '冲突' : 'Conflict')}: ${candidate.actionId}`}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-[12px] font-semibold text-text-primary">{localName(candidate.manifest, language)}</span>
+                              <span className={`border px-1.5 py-0.5 text-[11px] font-bold uppercase ${ready ? 'border-status-executed-edge text-status-executed-soft' : 'border-status-blocked-edge text-status-blocked-soft'}`}>
+                                {ready ? (zh ? '可安装' : 'Ready') : (zh ? '冲突' : 'Conflict')}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 font-mono text-[11px] text-text-muted">{candidate.actionId}</div>
+                            <div className={`mt-1 text-[11px] leading-4 ${ready ? 'text-text-secondary' : 'text-status-blocked-soft'}`}>{candidate.detail}</div>
+                            <div className="mt-1 text-[11px] text-text-secondary">
+                              {zh ? '安全包络' : 'Envelope'}: {candidate.manifest.safety.envelope.max_speed}/{candidate.manifest.safety.envelope.max_force}
+                              {' · '}{candidate.manifest.steps.length} {zh ? '个基元步骤' : 'primitive steps'}
+                              {' · '}{zh ? '所需传感器' : 'sensors'}: {candidate.manifest.safety.required_sensors.join(', ') || (zh ? '无' : 'none')}
+                            </div>
+                            <ol className="mt-1 space-y-0.5 font-mono text-[11px] text-text-muted">
+                              {candidate.manifest.steps.map((step, index) => (
+                                <li key={`${candidate.actionId}-${index}`}>
+                                  {index + 1}. {step.action}{step.target ? ` → ${step.target}` : ''}{step.value !== undefined ? ` = ${String(step.value)}` : ''}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                  <label className="flex items-start gap-2 border border-warning bg-warning/10 p-2 text-[12px] leading-5 text-text-primary">
+                    <input type="checkbox" checked={manualInstallConfirmed} onChange={(event) => setManualInstallConfirmed(event.target.checked)} className="mt-1" />
+                    <span>
+                      {zh
+                        ? '我已审阅所选动作的来源、基元步骤、安全包络和冲突；确认只复制到本地仿真动作库，不授予任何真实硬件权限。'
+                        : 'I reviewed the selected actions’ source, primitives, envelope, and conflicts. I confirm this only copies into the local simulation action library and grants no real-hardware authority.'}
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={installManualActions}
+                    disabled={!manualInstallConfirmed || selectedManualActionIds.length === 0}
+                    className="h-8 border border-simulation bg-simulation px-3 text-[12px] font-semibold text-black disabled:opacity-40"
+                  >
+                    {zh ? `安装所选动作（${selectedManualActionIds.length}）` : `Install selected actions (${selectedManualActionIds.length})`}
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Editor */}
           <section className="rounded-[3px] border border-border-panel bg-[#181A1D] p-3">

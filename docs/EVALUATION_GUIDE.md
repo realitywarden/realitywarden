@@ -16,6 +16,10 @@ Runnable device paths in the current Public Alpha:
 - manually imported PDF/Markdown/text device proposals after two explicit
   simulation-only reviews
 
+Manual-derived actions remain uninstalled after those two reviews. Copying one
+into Action Composer is optional and requires a third explicit conflict review
+for the exact enabled simulation profile.
+
 Everything else in the workspace should be treated as:
 
 - visible asset scaffolding

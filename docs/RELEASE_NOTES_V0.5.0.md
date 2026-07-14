@@ -25,6 +25,10 @@ industrial safety certification, or production readiness.
   `real_device_enabled:false` and `supported_adapters:['simulator']`. Templates
   cannot expand capabilities, and tampered or orphaned records are rejected on
   restore rather than silently repaired.
+- Enabled manual simulation assets can explicitly enter Action Composer for a
+  third-gate installation review. The UI exposes source digest, primitive
+  steps, envelopes, sensors, and ID conflicts; the selected batch is
+  revalidated atomically and never overwrites actions or links a real adapter.
 - The Windows NSIS installer includes the compiled shared safety runtime, Next
   production output, pinned PDF extraction runtime, checksummed firmware, and
   rebuilt Windows serialport native bindings. Packaging now verifies these
@@ -50,7 +54,7 @@ recorded as `command_acknowledged_open_loop` with
 - Next.js production build passes;
 - real-hardware safety invariants: **43/43**;
 - virtual serial loopback acceptance: **5/5**;
-- malicious/manual-import and second-gate coverage: **12/12**;
+- malicious/manual-import, second-gate, and action-install coverage: **21/21**;
 - Desktop and Conformance source-contract checks pass;
 - full `npm run verify` passes;
 - `npm run desktop:pack` verifies the package and automatically runs
@@ -67,7 +71,8 @@ release/RealityWarden-0.5.0-Setup.exe
 - Public Alpha, not a production-certified control system.
 - The reference hardware path supports only the documented bench rig.
 - Manual import depends on a reachable configured local Ollama runtime and does
-  not install actions into Action Composer automatically.
+  not install actions into Action Composer automatically; installation is an
+  explicit third-gate review for enabled simulation assets only.
 - Physical reference-kit acceptance is optional field evidence, never a
   software completion or release-engineering gate.
 - Code signing, tagging, publishing, and installer upload remain owner actions.

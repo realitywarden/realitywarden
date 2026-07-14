@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { ManualProfileExtractor, approveManualImport, enableManualImportForVirtualLab, restoreEnabledManualSimulationAsset, validateStoredManualImport, type ManualExtractionProposal } from '../../lib/manual-import/ManualProfileImport';
+import { installReviewedManualActions, reviewManualActionInstall } from '../../lib/manual-import/ManualActionInstall';
 import type { DeviceAsset } from '../../lib/assets/DeviceAsset';
 
 const builtins = new Set(['move_red_cube']);
@@ -32,6 +33,14 @@ function templateAsset(deviceType: DeviceAsset['manifest']['device_type'] = 'rob
       unsafe: { id: 'unsafe', device_profile: 'template', initial_state: {}, prompt: 'unsafe', expected_task_type: 'unsafe', unsafe_actions: [], expected_safety_result: 'blocked', expected_state_after: {} }
     }
   };
+}
+
+function enabledManualRecord() {
+  const approved = approveManualImport({ proposal: proposal(), source: source(), extraction: extraction(), builtinIntentIds: builtins, confirmed: true });
+  if (!approved.ok) throw new Error(approved.detail);
+  const enabled = enableManualImportForVirtualLab({ record: approved.record, templateAsset: templateAsset(), builtinIntentIds: builtins, confirmed: true });
+  if (!enabled.ok) throw new Error(enabled.detail);
+  return enabled.record;
 }
 
 async function run() {
@@ -141,7 +150,81 @@ async function run() {
     assert.equal(restoreEnabledManualSimulationAsset({ record: enabled.record, templateAssets: [templateAsset('smart_light')], builtinIntentIds: builtins }).ok, false);
   });
 
-  console.log(`Manual import tests: ${count}/12 passed`);
+  await test('manual action review requires separate Virtual Lab enablement', () => {
+    const approved = approveManualImport({ proposal: proposal(), source: source(), extraction: extraction(), builtinIntentIds: builtins, confirmed: true });
+    assert.equal(approved.ok, true);
+    if (!approved.ok) return;
+    const reviewed = reviewManualActionInstall({ record: approved.record, currentDeviceMeta: approved.record.device_meta, existingActions: [], builtinIntentIds: builtins });
+    assert.equal(reviewed.ok, false);
+    if (!reviewed.ok) assert.match(reviewed.detail, /enabled simulation-only Virtual Lab asset/);
+  });
+
+  await test('manual actions are bound to the exact enabled simulation profile', () => {
+    const record = enabledManualRecord();
+    const wrongProfile = { ...record.device_meta, profile_id: 'another-simulation-profile' };
+    const reviewed = reviewManualActionInstall({ record, currentDeviceMeta: wrongProfile, existingActions: [], builtinIntentIds: builtins });
+    assert.equal(reviewed.ok, false);
+    if (!reviewed.ok) assert.match(reviewed.detail, /current Action Composer device/);
+  });
+
+  await test('manual action review rejects a current device with real adapter authority', () => {
+    const record = enabledManualRecord();
+    const unsafeCurrent = { ...record.device_meta, supported_adapters: ['simulator', 'serial_esp32'] };
+    const reviewed = reviewManualActionInstall({ record, currentDeviceMeta: unsafeCurrent, existingActions: [], builtinIntentIds: builtins });
+    assert.equal(reviewed.ok, false);
+    if (!reviewed.ok) assert.match(reviewed.detail, /structurally simulation-only/);
+  });
+
+  await test('manual action review exposes existing-id conflicts without overwriting', () => {
+    const record = enabledManualRecord();
+    const reviewed = reviewManualActionInstall({ record, currentDeviceMeta: record.device_meta, existingActions: [record.action_manifests[0]], builtinIntentIds: builtins });
+    assert.equal(reviewed.ok, true);
+    if (!reviewed.ok) return;
+    assert.equal(reviewed.candidates[0].status, 'conflict');
+    assert.match(reviewed.candidates[0].detail, /never overwritten/);
+  });
+
+  await test('manual action installation requires a third explicit confirmation', () => {
+    const record = enabledManualRecord();
+    const installed = installReviewedManualActions({ record, currentDeviceMeta: record.device_meta, existingActions: [], builtinIntentIds: builtins, selectedActionIds: ['return_to_home'], confirmed: false });
+    assert.equal(installed.ok, false);
+    if (!installed.ok) assert.match(installed.detail, /explicit manual-action installation confirmation/);
+  });
+
+  await test('manual action installation rejects duplicate and unknown selections', () => {
+    const record = enabledManualRecord();
+    const duplicate = installReviewedManualActions({ record, currentDeviceMeta: record.device_meta, existingActions: [], builtinIntentIds: builtins, selectedActionIds: ['return_to_home', 'return_to_home'], confirmed: true });
+    assert.equal(duplicate.ok, false);
+    const unknown = installReviewedManualActions({ record, currentDeviceMeta: record.device_meta, existingActions: [], builtinIntentIds: builtins, selectedActionIds: ['not_reviewed'], confirmed: true });
+    assert.equal(unknown.ok, false);
+  });
+
+  await test('manual action installation atomically rejects a selected conflict', () => {
+    const record = enabledManualRecord();
+    const installed = installReviewedManualActions({ record, currentDeviceMeta: record.device_meta, existingActions: [record.action_manifests[0]], builtinIntentIds: builtins, selectedActionIds: ['return_to_home'], confirmed: true });
+    assert.equal(installed.ok, false);
+    assert.equal('actions' in installed, false);
+  });
+
+  await test('manual action installation returns only the explicitly selected revalidated batch', () => {
+    const record = enabledManualRecord();
+    const installed = installReviewedManualActions({ record, currentDeviceMeta: record.device_meta, existingActions: [], builtinIntentIds: builtins, selectedActionIds: ['return_to_home'], confirmed: true });
+    assert.equal(installed.ok, true);
+    if (!installed.ok) return;
+    assert.deepEqual(installed.actions.map((action) => action.action_id), ['return_to_home']);
+    assert.equal('adapter' in installed, false);
+    assert.equal('executionMode' in installed, false);
+  });
+
+  await test('manual action installation revalidates tampered stored actions at commit time', () => {
+    const record = structuredClone(enabledManualRecord());
+    record.action_manifests[0].steps[0].action = 'grasp';
+    const installed = installReviewedManualActions({ record, currentDeviceMeta: record.device_meta, existingActions: [], builtinIntentIds: builtins, selectedActionIds: ['return_to_home'], confirmed: true });
+    assert.equal(installed.ok, false);
+  });
+
+  assert.equal(count, 21);
+  console.log(`Manual import tests: ${count}/21 passed`);
 }
 
 void run().catch((error) => { console.error(error); process.exitCode = 1; });

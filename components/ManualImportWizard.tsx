@@ -11,6 +11,7 @@ interface Props {
   existingRecords: readonly ManualImportRecord[];
   onSave: (record: ManualImportRecord) => void;
   onEnable: (record: ManualImportRecord, confirmed: boolean) => { ok: true } | { ok: false; detail: string };
+  onReviewActions: (record: ManualImportRecord) => { ok: true } | { ok: false; detail: string };
   onClose: () => void;
 }
 
@@ -34,7 +35,7 @@ async function sha256(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function ManualImportWizard({ language, builtinIntentIds, existingRecords, onSave, onEnable, onClose }: Props) {
+export function ManualImportWizard({ language, builtinIntentIds, existingRecords, onSave, onEnable, onReviewActions, onClose }: Props) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -133,6 +134,17 @@ export function ManualImportWizard({ language, builtinIntentIds, existingRecords
     onClose();
   };
 
+  const reviewActions = () => {
+    if (!selectedRecord) return;
+    const result = onReviewActions(selectedRecord);
+    if (!result.ok) {
+      setError(result.detail);
+      return;
+    }
+    // The parent owns the modal-to-modal transition so the newly opened
+    // Action Composer keeps focus; the normal close path would focus File.
+  };
+
   const zh = language === 'zh';
   return (
     <div ref={modalRef} data-manual-import-modal className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={zh ? '导入设备手册' : 'Import device manual'}>
@@ -168,7 +180,19 @@ export function ManualImportWizard({ language, builtinIntentIds, existingRecords
                   {reviewMode === 'raw' && <pre className="h-[230px] overflow-auto whitespace-pre-wrap break-words border-x border-b border-border p-3 text-[11px] leading-5 text-text-secondary">{extraction?.raw_output}</pre>}
                   <label className="mt-3 flex items-start gap-2 border border-warning bg-warning/10 p-3 text-[12px]"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-0.5" /><span>{zh ? '我已将能力、目标、工作区、安全包络和动作逐项与原手册核对；保存内容仅用于语义仿真。' : 'I checked capabilities, targets, workspace, envelope, and actions against the source; this record is for semantic simulation only.'}</span></label>
                   {selectedRecord && !selectedRecord.virtual_lab?.enabled && <div className="mt-3 border-2 border-simulation p-3"><div className="text-[13px] font-semibold text-simulation">{zh ? '第二道门：启用到 Virtual Lab' : 'Second gate: enable in Virtual Lab'}</div><label className="mt-2 flex items-start gap-2 text-[12px]"><input type="checkbox" checked={enableConfirmed} onChange={(event) => setEnableConfirmed(event.target.checked)} className="mt-0.5" /><span>{zh ? '我确认拥有该手册的使用权，并理解几何是通用语义模板；启用仅创建仿真资产，不安装或连接真实设备 Adapter。' : 'I confirm source usage rights and understand geometry is generic; enablement creates only a simulation asset and never installs or connects a real-device adapter.'}</span></label><button type="button" onClick={enable} disabled={!confirmed || !enableConfirmed} className="mt-3 h-9 w-full bg-simulation px-3 text-[13px] font-semibold text-black disabled:opacity-40">{zh ? '启用并添加到 Virtual Lab' : 'Enable and add to Virtual Lab'}</button></div>}
-                  {selectedRecord?.virtual_lab?.enabled && <div className="mt-3 border border-simulation bg-simulation/10 p-3 text-[12px] text-simulation">{zh ? '已启用到 Virtual Lab（仅仿真）。' : 'Enabled in Virtual Lab (simulation only).'}</div>}
+                  {selectedRecord?.virtual_lab?.enabled && (
+                    <div className="mt-3 border border-simulation bg-simulation/10 p-3 text-[12px] text-text-primary">
+                      <div className="font-semibold text-simulation">{zh ? '已启用到 Virtual Lab（仅仿真）。' : 'Enabled in Virtual Lab (simulation only).'}</div>
+                      <p className="mt-1 leading-5 text-text-secondary">
+                        {zh
+                          ? `手册包含 ${selectedRecord.action_manifests.length} 个未自动安装的动作提案。进入 Action Composer 后仍需逐项审阅冲突并显式确认。`
+                          : `The manual contains ${selectedRecord.action_manifests.length} action proposals that were not auto-installed. Action Composer still requires conflict review and explicit confirmation.`}
+                      </p>
+                      <button type="button" onClick={reviewActions} disabled={selectedRecord.action_manifests.length === 0} className="mt-2 h-8 border border-simulation px-3 text-[12px] font-semibold text-simulation disabled:opacity-40">
+                        {zh ? '在 Action Composer 中审阅动作' : 'Review actions in Action Composer'}
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>

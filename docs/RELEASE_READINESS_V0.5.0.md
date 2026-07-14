@@ -26,7 +26,7 @@ evidence, not a development or release-engineering prerequisite.
 
 - real-hardware invariant suite: **43/43**;
 - virtual-loopback scenarios: **5/5**;
-- manual-import malicious-input and second-gate suite: **12/12**;
+- manual-import malicious-input, second-gate, and explicit action-install suite: **21/21**;
 - blocked commands prove zero signal with `hardwareSignalSent:false` and
   `hardwareSignalState:not_sent`;
 - ambiguous sends are `attempted_unconfirmed`, never acknowledged execution;
