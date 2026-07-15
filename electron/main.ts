@@ -124,15 +124,17 @@ interface RendererSmokeSnapshot {
   simulationBoundary: boolean;
   realHardwareBoundary: boolean;
   preloadBridge: boolean;
+  offlineDegradation: boolean;
 }
 
-async function waitForRendererSmoke(window: BrowserWindow, timeoutMs = 60_000) {
+async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegradation = false, timeoutMs = 60_000) {
   const started = Date.now();
   let lastSnapshot: RendererSmokeSnapshot | null = null;
   while (Date.now() - started < timeoutMs) {
     lastSnapshot = await window.webContents.executeJavaScript(`(() => {
       const exactButtons = (label) => Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === label).length;
       const bodyText = document.body?.innerText ?? '';
+      const allText = document.body?.textContent ?? '';
       const snapshot = {
         title: document.title,
         appHeader: Boolean(document.querySelector('[data-component="AppHeader"]')),
@@ -142,14 +144,27 @@ async function waitForRendererSmoke(window: BrowserWindow, timeoutMs = 60_000) {
         stopControls: exactButtons('Stop'),
         simulationBoundary: bodyText.includes('SIMULATION ONLY') || bodyText.includes('Simulation Only'),
         realHardwareBoundary: Boolean(document.querySelector('[data-real-hardware-boundary]')) && bodyText.includes('REAL HARDWARE'),
-        preloadBridge: typeof window.openReality === 'object'
+        preloadBridge: typeof window.openReality === 'object',
+        offlineDegradation: allText.includes('rule compiler (LLM offline)') || allText.includes('规则编译器（LLM 离线）')
       };
-      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge };
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
     })()`, true) as RendererSmokeSnapshot;
     if (lastSnapshot.ready) return lastSnapshot;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`Packaged renderer did not satisfy the first-run contract: ${JSON.stringify(lastSnapshot)}`);
+}
+
+function enforceOfflineSmokeBoundary(window: BrowserWindow, localOrigin: string) {
+  window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    try {
+      const requestUrl = new URL(details.url);
+      const isNetworkRequest = requestUrl.protocol === 'http:' || requestUrl.protocol === 'https:';
+      callback({ cancel: isNetworkRequest && requestUrl.origin !== localOrigin });
+    } catch {
+      callback({ cancel: false });
+    }
+  });
 }
 
 function createDesktopWindow(show: boolean) {
@@ -222,8 +237,10 @@ async function createWindow() {
 
   if (isSmokeTest) {
     mainWindow = createDesktopWindow(false);
+    const offlineSmoke = process.argv.includes('--offline-smoke-test');
+    if (offlineSmoke) enforceOfflineSmokeBoundary(mainWindow, url);
     await mainWindow.loadURL(url);
-    const snapshot = await waitForRendererSmoke(mainWindow);
+    const snapshot = await waitForRendererSmoke(mainWindow, offlineSmoke);
     appendLog(`Packaged first-run renderer smoke passed at ${url}: ${JSON.stringify(snapshot)}`);
     mainWindow.destroy();
     mainWindow = null;

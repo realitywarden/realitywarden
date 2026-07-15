@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { validateLifecycleEvidence } = require('./verify-windows-install-lifecycle.cjs');
 
 function sha256File(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex').toUpperCase();
@@ -32,10 +33,17 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
   const installer = requireFile(path.join(releaseDir, installerName), 'NSIS installer');
   const executable = requireFile(path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe'), 'Packaged executable');
   const buildIdFile = requireFile(path.join(releaseDir, 'win-unpacked', 'resources', 'app.asar.unpacked', '.next-build', 'BUILD_ID'), 'Packaged Next BUILD_ID');
+  const lifecycleName = `RealityWarden-${packageJson.version}-Install-Lifecycle.json`;
+  const lifecycleFile = requireFile(path.join(releaseDir, lifecycleName), 'Windows install lifecycle evidence');
+  const lifecycleHashFile = requireFile(`${lifecycleFile}.sha256`, 'Windows install lifecycle evidence checksum');
+  const lifecycleHash = sha256File(lifecycleFile);
+  const recordedLifecycleHash = fs.readFileSync(lifecycleHashFile, 'utf8').trim().split(/\s+/)[0].toUpperCase();
+  if (recordedLifecycleHash !== lifecycleHash) throw new Error(`Windows install lifecycle evidence checksum mismatch: ${lifecycleName}`);
+  const lifecycle = validateLifecycleEvidence(JSON.parse(fs.readFileSync(lifecycleFile, 'utf8')), packageJson.version, sha256File(installer));
 
   return {
     schema: 'realitywarden.release-evidence',
-    schema_version: 1,
+    schema_version: 2,
     product: 'RealityWarden',
     release_version: packageJson.version,
     generated_at: generatedAt,
@@ -50,6 +58,11 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
       size_bytes: fs.statSync(executable).size,
       next_build_id: fs.readFileSync(buildIdFile, 'utf8').trim()
     },
+    install_lifecycle: {
+      file: lifecycleName,
+      sha256: lifecycleHash,
+      user_data_policy: lifecycle.user_data_policy
+    },
     gates: [
       {
         id: 'electron-package-contract',
@@ -60,6 +73,11 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
         id: 'packaged-first-run-renderer-smoke',
         status: 'passed',
         evidence: 'Packaged renderer loaded AppHeader, DeviceNavigator, CommandDock, one Run/Stop pair, simulation and REAL HARDWARE boundaries, and preload bridge'
+      },
+      {
+        id: 'windows-install-lifecycle',
+        status: 'passed',
+        evidence: 'Isolated current-user clean install, installed first run, forced-offline degradation, in-place reinstall, uninstall cleanup, and user-data preservation passed'
       }
     ],
     not_claimed: {

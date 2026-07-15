@@ -38,6 +38,12 @@ execFileSync(packagedExecutable, ['--prod', '--smoke-test'], {
 
 console.log('Packaged desktop first-run renderer smoke test passed.');
 
+execFileSync(process.execPath, [path.join(__dirname, 'verify-windows-install-lifecycle.cjs')], {
+  cwd: root,
+  stdio: 'inherit',
+  windowsHide: true
+});
+
 execFileSync(process.execPath, [path.join(__dirname, 'write-release-evidence.cjs')], {
   cwd: root,
   stdio: 'inherit',

@@ -55,25 +55,45 @@ UI boundary, firmware SHA256 pairs, branding metadata, and Windows serialport
 bindings are present. It must then run the packaged executable with
 `--prod --smoke-test` successfully. The smoke is a packaged first-run renderer smoke, not only a local-server readiness probe: it loads the renderer in an isolated session and verifies the desktop regions, sole Run/Stop controls, simulation/REAL HARDWARE separation, and preload bridge. Failure exits non-zero.
 
+After the unpacked smoke, the packaging gate performs an isolated Windows
+current-user lifecycle in a dedicated temporary directory: clean silent install,
+installed first-run renderer smoke, forced-offline startup with an explicit rule
+compiler degradation label, deterministic in-place reinstall, and silent
+uninstall. It refuses to run if any pre-existing RealityWarden uninstall
+registration is present, so release verification cannot overwrite a user's
+installation. Reinstall and uninstall must preserve user project/profile data;
+the installed application payload and uninstall registration must be removed.
+
 Expected artifact:
 
 ```text
 release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.0-Install-Lifecycle.json
+release/RealityWarden-0.5.0-Install-Lifecycle.json.sha256
 release/RealityWarden-0.5.0-Release-Evidence.json
 release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 ```
 
-The evidence manifest is emitted only after package verification and first-run renderer smoke succeed. It records the exact installer SHA256 and size, packaged Next BUILD_ID, source commit, and clean/dirty worktree state. Its companion checksum protects the evidence record itself. It deliberately marks code signing and optional physical-hardware acceptance as not assessed rather than inventing evidence.
+The release evidence manifest is emitted only after package verification,
+first-run renderer smoke, and the Windows install lifecycle succeed. It records
+the exact installer SHA256 and size, packaged Next BUILD_ID, lifecycle-manifest
+digest, source commit, and clean/dirty worktree state. Companion checksums protect
+both evidence records. They deliberately mark code signing, migration from a
+different historical version, and optional physical-hardware acceptance as not
+assessed rather than inventing evidence.
 
-Verified local artifact record (2026-07-14):
+Verified local artifact record (2026-07-15):
 
-- size: `186168889` bytes (`177.54 MiB`);
-- SHA256: `87AE920E068D80D5F86B90B1E95B007CFAE0CEC62900ECA45A9221F209CC2BB3`;
+- size: `186418387` bytes (`177.78 MiB`);
+- SHA256: `BDBC503FDA26C2DDD5BFBC66747679EFB22500E6E1A8F0B83F5AD9735C62A4F4`;
 - executable FileVersion/ProductVersion: `0.5.0`;
 - package verification: pass (shared runtime, Next runtime, manual/PDF import
   boundary, pinned pdfjs runtime, three serialport native bindings, firmware
   image + SHA256, and branding);
 - packaged `RealityWarden.exe --prod --smoke-test`: pass.
+- isolated Windows lifecycle: pass (clean install, installed first run,
+  forced-offline degradation, in-place reinstall, uninstall cleanup, and user
+  data preservation).
 
 ## Manual release actions outside this report
 

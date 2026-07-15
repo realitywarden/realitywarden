@@ -110,6 +110,12 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
+      "runAfterFinish": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "RealityWarden",
+      "uninstallDisplayName": "RealityWarden",
+      "deleteAppDataOnUninstall": false,
       "installerIcon": "assets/branding/realitywarden.ico",
       "uninstallerIcon": "assets/branding/realitywarden.ico"
     }
