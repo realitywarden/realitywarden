@@ -10,6 +10,23 @@ Current boundary:
 - no manifest or public adapter can opt into direct hardware control
 - the existing ESP32 reference rig remains a separate, private-ticketed path
 
+## Controlled firmware-configuration drafts
+
+The first hardware-onboarding contract is implemented in
+`lib/device-onboarding/FirmwareConfiguration.ts`. It accepts only an explicitly
+reviewed, source-hashed proposal for the current conservative matrix:
+
+- ESP32-S3 + SG90 + HC-SR04 for `robot_arm`
+- ESP32-S3 + a safe-default digital output for `smart_light`
+- ESP32-S3 + HC-SR04 read-only configuration for `sensor_box`
+
+The contract rejects reserved/unreviewed GPIO, duplicate pins, component/device
+mismatches, unknown fields, and stored-record tampering. Its output is always a
+`draft` with `simulation_only:true`, `write_authorized:false`, and
+`real_adapter_enabled:false`. It does not compile firmware, flash a board, open
+a serial port, or grant execution authority. Those later stages require their
+own explicit review and independently verified gates.
+
 Use this guide when you want to add a new device shape to the runtime, not when you want to bypass the safety boundary.
 
 ## Minimum onboarding checklist
