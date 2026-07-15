@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { GroupProps } from '@react-three/fiber';
+import type { ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const SHOULDER_ANCHOR: [number, number, number] = [0, 0.52, 0];
@@ -115,7 +115,7 @@ function solveVisualChain(target: [number, number, number], visual: Record<strin
   };
 }
 
-export function SemanticRobotArm({ state, ...props }: { state: Record<string, unknown> } & GroupProps) {
+export function SemanticRobotArm({ state, ...props }: { state: Record<string, unknown> } & ThreeElements['group']) {
   const visual = state.visual_state as Record<string, unknown> | undefined;
   const endEffectorTarget = Array.isArray(visual?.end_effector_position)
     ? visual.end_effector_position as [number, number, number]
