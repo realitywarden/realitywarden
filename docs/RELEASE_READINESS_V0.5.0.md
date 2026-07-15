@@ -105,8 +105,9 @@ inventing evidence.
 
 Verified local artifact record (2026-07-15):
 
-- size: `186444992` bytes (`177.81 MiB`);
-- SHA256: `3911A67C8C24299AC3F691EF4F7187F91FDA85BAB2355D4EB8856D88D31DBB2C`;
+- size: `186503174` bytes (`177.86 MiB`);
+- SHA256: `B7B826906E3F78A4F1232870E540CDD69CE8C89CA210D8730506F4C0EDD78C3C`;
+- clean source commit: `18a40f00da8695bb8c2ea971bc1074172f41e23b`;
 - executable FileVersion/ProductVersion: `0.5.0`;
 - package verification: pass (shared runtime, Next runtime, manual/PDF import
   boundary, pinned pdfjs runtime, three serialport native bindings, firmware
@@ -117,9 +118,9 @@ Verified local artifact record (2026-07-15):
 - packaged startup-design matrix: pass (neutral dark first paint,
   Chinese/English, 125%/150% scale, escaped recovery details, reduced motion,
   and forced colors).
-- isolated Windows lifecycle: pass (clean install, installed first run,
-  forced-offline degradation, in-place reinstall, uninstall cleanup, and user
-  data preservation).
+- isolated Windows lifecycle schema v2: pass (clean install, installed
+  safe/blocked/audit core journey, forced-offline degradation, in-place
+  reinstall, uninstall cleanup, and user data preservation).
 
 ## Manual release actions outside this report
 
