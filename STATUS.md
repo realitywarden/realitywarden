@@ -15,6 +15,15 @@
 - Next software-only release closure: historical-version migration/update
   rollback boundaries, then installed core-journey automation, then a final
   installer/evidence rebuild. Physical-device acceptance remains optional.
+- Historical data review is closed without inventing installer evidence: v1
+  projects and legacy localStorage autosaves have behavioral migration tests;
+  unknown/corrupt/future data remains rejected or quarantined. A different
+  historical NSIS installer is not available, so cross-installer migration stays
+  explicitly not assessed rather than being claimed from a synthetic binary.
+- Installed core-journey automation is implemented: lifecycle schema v2 launches
+  the installed production renderer, proves safe → completed, unsafe → blocked,
+  Audit & Governor selected with evidence after both, and the independent REAL
+  HARDWARE boundary still present. Final installer/evidence rebuild is next.
 
 ## ✅ 持续成品开发令 / CONTINUOUS PRODUCT DEVELOPMENT（2026-07-14，所有者置顶生效）
 

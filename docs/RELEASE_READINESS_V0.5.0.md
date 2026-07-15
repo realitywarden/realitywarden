@@ -71,7 +71,8 @@ static screenshots.
 
 After the unpacked smoke, the packaging gate performs an isolated Windows
 current-user lifecycle in a dedicated temporary directory: clean silent install,
-installed first-run renderer smoke, forced-offline startup with an explicit rule
+installed first-run renderer smoke, a safe-executed then unsafe-blocked journey
+with one-step Audit & Governor evidence, forced-offline startup with an explicit rule
 compiler degradation label, deterministic in-place reinstall, and silent
 uninstall. It refuses to run if any pre-existing RealityWarden uninstall
 registration is present, so release verification cannot overwrite a user's

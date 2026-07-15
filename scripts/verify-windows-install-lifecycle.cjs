@@ -88,10 +88,10 @@ function waitForUninstallCompletion(target, timeoutMs = 60_000) {
 
 function validateLifecycleEvidence(evidence, expectedVersion, expectedInstallerHash) {
   assert.equal(evidence.schema, 'realitywarden.windows-install-lifecycle');
-  assert.equal(evidence.schema_version, 1);
+  assert.equal(evidence.schema_version, 2);
   assert.equal(evidence.release_version, expectedVersion);
   assert.equal(evidence.installer.sha256, expectedInstallerHash);
-  for (const gate of ['clean_install', 'installed_first_run', 'offline_degradation', 'in_place_reinstall', 'uninstall']) {
+  for (const gate of ['clean_install', 'installed_first_run', 'installed_core_journey', 'offline_degradation', 'in_place_reinstall', 'uninstall']) {
     assert.equal(evidence.gates[gate], 'passed', `Lifecycle gate must pass: ${gate}`);
   }
   assert.equal(evidence.user_data_policy.reinstall_preserved, true);
@@ -138,7 +138,7 @@ function verifyWindowsInstallLifecycle(root, generatedAt = new Date().toISOStrin
     assert(fs.existsSync(uninstaller), 'Installed NSIS uninstaller is missing.');
     assert(queryRealityWardenRegistrations().some((entry) => entry.toLowerCase().includes(installDir.toLowerCase())), 'Per-user uninstall registration must point at the isolated installation.');
 
-    runExecutable(installedExecutable, ['--prod', '--smoke-test', `--user-data-dir=${profileDir}`], installDir);
+    runExecutable(installedExecutable, ['--prod', '--journey-smoke-test', `--user-data-dir=${profileDir}`], installDir);
     runExecutable(installedExecutable, ['--prod', '--smoke-test', '--offline-smoke-test', `--user-data-dir=${profileDir}`], installDir);
 
     const sentinel = path.join(profileDir, 'lifecycle-user-data-preserved.txt');
@@ -159,7 +159,7 @@ function verifyWindowsInstallLifecycle(root, generatedAt = new Date().toISOStrin
 
     const evidence = validateLifecycleEvidence({
       schema: 'realitywarden.windows-install-lifecycle',
-      schema_version: 1,
+      schema_version: 2,
       product: 'RealityWarden',
       release_version: packageJson.version,
       generated_at: generatedAt,
@@ -169,13 +169,14 @@ function verifyWindowsInstallLifecycle(root, generatedAt = new Date().toISOStrin
       gates: {
         clean_install: 'passed',
         installed_first_run: 'passed',
+        installed_core_journey: 'passed',
         offline_degradation: 'passed',
         in_place_reinstall: 'passed',
         uninstall: 'passed'
       },
       user_data_policy: { reinstall_preserved: true, uninstall_preserved: true },
       not_claimed: {
-        previous_version_migration: 'not assessed; deterministic in-place reinstall was verified',
+        previous_version_migration: 'project v1 and legacy autosave migration are tested; historical installer-to-installer migration is not assessed',
         code_signing: 'not assessed by this record',
         physical_hardware_acceptance: 'optional evidence; not assessed by this record'
       }
@@ -197,7 +198,7 @@ if (require.main === module) {
   const root = path.resolve(__dirname, '..');
   const result = verifyWindowsInstallLifecycle(root);
   console.log('Windows install lifecycle verification passed.');
-  console.log('- Clean per-user install, installed first run, explicit offline degradation, in-place reinstall, and uninstall passed.');
+  console.log('- Clean per-user install, installed safe/blocked audit journey, explicit offline degradation, in-place reinstall, and uninstall passed.');
   console.log('- User project/profile data was preserved across reinstall and uninstall.');
   console.log(`- Evidence: ${path.basename(result.target)}`);
 }

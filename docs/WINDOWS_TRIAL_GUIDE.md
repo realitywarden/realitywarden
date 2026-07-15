@@ -76,7 +76,8 @@ The release evidence JSON is written only after package inspection, packaged
 first-run renderer smoke, the neutral no-flash startup/recovery matrix
 (including Windows scaling, reduced motion, and forced colors), the 1440×900 /
 1180×720 bilingual product-design matrix (including keyboard focus and dialogs),
-and an isolated clean-install/reinstall/offline/uninstall lifecycle pass. Use it
+and an isolated clean-install/safe+blocked audit journey/reinstall/offline/
+uninstall lifecycle pass. Use it
 to verify the installer SHA256, packaged BUILD_ID, startup/design evidence
 digests, and lifecycle evidence digest; it does not claim code signing,
 migration from a different historical version, or physical-device acceptance.

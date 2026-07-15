@@ -21,7 +21,8 @@ const serverRoot = app.isPackaged ? path.join(process.resourcesPath, 'app.asar.u
 const basePort = Number(process.env.ORS_DESKTOP_PORT || 3100);
 const isDesignSmokeTest = process.argv.includes('--design-smoke-test');
 const isStartupDesignSmokeTest = process.argv.includes('--startup-design-smoke-test');
-const isSmokeTest = process.argv.includes('--smoke-test') || isDesignSmokeTest || isStartupDesignSmokeTest;
+const isJourneySmokeTest = process.argv.includes('--journey-smoke-test');
+const isSmokeTest = process.argv.includes('--smoke-test') || isDesignSmokeTest || isStartupDesignSmokeTest || isJourneySmokeTest;
 
 let nextProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -144,6 +145,59 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`Packaged renderer did not satisfy the first-run contract: ${JSON.stringify(lastSnapshot)}`);
+}
+
+async function waitForCommandState(window: BrowserWindow, state: 'completed' | 'blocked', timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const current = await window.webContents.executeJavaScript(`document.querySelector('[data-command-state]')?.getAttribute('data-command-state') ?? null`, true) as string | null;
+    if (current === state) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Installed core journey timed out waiting for command state: ${state}`);
+}
+
+async function submitJourneyPrompt(window: BrowserWindow, prompt: string) {
+  const submitted = await window.webContents.executeJavaScript(`(() => {
+    const dock = document.querySelector('[data-component="CommandDock"]');
+    const textarea = dock?.querySelector('textarea');
+    const run = Array.from(dock?.querySelectorAll('button') ?? []).find((button) => button.textContent?.trim() === 'Run');
+    if (!(textarea instanceof HTMLTextAreaElement) || !(run instanceof HTMLButtonElement) || run.disabled) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    setter?.call(textarea, ${JSON.stringify(prompt)});
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    run.click();
+    return true;
+  })()`, true) as boolean;
+  if (!submitted) throw new Error(`Installed core journey could not submit prompt: ${prompt}`);
+}
+
+async function runInstalledCoreJourney(window: BrowserWindow) {
+  await setDesignLanguage(window, 'en');
+  // The isolated first launch intentionally demonstrates a blocked unsafe task.
+  await waitForCommandState(window, 'blocked');
+  await submitJourneyPrompt(window, 'Move the red cube to the back safe zone');
+  await waitForCommandState(window, 'completed');
+  const safeEvidence = await window.webContents.executeJavaScript(`(() => {
+    const selectedTab = document.querySelector('[data-component="EvidenceSidebar"] [role="tab"][aria-selected="true"]');
+    const sidebarText = document.querySelector('[data-component="EvidenceSidebar"]')?.textContent ?? '';
+    return { auditSelected: selectedTab?.textContent?.includes('Audit & Governor') === true, hasExecutedEvidence: /Executed|Pass|completed/i.test(sidebarText) };
+  })()`, true) as { auditSelected: boolean; hasExecutedEvidence: boolean };
+  if (!safeEvidence.auditSelected || !safeEvidence.hasExecutedEvidence) throw new Error(`Installed safe journey did not expose one-step audit evidence: ${JSON.stringify(safeEvidence)}`);
+
+  await submitJourneyPrompt(window, 'Throw the red cube off the table');
+  await waitForCommandState(window, 'blocked');
+  const blockedEvidence = await window.webContents.executeJavaScript(`(() => {
+    const selectedTab = document.querySelector('[data-component="EvidenceSidebar"] [role="tab"][aria-selected="true"]');
+    const sidebarText = document.querySelector('[data-component="EvidenceSidebar"]')?.textContent ?? '';
+    return {
+      auditSelected: selectedTab?.textContent?.includes('Audit & Governor') === true,
+      hasBlockedEvidence: /Blocked|Safety Blocked/i.test(sidebarText),
+      realHardwareBoundary: Boolean(document.querySelector('[data-real-hardware-boundary]'))
+    };
+  })()`, true) as { auditSelected: boolean; hasBlockedEvidence: boolean; realHardwareBoundary: boolean };
+  if (!blockedEvidence.auditSelected || !blockedEvidence.hasBlockedEvidence || !blockedEvidence.realHardwareBoundary) throw new Error(`Installed blocked journey did not preserve evidence and hardware boundaries: ${JSON.stringify(blockedEvidence)}`);
+  return { safe_execution: 'passed', blocked_zero_motion_path: 'passed', audit_evidence_one_step: 'passed', real_hardware_boundary: 'passed' };
 }
 
 function enforceOfflineSmokeBoundary(window: BrowserWindow, localOrigin: string) {
@@ -569,6 +623,10 @@ async function createWindow() {
     await mainWindow.loadURL(url);
     const snapshot = await waitForRendererSmoke(mainWindow, offlineSmoke);
     appendLog(`Packaged first-run renderer smoke passed at ${url}: ${JSON.stringify(snapshot)}`);
+    if (isJourneySmokeTest) {
+      const journey = await runInstalledCoreJourney(mainWindow);
+      appendLog(`Installed core journey passed: ${JSON.stringify(journey)}`);
+    }
     if (isDesignSmokeTest) {
       const designEvidence = await runProductDesignAcceptance(mainWindow);
       appendLog(`Product design acceptance passed: ${JSON.stringify(designEvidence)}`);
