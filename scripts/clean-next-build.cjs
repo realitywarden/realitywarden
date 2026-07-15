@@ -11,7 +11,7 @@ function sleep(ms) {
 
 function removeWithPowerShell(targetPath) {
   const command = `
-    $target = '${targetPath.replace(/\\/g, '\\\\')}'
+    $target = $env:ORS_CLEAN_TARGET
     if (Test-Path $target) {
       Start-Sleep -Milliseconds 300
       Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
@@ -19,7 +19,8 @@ function removeWithPowerShell(targetPath) {
   `;
   execFileSync('powershell.exe', ['-NoProfile', '-Command', command], {
     stdio: 'ignore',
-    windowsHide: true
+    windowsHide: true,
+    env: { ...process.env, ORS_CLEAN_TARGET: targetPath }
   });
 }
 

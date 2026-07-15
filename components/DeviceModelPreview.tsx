@@ -2,7 +2,8 @@
 
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useGLTF } from '@react-three/drei';
-import { Suspense, useMemo } from 'react';
+import { Component, Suspense, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import type { DeviceAsset } from '@/lib/assets/DeviceAsset';
 import type { DeviceType } from '@/types/deviceMeta';
 
@@ -34,24 +35,50 @@ function GLTFPreview({ uri }: { uri: string }) {
   return <primitive object={scene} />;
 }
 
+class ModelPreviewErrorBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="grid h-full place-items-center bg-[#FFF7ED] px-4 text-center text-xs font-semibold text-[#9A3412]">
+          The selected 3D model could not be previewed. Choose another file or use the procedural fallback.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function DeviceModelPreview({ asset, compact = false }: { asset: DeviceAsset; compact?: boolean }) {
   const visual = asset.manifest.visual_model;
   const hasModel = Boolean(visual.path && (visual.type === 'glb' || visual.type === 'gltf'));
 
   return (
-    <div className={compact ? 'h-16 w-full overflow-hidden border border-[#E5E5EA] bg-white' : 'h-64 w-full overflow-hidden border border-[#E5E5EA] bg-white'}>
-      <Canvas camera={{ position: [1.8, 1.35, 1.8], fov: 42 }}>
-        <color attach="background" args={['#FFFFFF']} />
-        <ambientLight intensity={0.72} />
-        <directionalLight position={[4, 5, 3]} intensity={0.9} />
-        <gridHelper args={[2.4, 12, '#D1D5DB', '#E5E7EB']} />
-        <Suspense fallback={<FallbackModel deviceType={asset.manifest.device_type} />}>
-          {hasModel ? <GLTFPreview uri={visual.path as string} /> : <FallbackModel deviceType={asset.manifest.device_type} />}
-        </Suspense>
-        {!compact && <OrbitControls enablePan={false} minDistance={1.4} maxDistance={4.8} target={[0, 0.35, 0]} />}
-      </Canvas>
+    <div className={`flex w-full flex-col overflow-hidden border border-[#E5E5EA] bg-white ${compact ? 'h-16' : 'h-64'}`}>
+      <div className="min-h-0 flex-1">
+        <ModelPreviewErrorBoundary key={`${visual.type}:${visual.path ?? 'fallback'}`}>
+          <Canvas camera={{ position: [1.8, 1.35, 1.8], fov: 42 }}>
+            <color attach="background" args={['#FFFFFF']} />
+            <ambientLight intensity={0.72} />
+            <directionalLight position={[4, 5, 3]} intensity={0.9} />
+            <gridHelper args={[2.4, 12, '#D1D5DB', '#E5E7EB']} />
+            <Suspense fallback={<FallbackModel deviceType={asset.manifest.device_type} />}>
+              {hasModel ? <GLTFPreview uri={visual.path as string} /> : <FallbackModel deviceType={asset.manifest.device_type} />}
+            </Suspense>
+            {!compact && <OrbitControls enablePan={false} minDistance={1.4} maxDistance={4.8} target={[0, 0.35, 0]} />}
+          </Canvas>
+        </ModelPreviewErrorBoundary>
+      </div>
       {!compact && (
-        <div className="border-t border-[#E5E5EA] bg-[#F5F5F7] px-2 py-1 text-[11px] text-[#86868B]">
+        <div className="flex-none border-t border-[#E5E5EA] bg-[#F5F5F7] px-2 py-1 text-[11px] text-[#86868B]">
           {asset.manifest.asset_id} / {asset.manifest.device_type} / {asset.manifest.license}
         </div>
       )}

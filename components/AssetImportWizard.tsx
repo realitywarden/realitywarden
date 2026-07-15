@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeviceAsset, DeviceAssetManifest } from '@/lib/assets/DeviceAsset';
 import { createImportedAsset, type OpenRealityDeviceFile, validateAssetManifest, validateLicense } from '@/lib/assets/DeviceAssetImporter';
 import { DeviceModelPreview } from './DeviceModelPreview';
@@ -71,50 +71,118 @@ function fallbackOpenRealityFile(manifest: DeviceAssetManifest): OpenRealityDevi
   };
 }
 
+function sourceWithManifest(deviceFile: OpenRealityDeviceFile | null, manifest: DeviceAssetManifest): OpenRealityDeviceFile {
+  if (!deviceFile) return fallbackOpenRealityFile(manifest);
+
+  const deviceMeta = deviceFile.device_meta && typeof deviceFile.device_meta === 'object' && !Array.isArray(deviceFile.device_meta)
+    ? {
+        ...deviceFile.device_meta,
+        profile_id: manifest.asset_id,
+        device_type: manifest.device_type,
+        display_name: manifest.display_name,
+        risk_class: manifest.risk_class ?? 'medium'
+      }
+    : deviceFile.device_meta;
+
+  return {
+    ...deviceFile,
+    asset_manifest: manifest,
+    device_meta: deviceMeta,
+    scenarios: Array.isArray(deviceFile.scenarios)
+      ? deviceFile.scenarios.map((scenario) => ({ ...scenario, device_profile: manifest.asset_id }))
+      : deviceFile.scenarios,
+    license: {
+      name: manifest.license,
+      source: manifest.source
+    }
+  };
+}
+
+function hasAssetManifest(value: unknown): value is OpenRealityDeviceFile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as { asset_manifest?: unknown };
+  return Boolean(candidate.asset_manifest && typeof candidate.asset_manifest === 'object' && !Array.isArray(candidate.asset_manifest));
+}
+
 export function AssetImportWizard({ onImport, onClose }: { onImport: (asset: DeviceAsset) => void; onClose: () => void }) {
   const [step, setStep] = useState(1);
   const [fileName, setFileName] = useState('');
   const [manifest, setManifest] = useState<DeviceAssetManifest>(emptyManifest());
   const [deviceFile, setDeviceFile] = useState<OpenRealityDeviceFile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const readGenerationRef = useRef(0);
+
+  const releaseObjectUrl = useCallback(() => {
+    if (!objectUrlRef.current) return;
+    URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = null;
+  }, []);
+
+  useEffect(() => () => {
+    readGenerationRef.current += 1;
+    releaseObjectUrl();
+  }, [releaseObjectUrl]);
+
+  const source = useMemo(() => sourceWithManifest(deviceFile, manifest), [deviceFile, manifest]);
 
   const previewAsset = useMemo(() => {
     try {
-      return createImportedAsset(deviceFile ?? fallbackOpenRealityFile(manifest));
+      return createImportedAsset(source);
     } catch {
       return null;
     }
-  }, [deviceFile, manifest]);
+  }, [source]);
 
   async function readFile(file: File) {
+    const generation = readGenerationRef.current + 1;
+    readGenerationRef.current = generation;
+    releaseObjectUrl();
     setFileName(file.name);
     const nextManifest = emptyManifest(file.name);
-    if (file.name.endsWith('.glb')) nextManifest.visual_model = { type: 'glb', path: URL.createObjectURL(file) };
-    if (file.name.endsWith('.gltf')) nextManifest.visual_model = { type: 'gltf', path: URL.createObjectURL(file) };
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith('.glb') || lowerName.endsWith('.gltf')) {
+      const objectUrl = URL.createObjectURL(file);
+      objectUrlRef.current = objectUrl;
+      nextManifest.visual_model = { type: lowerName.endsWith('.glb') ? 'glb' : 'gltf', path: objectUrl };
+    }
     setManifest(nextManifest);
     setDeviceFile(null);
     setError(null);
-    if (file.name.endsWith('.openreality-device.json')) {
+    if (lowerName.endsWith('.openreality-device.json')) {
       try {
-        const parsed = JSON.parse(await file.text()) as OpenRealityDeviceFile;
+        const parsed: unknown = JSON.parse(await file.text());
+        if (readGenerationRef.current !== generation) return;
+        if (!hasAssetManifest(parsed)) throw new Error('asset_manifest is required.');
         setDeviceFile(parsed);
         setManifest(parsed.asset_manifest);
       } catch {
+        if (readGenerationRef.current !== generation) return;
         setError('Invalid .openreality-device.json file.');
       }
     }
+    if (readGenerationRef.current !== generation) return;
     setStep(2);
   }
 
   function importAsset() {
     try {
-      const source = deviceFile ?? fallbackOpenRealityFile(manifest);
       const asset = createImportedAsset(source);
+      // A locally selected model keeps using its blob URL after the wizard
+      // closes. Ownership transfers to the imported in-memory asset here;
+      // canceled/replaced selections are revoked by the wizard itself.
+      if (asset.manifest.visual_model.path === objectUrlRef.current) objectUrlRef.current = null;
       onImport(asset);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed.');
     }
+  }
+
+  function closeWizard() {
+    readGenerationRef.current += 1;
+    releaseObjectUrl();
+    onClose();
   }
 
   const license = validateLicense(manifest);
@@ -126,7 +194,7 @@ export function AssetImportWizard({ onImport, onClose }: { onImport: (asset: Dev
       <div className="h-[720px] w-[920px] border border-[#D1D5DB] bg-[#F5F5F7] shadow-2xl">
         <div className="flex h-10 items-center justify-between border-b border-[#D1D5DB] bg-white px-3">
           <div className="text-xs font-bold text-[#1D1D1F]">Asset Import Wizard / Step {step}</div>
-          <button onClick={onClose} className="text-xs font-semibold text-[#86868B]">Close</button>
+          <button onClick={closeWizard} className="text-xs font-semibold text-[#86868B]">Close</button>
         </div>
         <div className="grid h-[calc(100%-2.5rem)] grid-cols-[260px_1fr]">
           <aside className="border-r border-[#D1D5DB] bg-white p-3 text-xs">
@@ -166,7 +234,7 @@ export function AssetImportWizard({ onImport, onClose }: { onImport: (asset: Dev
                 </label>
               </div>
             )}
-            {step === 3 && <pre className="h-full overflow-auto border border-[#D1D5DB] bg-white p-3 text-xs">{JSON.stringify(deviceFile ?? fallbackOpenRealityFile(manifest), null, 2)}</pre>}
+            {step === 3 && <pre className="h-full overflow-auto border border-[#D1D5DB] bg-white p-3 text-xs">{JSON.stringify(source, null, 2)}</pre>}
             {step === 4 && (
               <div className="grid gap-2 text-sm">
                 <div className={license.valid ? 'border border-[#A7F3D0] bg-[#ECFDF5] p-3 text-status-executed' : 'border border-[#FECDD3] bg-[#FFF1F2] p-3 text-status-blocked'}>

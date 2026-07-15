@@ -57,6 +57,23 @@ function makeWorkspaceBorder(geometry: DeviceGeometry, color: number) {
   return new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color }));
 }
 
+function disposeObject3D(root: THREE.Object3D) {
+  root.traverse((object) => {
+    const disposable = object as THREE.Object3D & {
+      geometry?: THREE.BufferGeometry;
+      material?: THREE.Material | THREE.Material[];
+    };
+    disposable.geometry?.dispose();
+    const materials = Array.isArray(disposable.material) ? disposable.material : disposable.material ? [disposable.material] : [];
+    materials.forEach((material) => material.dispose());
+  });
+}
+
+function disposeScene(scene: THREE.Scene) {
+  [...scene.children].forEach(disposeObject3D);
+  scene.clear();
+}
+
 export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, runKey, onStepStatus, onComplete }: RobotSimulatorProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -101,10 +118,20 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
     render();
 
     return () => {
+      cancelRef.current += 1;
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(animationId);
+      disposeScene(scene);
       renderer.dispose();
       renderer.domElement.remove();
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      armRef.current = null;
+      redRef.current = null;
+      blueRef.current = null;
+      borderRef.current = null;
+      pathRef.current = null;
     };
   }, []);
 
@@ -114,7 +141,12 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
     if (!scene || !camera) return;
 
     cancelRef.current += 1;
-    scene.clear();
+    disposeScene(scene);
+    armRef.current = null;
+    redRef.current = null;
+    blueRef.current = null;
+    borderRef.current = null;
+    pathRef.current = null;
     scene.background = new THREE.Color(0xf7f3ea);
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
@@ -199,13 +231,16 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
     cancelRef.current += 1;
     const token = cancelRef.current;
     const cancelled = () => cancelRef.current !== token;
+    const cancel = () => {
+      if (cancelRef.current === token) cancelRef.current += 1;
+    };
 
     const scene = sceneRef.current;
     const red = redRef.current;
     const blue = blueRef.current;
     const border = borderRef.current;
     const arm = armRef.current;
-    if (!scene || !red || !blue || !border || !arm) return;
+    if (!scene || !red || !blue || !border || !arm) return cancel;
 
     red.position.copy(toVector3(geometry.objects.red_cube.position));
     blue.position.copy(toVector3(geometry.objects.blue_cube.position));
@@ -215,9 +250,10 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
 
     if (pathRef.current) {
       scene.remove(pathRef.current);
-      pathRef.current.geometry.dispose();
+      disposeObject3D(pathRef.current);
+      pathRef.current = null;
     }
-    if (!task || !safety || !motionPlan) return;
+    if (!task || !safety || !motionPlan) return cancel;
 
     const redStart = toVector3(geometry.objects.red_cube.position);
     const blueStart = toVector3(geometry.objects.blue_cube.position);
@@ -243,7 +279,7 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
     scene.add(path);
     pathRef.current = path;
 
-    if (safety.status !== 'pass' || motionPlan.steps.some((step) => step.status === 'blocked')) return;
+    if (safety.status !== 'pass' || motionPlan.steps.some((step) => step.status === 'blocked')) return cancel;
 
     const lift = geometry.robot.arm_segments[0] + geometry.robot.arm_segments[1] * 0.35;
     const run = async () => {
@@ -254,6 +290,7 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
         if ((step.action === 'move_to_pose' || step.action === 'return_home') && step.target_position) {
           const target = new THREE.Vector3(step.target_position[0], step.target_position[1], step.target_position[2]).sub(arm.position).setY(lift);
           await moveVector(gripper.position, target, Math.max(250, step.estimated_duration_ms), cancelled);
+          if (cancelled()) return;
           if (held) {
             held.position.set(step.target_position[0], step.target_position[1], step.target_position[2]);
           }
@@ -262,6 +299,7 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
           held = step.target === 'blue_cube' ? blue : red;
           held.position.y += geometry.objects.red_cube.size * 0.45;
           await delay(120);
+          if (cancelled()) return;
         }
         if (step.action === 'release') {
           if (held && step.target_position) {
@@ -269,7 +307,9 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
           }
           held = null;
           await delay(120);
+          if (cancelled()) return;
         }
+        if (cancelled()) return;
         onStepStatus(step.step_id, 'completed');
       }
       await moveVector(gripper.position, new THREE.Vector3(0, lift, -0.35), 520, cancelled);
@@ -277,6 +317,7 @@ export function RobotSimulator({ geometry, profileId, task, motionPlan, safety, 
     };
 
     void run();
+    return cancel;
   }, [runKey, safety, task, motionPlan, onStepStatus, onComplete, geometry]);
 
   return (
