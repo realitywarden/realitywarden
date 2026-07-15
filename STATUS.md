@@ -1,5 +1,14 @@
 # STATUS
 
+## 通用设备接入闭环收口（2026-07-15，本会话）
+
+- **依赖安全稳定化**：已在 `9e8d77b`/`cad7557` 完成（Node 24 / Next 16 / Electron 43 / serialport 13 / electron-builder 26，本机 npm audit 0 漏洞）。沙箱网络白名单禁止 audit 端点，无法复跑，属环境限制。
+- **硬化单元落地**（`9dc8029` / `8adc12c`）：串口 transport 生命周期串行化、歧义请求 id 退役（超时/写失败/断开后禁止复用）、出站帧 512B 上限（与固件行缓冲一致）、超长入站行整行丢弃；固件端超长请求行整行丢弃并显式报错，绝不解析截断前缀；SensorConditioning 拒绝一切非有限样本并在构造期校验互锁阈值。UI 侧：资产导入 blob URL 泄漏修复、3D 预览错误边界、RobotSimulator 场景 geometry/material 释放；clean-next-build 改环境变量传参消除 PowerShell 注入面。全部只收紧、未放宽。
+- **通用设备接入闭环完成**（`e6213d0` + `d72c142`）：手册导入 → 首次人工复核（simulation_only 记录）→ Virtual Lab 二次门（3D 仿真启用）→ 固件配置草案（`FirmwareConfiguration`，写禁用）→ **固件写入令**（`FirmwareWriteOrder`：第二次显式授权 + 唯一已审预编译镜像 sha256 三方比对；无已审镜像的模板直接拒绝；`hardware:flash --order` 消费）→ **只读诊断证据**（`hardware:diagnose --json` 导出，schema 结构上无法命名 actuation 命令；要求 RealityWarden 固件 + 设备时钟 + ≥3 个合理互锁样本；恒记 `physical_outcome_verified:false`）→ **闭环记录**（`completeOnboardingClosure`：核对手册源 sha256 与 profile 归属，产出 `onboarded_simulation_only`）。每一阶段独立人工决策；全链路 `execution_authority_granted:false`、`real_adapter_enabled:false` 为 schema 字面量，篡改即拒；证据锁、ticket 通路、默认拦截与审计语义零改动。真机步骤仍为可选证据，非开发门槛。
+- **验证**：root/Next/Electron typecheck 绿；real-hardware 不变量 43/43；虚拟回环 5/5；device-onboarding 套件扩至含写入令/诊断/闭环共 30+ 断言；verify 全链 28 套件在沙箱以共享编译复现全绿。`npm run build`（Next 生产构建）沙箱不可运行（缺 Linux SWC 且 npm registry 被白名单拦截）——**请所有者本机跑一次 `npm run verify` 收尾并 `git push`**（本地领先 4 个提交）。
+- **运维备注**：本会话发现挂载盘默认禁止删除（EPERM），已通过 Cowork 授权解除；文件工具 Edit 与沙箱视图可能出现截断/不同步，重要改动改用沙箱侧写入并以 `wc -l`/`git hash-object` 双向核对。
+
+
 ## Release closure update (2026-07-15)
 
 - Offline support closure is implemented: the visible File menu and native Help
