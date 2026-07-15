@@ -46,7 +46,7 @@ export function EvidenceSidebar({
     : { evidence: 'Audit & Governor', inspector: 'Device Inspector' };
 
   return (
-    <aside className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface">
+    <aside data-component="EvidenceSidebar" className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface">
       <div className="grid h-10 shrink-0 grid-cols-2 border-b border-border bg-surface p-1" role="tablist" aria-label={language === 'zh' ? '证据侧栏' : 'Evidence sidebar'}>
         {(['evidence', 'inspector'] as EvidenceTab[]).map((tab, index, tabs) => {
           const selected = activeTab === tab;

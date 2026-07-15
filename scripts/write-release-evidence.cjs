@@ -15,6 +15,31 @@ function requireFile(file, label) {
   return file;
 }
 
+function requireMatchingChecksum(file, label) {
+  const checksumFile = requireFile(`${file}.sha256`, `${label} checksum`);
+  const digest = sha256File(file);
+  const recorded = fs.readFileSync(checksumFile, 'utf8').trim().split(/\s+/)[0].toUpperCase();
+  if (recorded !== digest) throw new Error(`${label} checksum mismatch: ${path.basename(file)}`);
+  return digest;
+}
+
+function validateDesignEvidence(evidence) {
+  if (evidence?.schema !== 'realitywarden.product-design-acceptance' || evidence?.schema_version !== 1) throw new Error('Invalid product-design acceptance evidence schema.');
+  for (const gate of ['responsive_layout', 'bilingual_content', 'windows_scaling', 'dialog_boundaries', 'keyboard_focus', 'forced_colors']) {
+    if (evidence.gates?.[gate] !== 'passed') throw new Error(`Product-design acceptance gate did not pass: ${gate}`);
+  }
+  const layouts = Array.isArray(evidence.layouts) ? evidence.layouts : [];
+  for (const contract of [[1440, 900, 'zh'], [1440, 900, 'en'], [1180, 720, 'zh'], [1180, 720, 'en']]) {
+    if (!layouts.some((item) => item?.viewport?.width === contract[0] && item?.viewport?.height === contract[1] && item?.language === contract[2] && item?.violations?.length === 0)) throw new Error(`Product-design viewport evidence missing: ${contract.join('x')}`);
+  }
+  const scales = new Set((Array.isArray(evidence.scaling) ? evidence.scaling : []).map((item) => item?.requestedScale));
+  if (!scales.has(1.25) || !scales.has(1.5)) throw new Error('Product-design Windows scaling evidence is incomplete.');
+  const dialogs = new Set((Array.isArray(evidence.dialogs) ? evidence.dialogs : []).filter((item) => item?.status === 'passed' && item?.focusRestored === true).map((item) => item.id));
+  for (const dialog of ['action-composer', 'asset-import', 'manual-import']) if (!dialogs.has(dialog)) throw new Error(`Product-design dialog evidence missing: ${dialog}`);
+  if (evidence.contrast?.forcedColors !== true || evidence.contrast?.hardwareBorderStyle !== 'double') throw new Error('Product-design forced-colors evidence is incomplete.');
+  return evidence;
+}
+
 function readSourceRevision(root) {
   try {
     const commandOptions = { cwd: root, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] };
@@ -40,10 +65,14 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
   const recordedLifecycleHash = fs.readFileSync(lifecycleHashFile, 'utf8').trim().split(/\s+/)[0].toUpperCase();
   if (recordedLifecycleHash !== lifecycleHash) throw new Error(`Windows install lifecycle evidence checksum mismatch: ${lifecycleName}`);
   const lifecycle = validateLifecycleEvidence(JSON.parse(fs.readFileSync(lifecycleFile, 'utf8')), packageJson.version, sha256File(installer));
+  const designName = `RealityWarden-${packageJson.version}-Design-Acceptance.json`;
+  const designFile = requireFile(path.join(releaseDir, designName), 'Product-design acceptance evidence');
+  const designHash = requireMatchingChecksum(designFile, 'Product-design acceptance evidence');
+  const design = validateDesignEvidence(JSON.parse(fs.readFileSync(designFile, 'utf8')));
 
   return {
     schema: 'realitywarden.release-evidence',
-    schema_version: 2,
+    schema_version: 3,
     product: 'RealityWarden',
     release_version: packageJson.version,
     generated_at: generatedAt,
@@ -63,6 +92,11 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
       sha256: lifecycleHash,
       user_data_policy: lifecycle.user_data_policy
     },
+    product_design_acceptance: {
+      file: designName,
+      sha256: designHash,
+      gates: design.gates
+    },
     gates: [
       {
         id: 'electron-package-contract',
@@ -78,6 +112,11 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
         id: 'windows-install-lifecycle',
         status: 'passed',
         evidence: 'Isolated current-user clean install, installed first run, forced-offline degradation, in-place reinstall, uninstall cleanup, and user-data preservation passed'
+      },
+      {
+        id: 'product-design-acceptance',
+        status: 'passed',
+        evidence: '1440x900 and 1180x720 bilingual layouts, 125%/150% scale, dialogs, focus return, and forced-colors boundaries passed'
       }
     ],
     not_claimed: {
@@ -109,4 +148,4 @@ if (require.main === module) {
   console.log(`- Manifest SHA256: ${result.digest}`);
 }
 
-module.exports = { buildReleaseEvidence, sha256File, writeReleaseEvidence };
+module.exports = { buildReleaseEvidence, sha256File, validateDesignEvidence, writeReleaseEvidence };

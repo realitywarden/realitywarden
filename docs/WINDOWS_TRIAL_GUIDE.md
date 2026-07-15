@@ -55,15 +55,19 @@ Expected output:
 
 ```text
 release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.0-Design-Acceptance.json
+release/RealityWarden-0.5.0-Design-Acceptance.json.sha256
 release/RealityWarden-0.5.0-Install-Lifecycle.json
 release/RealityWarden-0.5.0-Install-Lifecycle.json.sha256
 release/RealityWarden-0.5.0-Release-Evidence.json
 release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 ```
 
-The evidence JSON is written only after package inspection, packaged first-run
-renderer smoke, and an isolated clean-install/reinstall/offline/uninstall
-lifecycle pass. Use it to verify the installer SHA256, packaged BUILD_ID, and
+The release evidence JSON is written only after package inspection, packaged
+first-run renderer smoke, the 1440×900 / 1180×720 bilingual product-design
+matrix (including Windows scaling, keyboard focus, dialogs, and forced colors),
+and an isolated clean-install/reinstall/offline/uninstall lifecycle pass. Use it
+to verify the installer SHA256, packaged BUILD_ID, design evidence digest, and
 lifecycle evidence digest; it does not claim code signing, migration from a
 different historical version, or physical-device acceptance. Uninstall removes
 the application but preserves user projects and preferences by default.

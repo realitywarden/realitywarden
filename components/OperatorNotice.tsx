@@ -50,7 +50,7 @@ export function OperatorNotice({ language, notice, onDismiss, onAction }: Props)
   const urgent = notice.severity === 'error' || notice.severity === 'warning';
   return (
     <div
-      className={`pointer-events-auto fixed left-1/2 top-12 z-[80] flex w-[min(520px,calc(100vw-32px))] -translate-x-1/2 items-start gap-3 border bg-surface-overlay px-3 py-2 [box-shadow:var(--shadow-floating)] backdrop-blur-sm ${severityClass[notice.severity]}`}
+      className={`pointer-events-auto fixed left-1/2 top-12 z-40 flex w-[min(520px,calc(100vw-32px))] -translate-x-1/2 items-start gap-3 border bg-surface-overlay px-3 py-2 [box-shadow:var(--shadow-floating)] backdrop-blur-sm ${severityClass[notice.severity]}`}
       role={urgent ? 'alert' : 'status'}
       aria-live={urgent ? 'assertive' : 'polite'}
       aria-atomic="true"

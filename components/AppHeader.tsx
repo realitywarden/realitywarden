@@ -19,14 +19,14 @@ export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManua
   const [open, setOpen] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const items: Array<{ label: string; action: () => void }> = [
-    { label: t(language, 'app_new'), action: onNew },
-    { label: t(language, 'app_open'), action: onOpen },
-    { label: t(language, 'app_import_asset'), action: onImportAsset },
-    { label: language === 'zh' ? '导入设备手册…' : 'Import Device Manual…', action: onImportManual },
-    { label: t(language, 'app_save_project'), action: onSave },
-    { label: t(language, 'app_save_as'), action: onSaveAs },
-    { label: t(language, 'app_restore'), action: onRestore }
+  const items: Array<{ id: string; label: string; action: () => void }> = [
+    { id: 'new', label: t(language, 'app_new'), action: onNew },
+    { id: 'open', label: t(language, 'app_open'), action: onOpen },
+    { id: 'import-asset', label: t(language, 'app_import_asset'), action: onImportAsset },
+    { id: 'import-manual', label: language === 'zh' ? '导入设备手册…' : 'Import Device Manual…', action: onImportManual },
+    { id: 'save', label: t(language, 'app_save_project'), action: onSave },
+    { id: 'save-as', label: t(language, 'app_save_as'), action: onSaveAs },
+    { id: 'restore', label: t(language, 'app_restore'), action: onRestore }
   ];
 
   const focusItem = (index: number) => {
@@ -76,6 +76,7 @@ export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManua
             key={item.label}
             type="button"
             role="menuitem"
+            data-file-action={item.id}
             tabIndex={-1}
             onClick={() => { setOpen(false); item.action(); }}
             onKeyDown={(event) => {
@@ -132,15 +133,15 @@ export function AppHeader(props: AppHeaderProps) {
       <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3">
         <nav className="flex shrink-0 items-center gap-2" aria-label={language === 'zh' ? '项目操作' : 'Project actions'}>
           <FileMenu {...props} />
-          <button type="button" onClick={props.onQuickStart} className="h-8 border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>
-          <button data-action-composer-trigger type="button" onClick={props.onActions} className="h-8 border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
+          <button type="button" onClick={props.onQuickStart} className="h-8 shrink-0 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>
+          <button data-action-composer-trigger type="button" onClick={props.onActions} className="h-8 shrink-0 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
         </nav>
         <div className="flex min-w-0 items-center gap-2 border-l border-border pl-3">
           <span className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${resultClass}`}>{resultText}</span>
           <span className="h-6 w-px shrink-0 bg-border" />
           <button type="button" onClick={props.onExportReport} disabled={!hasReport} className="h-8 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary disabled:opacity-40">{t(language, 'app_export_report')}</button>
           <button type="button" onClick={props.onExportAdapter} className="h-8 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_export_adapter_package')}</button>
-          <select value={language} onChange={(event) => props.onLanguageChange(event.target.value as UiLanguage)} aria-label={language === 'zh' ? '界面语言' : 'Interface language'} className="h-8 w-20 border border-border bg-surface-raised px-2 text-[12px] text-text-primary"><option value="zh">中文</option><option value="en">English</option></select>
+          <select data-interface-language value={language} onChange={(event) => props.onLanguageChange(event.target.value as UiLanguage)} aria-label={language === 'zh' ? '界面语言' : 'Interface language'} className="h-8 w-20 border border-border bg-surface-raised px-2 text-[12px] text-text-primary"><option value="zh">中文</option><option value="en">English</option></select>
         </div>
       </div>
     </header>

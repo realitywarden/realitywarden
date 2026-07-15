@@ -14,6 +14,7 @@
     "desktop:pack": "npm run desktop:build && node scripts/pack-electron.cjs",
     "desktop:prod": "npm run desktop:build && electron dist-electron/main.js --prod",
     "desktop:smoke": "npm run desktop:build && electron dist-electron/main.js --prod --smoke-test",
+    "desktop:design-acceptance": "npm run desktop:build && node scripts/run-product-design-acceptance.cjs",
     "build": "node scripts/run-next-build.cjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",

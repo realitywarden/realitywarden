@@ -2914,7 +2914,7 @@ export default function Home() {
           onScenarioChange={handleScenarioChange}
           onAddAsset={handleAddAsset}
         />
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0F111A]">
+        <div data-component="WorkspaceViewport" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0F111A]">
           <div className="relative min-h-0 flex-1 overflow-hidden border-b border-border-panel bg-[#0F111A]">
             <VirtualDeviceStage
               language={language}

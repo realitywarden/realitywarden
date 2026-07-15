@@ -55,6 +55,13 @@ UI boundary, firmware SHA256 pairs, branding metadata, and Windows serialport
 bindings are present. It must then run the packaged executable with
 `--prod --smoke-test` successfully. The smoke is a packaged first-run renderer smoke, not only a local-server readiness probe: it loads the renderer in an isolated session and verifies the desktop regions, sole Run/Stop controls, simulation/REAL HARDWARE separation, and preload bridge. Failure exits non-zero.
 
+The packaged executable must then pass the versioned product-design acceptance
+matrix: 1440×900 and 1180×720 in Chinese and English, Windows 125% and 150%
+scaling, dialog boundaries and focus restoration, trusted keyboard focus, and
+forced-colors REAL HARDWARE separation. This is measured from the packaged
+renderer and emitted as machine-readable evidence, not inferred from source or
+static screenshots.
+
 After the unpacked smoke, the packaging gate performs an isolated Windows
 current-user lifecycle in a dedicated temporary directory: clean silent install,
 installed first-run renderer smoke, forced-offline startup with an explicit rule
@@ -68,29 +75,34 @@ Expected artifact:
 
 ```text
 release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.0-Design-Acceptance.json
+release/RealityWarden-0.5.0-Design-Acceptance.json.sha256
 release/RealityWarden-0.5.0-Install-Lifecycle.json
 release/RealityWarden-0.5.0-Install-Lifecycle.json.sha256
 release/RealityWarden-0.5.0-Release-Evidence.json
 release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 ```
 
-The release evidence manifest is emitted only after package verification,
-first-run renderer smoke, and the Windows install lifecycle succeed. It records
-the exact installer SHA256 and size, packaged Next BUILD_ID, lifecycle-manifest
-digest, source commit, and clean/dirty worktree state. Companion checksums protect
-both evidence records. They deliberately mark code signing, migration from a
-different historical version, and optional physical-hardware acceptance as not
-assessed rather than inventing evidence.
+The schema-v3 release evidence manifest is emitted only after package
+verification, first-run renderer smoke, packaged product-design acceptance, and
+the Windows install lifecycle succeed. It records the exact installer SHA256 and
+size, packaged Next BUILD_ID, design/lifecycle manifest digests, source commit,
+and clean/dirty worktree state. Companion checksums protect all evidence records.
+They deliberately mark code signing, migration from a different historical
+version, and optional physical-hardware acceptance as not assessed rather than
+inventing evidence.
 
 Verified local artifact record (2026-07-15):
 
-- size: `186418387` bytes (`177.78 MiB`);
-- SHA256: `BDBC503FDA26C2DDD5BFBC66747679EFB22500E6E1A8F0B83F5AD9735C62A4F4`;
+- size: `186429876` bytes (`177.79 MiB`);
+- SHA256: `85761D9A4A25B6A24DDEA0791DC81063311FD3EE44044F3FD08003450F58842C`;
 - executable FileVersion/ProductVersion: `0.5.0`;
 - package verification: pass (shared runtime, Next runtime, manual/PDF import
   boundary, pinned pdfjs runtime, three serialport native bindings, firmware
   image + SHA256, and branding);
 - packaged `RealityWarden.exe --prod --smoke-test`: pass.
+- packaged product-design matrix: pass (1440×900 / 1180×720,
+  Chinese/English, 125%/150% scale, dialogs, focus, and forced colors).
 - isolated Windows lifecycle: pass (clean install, installed first run,
   forced-offline degradation, in-place reinstall, uninstall cleanup, and user
   data preservation).

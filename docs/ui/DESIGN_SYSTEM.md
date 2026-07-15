@@ -56,6 +56,8 @@
   `role=alert` + `aria-live=assertive`，消息必须 `aria-atomic=true`。
 - 错误通知不得自动消失；必须可手动关闭。可恢复错误应提供上下文操作，
   例如损坏的自动保存只能由用户显式清除，且不得改变当前工作区。
+- 常驻通知的层级必须低于菜单和模态。通知可以遮挡普通工作区内容，但不得
+  阻断 File 菜单、模态触发器或模态内部控件。
 - 模态窗口必须具有可访问名称和说明、Escape 关闭、Tab/Shift+Tab 焦点圈闭，
   并在关闭后把焦点还给明确的触发器。打开任何模态时，背景和 Three.js
   HTML 标签不得穿透、接收交互或留在可见层。
@@ -66,6 +68,13 @@
   恢复后应提示用户先检查审计证据，再决定是否重试真实命令。
 
 自动防回归入口：`npm run test:accessibility`，并已接入 `npm run verify`。
+
+成品设计验收入口：`npm run desktop:design-acceptance`。该命令使用真实
+Electron 生产 renderer 执行 1440×900 / 1180×720、中英文、Windows
+125% / 150% 缩放、复杂模态、键盘焦点和 forced-colors 矩阵，并输出带
+SHA256 companion 的版本化证据。`npm run desktop:pack` 会对打包后的
+`RealityWarden.exe` 再执行同一矩阵；完整规格见
+[`PRODUCT_DESIGN_ACCEPTANCE.md`](./PRODUCT_DESIGN_ACCEPTANCE.md)。
 
 ### Keyboard and contrast contract
 

@@ -224,6 +224,18 @@
     box-shadow: var(--shadow-floating) !important;
     backdrop-filter: blur(8px);
   }
+
+  /* Legacy asset wizard: preserve its internal workflow while guaranteeing
+     the same 16px viewport safety margin as the product dialogs. */
+  [data-app-modal] [data-accessible-dialog-boundary] > .fixed {
+    padding: 16px;
+  }
+
+  [data-app-modal] [data-accessible-dialog-boundary] > .fixed > div {
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    overflow: hidden;
+  }
 }
 
 @media (prefers-contrast: more) {

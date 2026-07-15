@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -15,7 +16,8 @@ const sourceRoot = path.resolve(root, '..');
 const appRoot = fs.existsSync(path.join(root, 'package.json')) ? root : sourceRoot;
 const serverRoot = app.isPackaged ? path.join(process.resourcesPath, 'app.asar.unpacked') : appRoot;
 const basePort = Number(process.env.ORS_DESKTOP_PORT || 3100);
-const isSmokeTest = process.argv.includes('--smoke-test');
+const isDesignSmokeTest = process.argv.includes('--design-smoke-test');
+const isSmokeTest = process.argv.includes('--smoke-test') || isDesignSmokeTest;
 
 let nextProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -167,6 +169,180 @@ function enforceOfflineSmokeBoundary(window: BrowserWindow, localOrigin: string)
   });
 }
 
+async function waitForDomCondition(window: BrowserWindow, expression: string, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await window.webContents.executeJavaScript(`Boolean(${expression})`, true) as boolean) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Design acceptance DOM condition timed out: ${expression}`);
+}
+
+async function setDesignLanguage(window: BrowserWindow, language: 'zh' | 'en') {
+  const changed = await window.webContents.executeJavaScript(`(() => {
+    const select = document.querySelector('[data-interface-language]');
+    if (!(select instanceof HTMLSelectElement)) return false;
+    select.value = '${language}';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`, true) as boolean;
+  if (!changed) throw new Error('Design acceptance could not find the interface language control.');
+  const runLabel = language === 'zh' ? '运行' : 'Run';
+  const stopLabel = language === 'zh' ? '停止' : 'Stop';
+  await waitForDomCondition(window, `Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === ${JSON.stringify(runLabel)}).length === 1 && Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === ${JSON.stringify(stopLabel)}).length === 1`);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
+async function captureDesignLayout(window: BrowserWindow, width: number, height: number, language: 'zh' | 'en', scale = 1) {
+  window.setContentSize(width, height);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await setDesignLanguage(window, language);
+  const snapshot = await window.webContents.executeJavaScript(`(() => {
+    const project = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return null;
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, clientWidth: element.clientWidth, clientHeight: element.clientHeight, scrollWidth: element.scrollWidth, scrollHeight: element.scrollHeight };
+    };
+    const intersects = (left, right) => Boolean(left && right && Math.min(left.right, right.right) > Math.max(left.x, right.x) && Math.min(left.bottom, right.bottom) > Math.max(left.y, right.y));
+    const header = project('[data-component="AppHeader"]');
+    const navigator = project('[data-component="DeviceNavigator"]');
+    const workspace = project('[data-component="WorkspaceViewport"]');
+    const dock = project('[data-component="CommandDock"]');
+    const sidebar = project('[data-component="EvidenceSidebar"]');
+    const hardware = project('[data-real-hardware-boundary]');
+    const violations = [];
+    const expectedNavigatorWidth = innerWidth < 1280 ? 240 : 280;
+    if (document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight) violations.push('document_overflow');
+    if (!header || Math.abs(header.height - 48) > 1 || header.scrollWidth > header.clientWidth + 1) violations.push('header_contract');
+    if (!navigator || Math.abs(navigator.width - expectedNavigatorWidth) > 1) violations.push('navigator_width');
+    if (!sidebar || Math.abs(sidebar.width - 360) > 1) violations.push('sidebar_width');
+    if (!workspace || workspace.width < 560) violations.push('workspace_min_width');
+    if (!dock || dock.width < 520 || dock.x < (workspace?.x ?? 0) || dock.right > (workspace?.right ?? innerWidth)) violations.push('command_dock_bounds');
+    if (!hardware || hardware.x < (sidebar?.x ?? innerWidth) || hardware.right > (sidebar?.right ?? 0) + 1) violations.push('real_hardware_bounds');
+    if (intersects(dock, sidebar) || intersects(dock, navigator) || intersects(dock, hardware)) violations.push('critical_overlap');
+    const clippedControls = Array.from(document.querySelectorAll('[data-component="AppHeader"] button, [data-component="AppHeader"] summary, [data-component="CommandDock"] button, [data-component="EvidenceSidebar"] [role="tab"]'))
+      .filter((element) => element instanceof HTMLElement && element.getClientRects().length > 0 && element.scrollWidth > element.clientWidth + 1)
+      .map((element) => ({ text: (element.textContent ?? '').trim().slice(0, 80), tag: element.tagName, className: element.className, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+    if (clippedControls.length > 0) violations.push('clipped_controls');
+    const runControls = Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === (${language === 'zh' ? "'运行'" : "'Run'"})).length;
+    const stopControls = Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === (${language === 'zh' ? "'停止'" : "'Stop'"})).length;
+    if (runControls !== 1 || stopControls !== 1) violations.push('run_stop_count');
+    return { viewport: { width: innerWidth, height: innerHeight, devicePixelRatio }, requestedScale: ${scale}, language: '${language}', header, navigator, workspace, dock, sidebar, hardware, clippedControls, runControls, stopControls, violations };
+  })()`, true) as { violations: string[]; [key: string]: unknown };
+  if (snapshot.violations.length > 0) throw new Error(`Design layout failed at ${width}x${height}, ${language}, scale ${scale}: ${JSON.stringify(snapshot)}`);
+  return snapshot;
+}
+
+async function auditDesignDialog(
+  window: BrowserWindow,
+  id: string,
+  open: () => Promise<void>,
+  panelSelector: string,
+  focusReturnSelector: string
+) {
+  await open();
+  await waitForDomCondition(window, `document.querySelector(${JSON.stringify(panelSelector)})`);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const measurement = await window.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector(${JSON.stringify(panelSelector)});
+    if (!(panel instanceof HTMLElement)) return null;
+    const rect = panel.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, activeInside: panel.contains(document.activeElement), withinViewport: rect.x >= 15 && rect.y >= 15 && rect.right <= innerWidth - 15 && rect.bottom <= innerHeight - 15, documentOverflow: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight };
+  })()`, true) as { activeInside: boolean; withinViewport: boolean; documentOverflow: boolean; [key: string]: unknown } | null;
+  if (!measurement || !measurement.activeInside || !measurement.withinViewport || measurement.documentOverflow) throw new Error(`Design dialog failed: ${id} ${JSON.stringify(measurement)}`);
+  await window.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`, true);
+  await waitForDomCondition(window, `!document.querySelector(${JSON.stringify(panelSelector)})`);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const focusRestored = await window.webContents.executeJavaScript(`document.activeElement?.matches(${JSON.stringify(focusReturnSelector)}) === true`, true) as boolean;
+  if (!focusRestored) throw new Error(`Design dialog did not restore focus: ${id}`);
+  return { id, status: 'passed', ...measurement, focusRestored };
+}
+
+async function runProductDesignAcceptance(window: BrowserWindow) {
+  const layouts = [];
+  layouts.push(await captureDesignLayout(window, 1440, 900, 'zh'));
+  layouts.push(await captureDesignLayout(window, 1440, 900, 'en'));
+  layouts.push(await captureDesignLayout(window, 1180, 720, 'zh'));
+  layouts.push(await captureDesignLayout(window, 1180, 720, 'en'));
+
+  window.setContentSize(1180, 720);
+  await setDesignLanguage(window, 'en');
+  const dialogs = [];
+  dialogs.push(await auditDesignDialog(window, 'action-composer', async () => {
+    await window.webContents.executeJavaScript(`document.querySelector('[data-action-composer-trigger]')?.click()`, true);
+  }, '[role="dialog"][aria-labelledby="action-composer-title"]', '[data-action-composer-trigger]'));
+  dialogs.push(await auditDesignDialog(window, 'asset-import', async () => {
+    await window.webContents.executeJavaScript(`document.querySelector('[data-file-menu-trigger]')?.click()`, true);
+    await waitForDomCondition(window, `document.querySelector('[data-file-action="import-asset"]')`);
+    await window.webContents.executeJavaScript(`document.querySelector('[data-file-action="import-asset"]')?.click()`, true);
+  }, '[data-accessible-dialog-boundary] > .fixed > div', '[data-file-menu-trigger]'));
+  dialogs.push(await auditDesignDialog(window, 'manual-import', async () => {
+    await window.webContents.executeJavaScript(`document.querySelector('[data-file-menu-trigger]')?.click()`, true);
+    await waitForDomCondition(window, `document.querySelector('[data-file-action="import-manual"]')`);
+    await window.webContents.executeJavaScript(`document.querySelector('[data-file-action="import-manual"]')?.click()`, true);
+  }, '[data-manual-import-modal] > section', '[data-file-menu-trigger]'));
+
+  const debug = window.webContents.debugger;
+  const attachedHere = !debug.isAttached();
+  if (attachedHere) debug.attach('1.3');
+  const scaling = [];
+  let contrast: Record<string, unknown> | null = null;
+  try {
+    for (const scale of [1.25, 1.5]) {
+      await debug.sendCommand('Emulation.setDeviceMetricsOverride', { width: 1180, height: 720, deviceScaleFactor: scale, mobile: false });
+      scaling.push(await captureDesignLayout(window, 1180, 720, 'en', scale));
+    }
+    await debug.sendCommand('Emulation.clearDeviceMetricsOverride');
+    await debug.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'forced-colors', value: 'active' }] });
+    await window.webContents.executeJavaScript(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`, true);
+    window.focus();
+    window.webContents.focus();
+    await debug.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+    await debug.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    contrast = await window.webContents.executeJavaScript(`(() => {
+      const boundary = document.querySelector('[data-real-hardware-boundary]');
+      const focusTarget = document.activeElement;
+      if (!(boundary instanceof HTMLElement) || !(focusTarget instanceof HTMLElement)) return null;
+      const boundaryStyle = getComputedStyle(boundary);
+      const focusStyle = getComputedStyle(focusTarget);
+      return { forcedColors: matchMedia('(forced-colors: active)').matches, hardwareBorderStyle: boundaryStyle.borderTopStyle, hardwareBorderWidth: boundaryStyle.borderTopWidth, focusedTag: focusTarget.tagName, focusVisible: focusTarget.matches(':focus-visible'), focusOutlineStyle: focusStyle.outlineStyle, focusOutlineWidth: focusStyle.outlineWidth };
+    })()`, true) as Record<string, unknown> | null;
+    if (!contrast || contrast.forcedColors !== true || contrast.hardwareBorderStyle !== 'double' || contrast.focusOutlineStyle === 'none') throw new Error(`Forced-colors design contract failed: ${JSON.stringify(contrast)}`);
+  } finally {
+    try {
+      await debug.sendCommand('Emulation.clearDeviceMetricsOverride');
+      await debug.sendCommand('Emulation.setEmulatedMedia', { features: [] });
+    } finally {
+      if (attachedHere && debug.isAttached()) debug.detach();
+    }
+  }
+
+  const evidence = {
+    schema: 'realitywarden.product-design-acceptance',
+    schema_version: 1,
+    product: 'RealityWarden',
+    generated_at: new Date().toISOString(),
+    gates: { responsive_layout: 'passed', bilingual_content: 'passed', windows_scaling: 'passed', dialog_boundaries: 'passed', keyboard_focus: 'passed', forced_colors: 'passed' },
+    layouts,
+    scaling,
+    dialogs,
+    contrast,
+    not_claimed: { physical_hardware_acceptance: 'optional evidence; not assessed by this record', physical_outcome: 'not inferred from renderer layout acceptance' }
+  };
+  const evidencePath = process.env.ORS_DESIGN_EVIDENCE_PATH;
+  if (evidencePath) {
+    const resolved = path.resolve(evidencePath);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
+    fs.writeFileSync(resolved, serialized, 'utf8');
+    const digest = crypto.createHash('sha256').update(serialized).digest('hex').toUpperCase();
+    fs.writeFileSync(`${resolved}.sha256`, `${digest}  ${path.basename(resolved)}\n`, 'utf8');
+  }
+  return evidence;
+}
+
 function createDesktopWindow(show: boolean) {
   const preloadPath = path.join(__dirname, 'preload.js');
   const iconPath = path.join(appRoot, 'assets', 'branding', 'realitywarden.ico');
@@ -242,6 +418,10 @@ async function createWindow() {
     await mainWindow.loadURL(url);
     const snapshot = await waitForRendererSmoke(mainWindow, offlineSmoke);
     appendLog(`Packaged first-run renderer smoke passed at ${url}: ${JSON.stringify(snapshot)}`);
+    if (isDesignSmokeTest) {
+      const designEvidence = await runProductDesignAcceptance(mainWindow);
+      appendLog(`Product design acceptance passed: ${JSON.stringify(designEvidence)}`);
+    }
     mainWindow.destroy();
     mainWindow = null;
     shutdownServer();
@@ -284,7 +464,12 @@ app.whenReady().then(async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendLog(`Startup failed: ${message}`);
-    if (isSmokeTest) process.exitCode = 1;
+    if (isSmokeTest) {
+      process.exitCode = 1;
+      shutdownServer();
+      app.quit();
+      return;
+    }
     dialog.showErrorBox('RealityWarden failed to start', message);
     shutdownServer();
     app.quit();
