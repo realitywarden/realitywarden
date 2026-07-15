@@ -13,9 +13,12 @@ interface FileMenuProps {
   onSave: () => void;
   onSaveAs: () => void;
   onRestore: () => void;
+  onOpenSupport: () => void;
+  onExportDiagnostics: () => void;
+  onAbout: () => void;
 }
 
-export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore }: FileMenuProps) {
+export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore, onOpenSupport, onExportDiagnostics, onAbout }: FileMenuProps) {
   const [open, setOpen] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -26,7 +29,10 @@ export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManua
     { id: 'import-manual', label: language === 'zh' ? '导入设备手册…' : 'Import Device Manual…', action: onImportManual },
     { id: 'save', label: t(language, 'app_save_project'), action: onSave },
     { id: 'save-as', label: t(language, 'app_save_as'), action: onSaveAs },
-    { id: 'restore', label: t(language, 'app_restore'), action: onRestore }
+    { id: 'restore', label: t(language, 'app_restore'), action: onRestore },
+    { id: 'support', label: language === 'zh' ? '打开支持指南' : 'Open Support Guide', action: onOpenSupport },
+    { id: 'diagnostics', label: language === 'zh' ? '导出本地诊断包…' : 'Export Local Diagnostics…', action: onExportDiagnostics },
+    { id: 'about', label: language === 'zh' ? '关于 RealityWarden' : 'About RealityWarden', action: onAbout }
   ];
 
   const focusItem = (index: number) => {
@@ -70,7 +76,7 @@ export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManua
       >
         {language === 'zh' ? '文件' : 'File'} <span className="ml-2 text-[10px] text-text-secondary">▾</span>
       </summary>
-      <div className="rw-floating-panel absolute left-0 top-9 z-50 flex w-48 flex-col py-1" role="menu" aria-label={language === 'zh' ? '文件操作' : 'File actions'}>
+      <div className="rw-floating-panel absolute left-0 top-9 z-50 flex w-60 flex-col py-1" role="menu" aria-label={language === 'zh' ? '文件操作' : 'File actions'}>
         {items.map((item, index) => (
           <button
             key={item.label}

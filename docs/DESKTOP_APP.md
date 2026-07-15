@@ -46,6 +46,9 @@ The renderer remains the Studio Workbench UI. In desktop mode it calls `window.o
 - `window.openReality.export.labReport(report)`
 - `window.openReality.export.deploymentPackage(package)`
 - `window.openReality.file.reveal(filePath)`
+- `window.openReality.support.openGuide()`
+- `window.openReality.support.exportDiagnostics()`
+- `window.openReality.support.showAbout()`
 - `window.openReality.onMenuAction(callback)`
 
 The preload does not expose `fs`, Node globals, or arbitrary IPC channels.
@@ -57,6 +60,7 @@ IPC modules live in `electron/ipc/`:
 - `project.ipc.ts`: New/Open/Save/Save As project files
 - `file.ipc.ts`: limited local file reveal
 - `export.ipc.ts`: Lab Report and Deployment Package exports
+- `support.ipc.ts`: packaged support guide, local diagnostic export, and local About dialog
 
 All local file reads and writes happen in the Main Process through these IPC handlers.
 
@@ -104,9 +108,18 @@ The desktop menu includes:
 - File: New Project, Open Project, Save Project, Save Project As, Export Lab Report, Export Deployment Package, Exit
 - Run: Run Preflight, Run Virtual Lab, Stop, Replay
 - View: Toggle Project Explorer, Toggle Inspector, Toggle Console, Reload
-- Help: About RealityWarden
+- Help: Open Support Guide, Export Local Diagnostic Bundle, About RealityWarden
 
 Menu actions are sent to the renderer through a safe `menu:action` channel.
+
+The same support actions are discoverable in the visible File menu because the
+Windows native menu bar is normally collapsed. The installed guide is packaged
+under `resources/support` and opens in an isolated in-app window without network
+access. Diagnostic export is
+user-initiated and local-only: it contains version/runtime metadata and a
+bounded, allowlisted, redacted startup-log excerpt. It excludes project content,
+prompts, audit/hardware results, serial ports, environment variables, and
+credentials, and performs no upload.
 
 ## Security Boundary
 
@@ -122,7 +135,7 @@ Electron is configured with:
 
 Real Device execution is not enabled by default. The current product path is Virtual Lab first.
 
-Future Real Device execution must require:
+The separately marked reference-rig Real Device execution requires:
 
 - certified adapter
 - verified RealDeviceTransport behind HardwareExecutionGate
@@ -178,14 +191,21 @@ Installer artifact pattern:
 release/RealityWarden-<version>-Setup.exe
 ```
 
-Only after package verification and the first-run renderer smoke pass, packaging writes two additional artifacts:
+Only after package verification, startup/product-design acceptance, and the
+isolated install lifecycle pass, packaging writes the release evidence artifacts:
 
 ```text
 release/RealityWarden-<version>-Release-Evidence.json
 release/RealityWarden-<version>-Release-Evidence.json.sha256
 ```
 
-The machine-readable manifest records the exact installer SHA256/size, packaged executable size, Next BUILD_ID, source commit, clean/dirty worktree state, and the two package/startup gates. If Git metadata is unavailable it says so instead of guessing. It explicitly does not claim code-signing status, physical hardware acceptance, or a verified physical outcome.
+The schema-v4 machine-readable manifest records the exact installer SHA256/size,
+packaged executable size, Next BUILD_ID, source commit, clean/dirty worktree
+state, startup and product-design evidence, and the clean install/offline/
+reinstall/uninstall lifecycle evidence. If Git metadata is unavailable it says
+so instead of guessing. It explicitly does not claim code-signing status,
+historical cross-version migration, physical hardware acceptance, or a verified
+physical outcome.
 
 Current verified Public Alpha installer artifact:
 

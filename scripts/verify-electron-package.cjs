@@ -85,6 +85,15 @@ for (const image of firmwareImages) {
 }
 
 const executable = path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe');
+const supportDir = path.join(resourcesDir, 'support');
+for (const required of ['SUPPORT.md', 'SUPPORT.html', 'WINDOWS_TRIAL_GUIDE.md', 'EVALUATION_GUIDE.md', 'REAL_HARDWARE_ESP32.md']) {
+  assert(fs.existsSync(path.join(supportDir, required)), `packaged offline support resource missing: ${required}`);
+}
+const packagedSupport = fs.readFileSync(path.join(supportDir, 'SUPPORT.md'), 'utf8');
+assert(packagedSupport.includes('does not upload it') && packagedSupport.includes('REAL HARDWARE'), 'packaged support guide must retain privacy and hardware boundaries');
+const packagedSupportHtml = fs.readFileSync(path.join(supportDir, 'SUPPORT.html'), 'utf8');
+assert(packagedSupportHtml.includes('RealityWarden does not upload it') && packagedSupportHtml.includes('REAL HARDWARE boundary'), 'packaged in-app support page must retain privacy and hardware boundaries');
+
 assert(fs.existsSync(executable), 'branded RealityWarden executable is missing from win-unpacked');
 assert(fs.existsSync(path.join(root, packageJson.build.win.icon)), 'configured Windows icon is missing');
 assert.equal(packageJson.build.afterPack, 'scripts/after-pack.cjs', 'Windows branding hook must run after packaging');
@@ -103,4 +112,5 @@ console.log('- Compiled Electron + shared safety runtime + Next production outpu
 console.log('- Manual/PDF import UI and pinned pdfjs runtime are present.');
 console.log(`- serialport native binding(s): ${unpackedBindings.length}`);
 console.log(`- Firmware image(s) with valid sha256: ${firmwareImages.length}`);
+console.log('- Offline support guide and recovery references are present.');
 console.log('- Branded executable, installer, and uninstaller icon configuration is present.');

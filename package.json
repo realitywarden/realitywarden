@@ -23,6 +23,7 @@
     "test:simulation": "node lib/simulation/runSimulationTests.js",
     "test:virtual-lab": "node lib/virtual-lab/runVirtualLabTests.js",
     "test:desktop": "node lib/desktop/runDesktopTests.js",
+    "test:support": "node scripts/build-electron.cjs && node tests/support/runSupportTests.cjs",
     "test:accessibility": "node lib/ui/runAccessibilityTests.js",
     "test:assets": "node lib/assets/runAssetTests.js",
     "test:release": "node lib/release/runReleaseTests.js",
@@ -50,7 +51,7 @@
     "hardware:demo": "node scripts/run-real-hardware-demo.cjs",
     "hardware:diagnose": "node scripts/run-hardware-diagnose.cjs",
     "assets:real": "node scripts/convert-real-device-assets.mjs",
-    "verify": "npm run typecheck && npm run build && npm run test:conformance && npm run test:simulation && npm run test:virtual-lab && npm run test:desktop && npm run test:accessibility && npm run test:assets && npm run test:release && npm run test:launch-closure && npm run test:protocol && npm run test:adapter-sdk && npm run test:device-onboarding && npm run test:action-runtime && npm run test:playback && npm run test:compiler && npm run test:autonomy && npm run test:open-reality-runtime && npm run test:local-runtime && npm run test:reality-assets && npm run test:reality-asset-import && npm run test:reality-asset-devkit && npm run test:reporting && npm run test:real-hardware && npm run test:virtual-loopback && npm run test:llm-compiler && npm run test:action-manifest && npm run test:manual-import",
+    "verify": "npm run typecheck && npm run build && npm run test:conformance && npm run test:simulation && npm run test:virtual-lab && npm run test:desktop && npm run test:support && npm run test:accessibility && npm run test:assets && npm run test:release && npm run test:launch-closure && npm run test:protocol && npm run test:adapter-sdk && npm run test:device-onboarding && npm run test:action-runtime && npm run test:playback && npm run test:compiler && npm run test:autonomy && npm run test:open-reality-runtime && npm run test:local-runtime && npm run test:reality-assets && npm run test:reality-asset-import && npm run test:reality-asset-devkit && npm run test:reporting && npm run test:real-hardware && npm run test:virtual-loopback && npm run test:llm-compiler && npm run test:action-manifest && npm run test:manual-import",
     "lint": "next lint",
     "test:virtual-loopback": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-virtual-loopback-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node ' + tmp + '/tests/real-hardware/virtualLoopbackAcceptance.test.js', { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\"",
     "hardware:flash": "node scripts/flashFirmware.cjs"
@@ -89,6 +90,17 @@
       {
         "from": "next.config.mjs",
         "to": "app.asar.unpacked/next.config.mjs"
+      },
+      {
+        "from": "docs",
+        "to": "support",
+        "filter": [
+          "SUPPORT.md",
+          "SUPPORT.html",
+          "WINDOWS_TRIAL_GUIDE.md",
+          "EVALUATION_GUIDE.md",
+          "REAL_HARDWARE_ESP32.md"
+        ]
       }
     ],
     "extraMetadata": {

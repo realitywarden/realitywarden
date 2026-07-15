@@ -131,6 +131,11 @@ declare global {
         labReport: (report: unknown) => Promise<{ canceled: boolean; filePath?: string }>;
         deploymentPackage: (deploymentPackage: unknown) => Promise<{ canceled: boolean; filePath?: string }>;
       };
+      support: {
+        openGuide: () => Promise<{ ok: boolean; error?: string }>;
+        exportDiagnostics: () => Promise<{ canceled: boolean; filePath?: string }>;
+        showAbout: () => Promise<void>;
+      };
       onMenuAction: (callback: (action: OpenRealityMenuAction) => void) => () => void;
       hardware?: HardwareBridge;
     };
@@ -2794,6 +2799,33 @@ export default function Home() {
     playReplayEvents(playbackEvents, labReport, 0, replaySpeed, slowMode);
   }, [clearPlaybackTimers, labReport, playReplayEvents, playbackEvents, replaySpeed, slowMode]);
 
+  const openSupportGuide = useCallback(async () => {
+    if (!window.openReality) {
+      showNotice('info', noticeMessage(language, '桌面支持指南仅在 RealityWarden 桌面版中提供。', 'The packaged support guide is available in RealityWarden Desktop.'));
+      return;
+    }
+    const result = await window.openReality.support.openGuide();
+    if (!result.ok) showNotice('error', noticeMessage(language, '无法打开支持指南。', 'Could not open the support guide.'));
+  }, [language, showNotice]);
+
+  const exportLocalDiagnostics = useCallback(async () => {
+    if (!window.openReality) {
+      showNotice('info', noticeMessage(language, '本地诊断包仅在 RealityWarden 桌面版中提供。', 'Local diagnostics are available in RealityWarden Desktop.'));
+      return;
+    }
+    try {
+      const result = await window.openReality.support.exportDiagnostics();
+      if (!result.canceled) showNotice('success', noticeMessage(language, '已导出脱敏的本地诊断包，未上传任何数据。', 'Redacted local diagnostics exported. No data was uploaded.'));
+    } catch {
+      showNotice('error', noticeMessage(language, '诊断包导出失败，请重试。', 'Diagnostic export failed. Try again.'));
+    }
+  }, [language, showNotice]);
+
+  const showDesktopAbout = useCallback(() => {
+    if (window.openReality) void window.openReality.support.showAbout();
+    else showNotice('info', 'RealityWarden · Public Alpha');
+  }, [showNotice]);
+
   useEffect(() => {
     if (!window.openReality) return;
     return window.openReality.onMenuAction((action) => {
@@ -2878,6 +2910,9 @@ export default function Home() {
         onSave={() => void saveWorkspace(false)}
         onSaveAs={() => void saveWorkspace(true)}
         onRestore={restoreLastWorkspace}
+        onOpenSupport={() => void openSupportGuide()}
+        onExportDiagnostics={() => void exportLocalDiagnostics()}
+        onAbout={showDesktopAbout}
         onQuickStart={reopenFirstRunGuide}
         onActions={() => setActionComposerOpen(true)}
         onExportReport={() => void exportCurrentLabReport()}

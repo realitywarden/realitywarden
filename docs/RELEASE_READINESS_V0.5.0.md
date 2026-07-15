@@ -35,6 +35,13 @@ evidence, not a development or release-engineering prerequisite.
 
 ### Build and package — pass
 
+The installed application includes an offline support guide and recovery
+references. The visible File menu and native Help menu expose the guide, local
+About/version boundary, and a user-initiated diagnostic export. Diagnostics are
+bounded, allowlisted, path/secret-redacted, local-only, and explicitly exclude
+project content, prompts, audit/hardware results, serial ports, environment
+variables, and credentials.
+
 Required commands:
 
 ```powershell

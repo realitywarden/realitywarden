@@ -1,5 +1,21 @@
 # STATUS
 
+## Release closure update (2026-07-15)
+
+- Offline support closure is implemented: the visible File menu and native Help
+  menu open an installed support guide, export a local redacted diagnostic JSON,
+  and show the exact app version plus Public Alpha/simulation/REAL HARDWARE
+  boundary without depending on a website.
+- Diagnostic export is opt-in, local-only, bounded, allowlisted, path/secret
+  redacted, and excludes projects, prompts, audit/hardware results, serial ports,
+  environment variables, and credentials. It never uploads data.
+- The package contract now requires the support guide and recovery references.
+  This unit changes support/layout integration only; safety, execution, audit,
+  evidence-lock, and real-hardware semantics are unchanged.
+- Next software-only release closure: historical-version migration/update
+  rollback boundaries, then installed core-journey automation, then a final
+  installer/evidence rebuild. Physical-device acceptance remains optional.
+
 ## ✅ 持续成品开发令 / CONTINUOUS PRODUCT DEVELOPMENT（2026-07-14，所有者置顶生效）
 
 **不再以真机四场景验收作为继续开发、功能解锁或成品交付的前置条件。** 按路线图持续开发到软件成品；真机验收仅作为可选的硬件证据，不得再次阻塞 UI、运行时、Action Manifest 或发布工程。

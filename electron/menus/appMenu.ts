@@ -1,5 +1,5 @@
-import { BrowserWindow, Menu, shell } from 'electron';
-import path from 'node:path';
+import { BrowserWindow, Menu } from 'electron';
+import type { SupportActions } from '../support/supportActions';
 
 type MenuAction =
   | 'project:new'
@@ -20,7 +20,7 @@ function send(action: MenuAction) {
   BrowserWindow.getFocusedWindow()?.webContents.send('menu:action', action);
 }
 
-export function createAppMenu(root: string) {
+export function createAppMenu(support: SupportActions) {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
       label: 'File',
@@ -60,8 +60,10 @@ export function createAppMenu(root: string) {
     {
       label: 'Help',
       submenu: [
-        { label: 'Documentation', click: () => shell.openPath(path.join(root, 'docs')) },
-        { label: 'About RealityWarden', click: () => shell.openExternal('https://openreality.studio') }
+        { label: 'Open Support Guide', click: () => void support.openGuide() },
+        { label: 'Export Local Diagnostic Bundle…', click: () => void support.exportDiagnostics() },
+        { type: 'separator' },
+        { label: 'About RealityWarden', click: () => void support.showAbout() }
       ]
     }
   ]));

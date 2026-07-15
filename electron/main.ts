@@ -9,8 +9,10 @@ import { registerExportIpc } from './ipc/export.ipc';
 import { registerFileIpc } from './ipc/file.ipc';
 import { registerHardwareIpc } from './ipc/hardware.ipc';
 import { registerProjectIpc } from './ipc/project.ipc';
+import { registerSupportIpc } from './ipc/support.ipc';
 import { createAppMenu } from './menus/appMenu';
 import { startupShellHtml, type StartupLanguage, type StartupShellState } from './startupShell';
+import { createSupportActions } from './support/supportActions';
 
 const root = path.resolve(__dirname, '..');
 const sourceRoot = path.resolve(root, '..');
@@ -599,6 +601,8 @@ registerProjectIpc();
 registerFileIpc();
 registerHardwareIpc();
 registerExportIpc();
+const supportActions = createSupportActions(appRoot, getServerLogPath);
+registerSupportIpc(supportActions);
 
 app.on('second-instance', () => {
   if (!mainWindow) return;
@@ -608,7 +612,7 @@ app.on('second-instance', () => {
 
 app.whenReady().then(async () => {
   if (!singleInstanceLock) return;
-  createAppMenu(appRoot);
+  createAppMenu(supportActions);
   try {
     await createWindow();
   } catch (error) {

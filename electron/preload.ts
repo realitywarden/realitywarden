@@ -29,6 +29,11 @@ const api = {
   file: {
     reveal: (filePath: string) => ipcRenderer.invoke('file:reveal', { filePath })
   },
+  support: {
+    openGuide: () => ipcRenderer.invoke('support:openGuide'),
+    exportDiagnostics: () => ipcRenderer.invoke('support:exportDiagnostics'),
+    showAbout: () => ipcRenderer.invoke('support:showAbout')
+  },
   hardware: {
     listPorts: () => ipcRenderer.invoke('hardware:listPorts'),
     connect: (portPath: string) => ipcRenderer.invoke('hardware:connect', { portPath }),

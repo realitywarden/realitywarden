@@ -42,6 +42,13 @@ Expected first-run outcome:
 - the AI Command input is visible
 - the product does not require real hardware
 
+Offline help and recovery are included in the installation. Open the visible
+**File** menu (or press Alt for the native **Help** menu) to open the packaged
+support guide, view the local version/boundary dialog, or export a redacted local
+diagnostic JSON. Diagnostic export does not upload data and excludes projects,
+prompts, audit/hardware results, serial ports, environment variables, and
+credentials.
+
 ## Option B: Build the Installer From Source
 
 From the repository root:
