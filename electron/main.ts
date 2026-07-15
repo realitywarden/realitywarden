@@ -10,6 +10,7 @@ import { registerFileIpc } from './ipc/file.ipc';
 import { registerHardwareIpc } from './ipc/hardware.ipc';
 import { registerProjectIpc } from './ipc/project.ipc';
 import { createAppMenu } from './menus/appMenu';
+import { startupShellHtml, type StartupLanguage, type StartupShellState } from './startupShell';
 
 const root = path.resolve(__dirname, '..');
 const sourceRoot = path.resolve(root, '..');
@@ -17,10 +18,12 @@ const appRoot = fs.existsSync(path.join(root, 'package.json')) ? root : sourceRo
 const serverRoot = app.isPackaged ? path.join(process.resourcesPath, 'app.asar.unpacked') : appRoot;
 const basePort = Number(process.env.ORS_DESKTOP_PORT || 3100);
 const isDesignSmokeTest = process.argv.includes('--design-smoke-test');
-const isSmokeTest = process.argv.includes('--smoke-test') || isDesignSmokeTest;
+const isStartupDesignSmokeTest = process.argv.includes('--startup-design-smoke-test');
+const isSmokeTest = process.argv.includes('--smoke-test') || isDesignSmokeTest || isStartupDesignSmokeTest;
 
 let nextProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
+let startupRetryInFlight = false;
 
 function getServerLogPath() {
   const baseDir = app.isReady() ? app.getPath('userData') : path.join(sourceRoot, '.tmp');
@@ -48,32 +51,16 @@ function appendLog(message: string) {
   }
 }
 
-function loadingHtml() {
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      html, body { margin: 0; height: 100%; background: #090A0C; color: #E5E7EB; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
-      body { display: grid; place-items: center; }
-      main { width: 380px; border: 1px solid #3A3F4A; background: #121418; padding: 24px; }
-      .brand { color: #38BDF8; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
-      h1 { margin: 8px 0; font-size: 18px; line-height: 1.25; }
-      p { margin: 0; color: #9CA3AF; font-size: 12px; line-height: 1.7; }
-      .bar { height: 3px; margin-top: 18px; overflow: hidden; background: #2A2D35; }
-      .bar::before { content: ""; display: block; height: 100%; width: 42%; background: #38BDF8; animation: move 1.15s ease-in-out infinite; }
-      @keyframes move { 0% { transform: translateX(-120%); } 100% { transform: translateX(260%); } }
-    </style>
-  </head>
-  <body>
-    <main>
-      <div class="brand">RealityWarden Desktop</div>
-      <h1>Starting Virtual Lab</h1>
-      <p>The local simulator service is starting. RealityWarden will load automatically.</p>
-      <div class="bar"></div>
-    </main>
-  </body>
-</html>`;
+function startupLanguage(): StartupLanguage {
+  return app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
+async function loadStartupShell(window: BrowserWindow, state: StartupShellState, detail?: string) {
+  await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(startupShellHtml({ language: startupLanguage(), state, detail }))}`);
+}
+
+async function loadStartupShellForAcceptance(window: BrowserWindow, language: StartupLanguage, state: StartupShellState, detail?: string) {
+  await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(startupShellHtml({ language, state, detail }))}`);
 }
 
 function request(url: string) {
@@ -343,6 +330,116 @@ async function runProductDesignAcceptance(window: BrowserWindow) {
   return evidence;
 }
 
+async function captureStartupShell(window: BrowserWindow, width: number, height: number, language: StartupLanguage, state: StartupShellState) {
+  window.setContentSize(width, height);
+  const maliciousDetail = '<img src=x onerror="document.body.dataset.injected=1"> startup failure';
+  await loadStartupShellForAcceptance(window, language, state, maliciousDetail);
+  const measurement = await window.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector('[data-component="LaunchShell"]');
+    const rect = panel?.getBoundingClientRect();
+    const bodyStyle = getComputedStyle(document.body);
+    const panelStyle = panel ? getComputedStyle(panel) : null;
+    const visibleText = document.body.innerText;
+    const controls = [...document.querySelectorAll('button')].map((button) => ({ text: button.textContent?.trim() || '', rect: button.getBoundingClientRect().toJSON() }));
+    const forbiddenColors = ['rgb(255, 255, 255)', 'rgb(0, 0, 238)', 'rgb(0, 102, 204)'];
+    const renderedColors = [...document.querySelectorAll('*')].flatMap((element) => {
+      const style = getComputedStyle(element); return [style.color, style.backgroundColor, style.borderColor];
+    });
+    return {
+      panel: rect?.toJSON() ?? null,
+      viewport: { width: innerWidth, height: innerHeight },
+      bodyBackground: bodyStyle.backgroundColor,
+      panelBackground: panelStyle?.backgroundColor ?? null,
+      documentOverflow: document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight,
+      role: document.querySelector('[role="alert"], [role="status"]')?.getAttribute('role') ?? null,
+      activeTag: document.activeElement?.tagName ?? null,
+      state: panel?.getAttribute('data-startup-state') ?? null,
+      hasEvidenceBoundary: visibleText.includes('Audit Evidence'),
+      escapedUntrustedDetail: !document.querySelector('img') && document.body.dataset.injected !== '1',
+      controls,
+      forbiddenColors: [...new Set(renderedColors.filter((color) => forbiddenColors.includes(color)))],
+      allText: visibleText
+    };
+  })()`);
+  const violations: string[] = [];
+  if (!measurement.panel) violations.push('launch shell missing');
+  if (measurement.bodyBackground !== 'rgb(9, 10, 12)' || measurement.panelBackground !== 'rgb(18, 20, 24)') violations.push('startup background token mismatch');
+  if (measurement.documentOverflow) violations.push('document overflow');
+  if (measurement.panel && (measurement.panel.x < 16 || measurement.panel.y < 16 || measurement.panel.right > width - 16 || measurement.panel.bottom > height - 16)) violations.push('panel outside 16px safe margin');
+  if (measurement.forbiddenColors.length) violations.push(`forbidden launch colors: ${measurement.forbiddenColors.join(', ')}`);
+  if (state.endsWith('error')) {
+    if (measurement.role !== 'alert') violations.push('failure is not assertive alert');
+    if (!measurement.hasEvidenceBoundary) violations.push('failure lacks Audit Evidence boundary');
+    if (!measurement.escapedUntrustedDetail) violations.push('failure detail was not escaped');
+    if (measurement.activeTag !== 'H1') violations.push('failure heading did not receive focus');
+    if (measurement.controls.length < 4) violations.push('failure recovery controls missing');
+  } else if (measurement.role !== 'status') violations.push('loading state is not polite status');
+  if (violations.length) throw new Error(`Startup shell acceptance failed: ${JSON.stringify({ width, height, language, state, violations, measurement })}`);
+  return { viewport: { width, height }, language, state, violations, measurement };
+}
+
+async function runStartupDesignAcceptance(window: BrowserWindow) {
+  const layouts = [];
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1180, height: 720 }]) {
+    for (const language of ['zh', 'en'] as const) layouts.push(await captureStartupShell(window, viewport.width, viewport.height, language, 'cold_start'));
+  }
+  const failures = [
+    await captureStartupShell(window, 1180, 720, 'zh', 'recoverable_error'),
+    await captureStartupShell(window, 1180, 720, 'en', 'fatal_error')
+  ];
+
+  if (!window.webContents.debugger.isAttached()) window.webContents.debugger.attach('1.3');
+  const scaling = [];
+  for (const factor of [1.25, 1.5]) {
+    await window.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width: 1180, height: 720, deviceScaleFactor: factor, mobile: false });
+    const result = await captureStartupShell(window, 1180, 720, 'en', 'initializing');
+    const devicePixelRatio = await window.webContents.executeJavaScript('window.devicePixelRatio');
+    scaling.push({ requested: factor, devicePixelRatio, result });
+  }
+  await window.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');
+
+  await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await loadStartupShellForAcceptance(window, 'en', 'initializing');
+  const reducedMotion = await window.webContents.executeJavaScript(`(() => { const indicator=getComputedStyle(document.querySelector('.indicator'),'::after'); return { matches:matchMedia('(prefers-reduced-motion: reduce)').matches, animationName:indicator.animationName }; })()`);
+  if (!reducedMotion.matches || reducedMotion.animationName !== 'none') throw new Error(`Startup reduced-motion acceptance failed: ${JSON.stringify(reducedMotion)}`);
+
+  await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'forced-colors', value: 'active' }] });
+  await loadStartupShellForAcceptance(window, 'en', 'fatal_error', 'forced colors test');
+  window.focus();
+  window.webContents.focus();
+  await window.webContents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+  await window.webContents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+  const forcedColors = await window.webContents.executeJavaScript(`(() => { const panel=document.querySelector('[data-component="LaunchShell"]'); const focused=document.activeElement; const panelStyle=getComputedStyle(panel); const focusedStyle=getComputedStyle(focused); return { matches:matchMedia('(forced-colors: active)').matches, borderLeftStyle:panelStyle.borderLeftStyle, borderLeftWidth:panelStyle.borderLeftWidth, focusedTag:focused?.tagName ?? null, focusVisible:focused?.matches(':focus-visible') ?? false, outlineStyle:focusedStyle.outlineStyle, outlineWidth:focusedStyle.outlineWidth }; })()`);
+  if (!forcedColors.matches || forcedColors.borderLeftStyle !== 'double' || !forcedColors.focusVisible || forcedColors.outlineStyle !== 'solid') throw new Error(`Startup forced-colors acceptance failed: ${JSON.stringify(forcedColors)}`);
+  await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] });
+  window.webContents.debugger.detach();
+
+  const evidence = {
+    schema: 'realitywarden.startup-design-acceptance',
+    schema_version: 1,
+    product: 'RealityWarden',
+    generated_at: new Date().toISOString(),
+    gates: { no_flash_tokens: 'passed', responsive_layout: 'passed', bilingual_content: 'passed', windows_scaling: 'passed', failure_recovery: 'passed', reduced_motion: 'passed', forced_colors: 'passed' },
+    layouts,
+    failures,
+    scaling,
+    reduced_motion: reducedMotion,
+    forced_colors: forcedColors,
+    offline_degradation: 'verified separately by the installed forced-offline renderer smoke; LLM availability does not block workspace entry',
+    not_claimed: { physical_hardware_acceptance: 'optional evidence; not assessed by this record', physical_outcome: 'not inferred from startup UI state' }
+  };
+  const evidencePath = process.env.ORS_STARTUP_DESIGN_EVIDENCE_PATH;
+  if (evidencePath) {
+    const resolved = path.resolve(evidencePath);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
+    fs.writeFileSync(resolved, serialized, 'utf8');
+    const digest = crypto.createHash('sha256').update(serialized).digest('hex').toUpperCase();
+    fs.writeFileSync(`${resolved}.sha256`, `${digest}  ${path.basename(resolved)}\n`, 'utf8');
+  }
+  return evidence;
+}
+
 function createDesktopWindow(show: boolean) {
   const preloadPath = path.join(__dirname, 'preload.js');
   const iconPath = path.join(appRoot, 'assets', 'branding', 'realitywarden.ico');
@@ -403,15 +500,67 @@ async function startNextServer(port: number) {
   });
 }
 
+async function bootDesktopWindow(window: BrowserWindow) {
+  if (startupRetryInFlight || window.isDestroyed()) return;
+  startupRetryInFlight = true;
+  shutdownServer();
+  let slowTimer: NodeJS.Timeout | null = null;
+  let startupComplete = false;
+  try {
+    await loadStartupShell(window, 'cold_start');
+    if (!window.isVisible()) window.show();
+    slowTimer = setTimeout(() => {
+      if (!startupComplete && !window.isDestroyed()) void loadStartupShell(window, 'initializing').catch((error) => appendLog(`Slow-start status update failed: ${String(error)}`));
+    }, 2000);
+
+    const port = await findAvailablePort(basePort);
+    const url = `http://127.0.0.1:${port}`;
+    appendLog(`Starting Next server at ${url}`);
+    await startNextServer(port);
+    await waitForServer(url);
+    startupComplete = true;
+    if (slowTimer) clearTimeout(slowTimer);
+    await window.loadURL(url);
+  } catch (error) {
+    startupComplete = true;
+    if (slowTimer) clearTimeout(slowTimer);
+    const message = error instanceof Error ? error.message : String(error);
+    appendLog(`Recoverable startup failure: ${message}`);
+    if (!window.isDestroyed()) await loadStartupShell(window, 'recoverable_error', message);
+  } finally {
+    startupRetryInFlight = false;
+  }
+}
+
+function installStartupNavigation(window: BrowserWindow) {
+  window.webContents.on('will-navigate', (event, targetUrl) => {
+    if (!targetUrl.startsWith('realitywarden-startup://')) return;
+    event.preventDefault();
+    const action = targetUrl.slice('realitywarden-startup://'.length).replace(/\/$/, '');
+    if (action === 'exit') {
+      app.quit();
+      return;
+    }
+    if (action === 'retry' || action === 'reload') void bootDesktopWindow(window);
+  });
+}
+
 async function createWindow() {
-  const port = await findAvailablePort(basePort);
-  const url = `http://127.0.0.1:${port}`;
-
-  appendLog(`Starting Next server at ${url}`);
-  await startNextServer(port);
-  await waitForServer(url);
-
+  if (isStartupDesignSmokeTest) {
+    mainWindow = createDesktopWindow(false);
+    const startupEvidence = await runStartupDesignAcceptance(mainWindow);
+    appendLog(`Startup design acceptance passed: ${JSON.stringify(startupEvidence)}`);
+    mainWindow.destroy();
+    mainWindow = null;
+    await app.quit();
+    return;
+  }
   if (isSmokeTest) {
+    const port = await findAvailablePort(basePort);
+    const url = `http://127.0.0.1:${port}`;
+    appendLog(`Starting Next server at ${url}`);
+    await startNextServer(port);
+    await waitForServer(url);
     mainWindow = createDesktopWindow(false);
     const offlineSmoke = process.argv.includes('--offline-smoke-test');
     if (offlineSmoke) enforceOfflineSmokeBoundary(mainWindow, url);
@@ -429,14 +578,15 @@ async function createWindow() {
     return;
   }
 
-  mainWindow = createDesktopWindow(true);
+  mainWindow = createDesktopWindow(false);
+  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  installStartupNavigation(mainWindow);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loadingHtml())}`);
-  await mainWindow.loadURL(url);
+  await bootDesktopWindow(mainWindow);
 }
 
 function shutdownServer() {
@@ -467,7 +617,7 @@ app.whenReady().then(async () => {
     if (isSmokeTest) {
       process.exitCode = 1;
       shutdownServer();
-      app.quit();
+      app.exit(1);
       return;
     }
     dialog.showErrorBox('RealityWarden failed to start', message);

@@ -39,6 +39,17 @@ execFileSync(packagedExecutable, ['--prod', '--smoke-test'], {
 console.log('Packaged desktop first-run renderer smoke test passed.');
 
 const packageJson = require(path.join(root, 'package.json'));
+const startupEvidencePath = path.join(root, 'release', `RealityWarden-${packageJson.version}-Startup-Acceptance.json`);
+execFileSync(packagedExecutable, ['--prod', '--startup-design-smoke-test'], {
+  cwd: path.dirname(packagedExecutable),
+  env: { ...smokeEnvironment, ORS_STARTUP_DESIGN_EVIDENCE_PATH: startupEvidencePath },
+  stdio: 'inherit',
+  timeout: 300_000,
+  windowsHide: true
+});
+
+console.log('Packaged desktop startup-design acceptance passed.');
+
 const designEvidencePath = path.join(root, 'release', `RealityWarden-${packageJson.version}-Design-Acceptance.json`);
 execFileSync(packagedExecutable, ['--prod', '--design-smoke-test'], {
   cwd: path.dirname(packagedExecutable),

@@ -75,6 +75,8 @@ Expected artifact:
 
 ```text
 release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.0-Startup-Acceptance.json
+release/RealityWarden-0.5.0-Startup-Acceptance.json.sha256
 release/RealityWarden-0.5.0-Design-Acceptance.json
 release/RealityWarden-0.5.0-Design-Acceptance.json.sha256
 release/RealityWarden-0.5.0-Install-Lifecycle.json
@@ -83,19 +85,20 @@ release/RealityWarden-0.5.0-Release-Evidence.json
 release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 ```
 
-The schema-v3 release evidence manifest is emitted only after package
-verification, first-run renderer smoke, packaged product-design acceptance, and
-the Windows install lifecycle succeed. It records the exact installer SHA256 and
-size, packaged Next BUILD_ID, design/lifecycle manifest digests, source commit,
-and clean/dirty worktree state. Companion checksums protect all evidence records.
+The schema-v4 release evidence manifest is emitted only after package
+verification, first-run renderer smoke, packaged startup/product-design
+acceptance, and the Windows install lifecycle succeed. It records the exact
+installer SHA256 and size, packaged Next BUILD_ID, startup/design/lifecycle
+manifest digests, source commit, and clean/dirty worktree state. Companion
+checksums protect all evidence records.
 They deliberately mark code signing, migration from a different historical
 version, and optional physical-hardware acceptance as not assessed rather than
 inventing evidence.
 
 Verified local artifact record (2026-07-15):
 
-- size: `186429876` bytes (`177.79 MiB`);
-- SHA256: `85761D9A4A25B6A24DDEA0791DC81063311FD3EE44044F3FD08003450F58842C`;
+- size: `186444992` bytes (`177.81 MiB`);
+- SHA256: `3911A67C8C24299AC3F691EF4F7187F91FDA85BAB2355D4EB8856D88D31DBB2C`;
 - executable FileVersion/ProductVersion: `0.5.0`;
 - package verification: pass (shared runtime, Next runtime, manual/PDF import
   boundary, pinned pdfjs runtime, three serialport native bindings, firmware
@@ -103,6 +106,9 @@ Verified local artifact record (2026-07-15):
 - packaged `RealityWarden.exe --prod --smoke-test`: pass.
 - packaged product-design matrix: pass (1440×900 / 1180×720,
   Chinese/English, 125%/150% scale, dialogs, focus, and forced colors).
+- packaged startup-design matrix: pass (neutral dark first paint,
+  Chinese/English, 125%/150% scale, escaped recovery details, reduced motion,
+  and forced colors).
 - isolated Windows lifecycle: pass (clean install, installed first run,
   forced-offline degradation, in-place reinstall, uninstall cleanup, and user
   data preservation).

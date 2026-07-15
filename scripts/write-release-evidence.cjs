@@ -40,6 +40,22 @@ function validateDesignEvidence(evidence) {
   return evidence;
 }
 
+function validateStartupEvidence(evidence) {
+  if (evidence?.schema !== 'realitywarden.startup-design-acceptance' || evidence?.schema_version !== 1) throw new Error('Invalid startup-design acceptance evidence schema.');
+  for (const gate of ['no_flash_tokens', 'responsive_layout', 'bilingual_content', 'windows_scaling', 'failure_recovery', 'reduced_motion', 'forced_colors']) {
+    if (evidence.gates?.[gate] !== 'passed') throw new Error(`Startup-design acceptance gate did not pass: ${gate}`);
+  }
+  const layouts = Array.isArray(evidence.layouts) ? evidence.layouts : [];
+  for (const contract of [[1440, 900, 'zh'], [1440, 900, 'en'], [1180, 720, 'zh'], [1180, 720, 'en']]) {
+    if (!layouts.some((item) => item?.viewport?.width === contract[0] && item?.viewport?.height === contract[1] && item?.language === contract[2] && item?.violations?.length === 0)) throw new Error(`Startup-design viewport evidence missing: ${contract.join('x')}`);
+  }
+  const scales = new Set((Array.isArray(evidence.scaling) ? evidence.scaling : []).map((item) => item?.requested));
+  if (!scales.has(1.25) || !scales.has(1.5)) throw new Error('Startup-design Windows scaling evidence is incomplete.');
+  if (evidence.reduced_motion?.matches !== true || evidence.reduced_motion?.animationName !== 'none') throw new Error('Startup-design reduced-motion evidence is incomplete.');
+  if (evidence.forced_colors?.matches !== true || evidence.forced_colors?.borderLeftStyle !== 'double' || evidence.forced_colors?.focusVisible !== true) throw new Error('Startup-design forced-colors evidence is incomplete.');
+  return evidence;
+}
+
 function readSourceRevision(root) {
   try {
     const commandOptions = { cwd: root, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] };
@@ -69,10 +85,14 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
   const designFile = requireFile(path.join(releaseDir, designName), 'Product-design acceptance evidence');
   const designHash = requireMatchingChecksum(designFile, 'Product-design acceptance evidence');
   const design = validateDesignEvidence(JSON.parse(fs.readFileSync(designFile, 'utf8')));
+  const startupName = `RealityWarden-${packageJson.version}-Startup-Acceptance.json`;
+  const startupFile = requireFile(path.join(releaseDir, startupName), 'Startup-design acceptance evidence');
+  const startupHash = requireMatchingChecksum(startupFile, 'Startup-design acceptance evidence');
+  const startup = validateStartupEvidence(JSON.parse(fs.readFileSync(startupFile, 'utf8')));
 
   return {
     schema: 'realitywarden.release-evidence',
-    schema_version: 3,
+    schema_version: 4,
     product: 'RealityWarden',
     release_version: packageJson.version,
     generated_at: generatedAt,
@@ -97,6 +117,11 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
       sha256: designHash,
       gates: design.gates
     },
+    startup_design_acceptance: {
+      file: startupName,
+      sha256: startupHash,
+      gates: startup.gates
+    },
     gates: [
       {
         id: 'electron-package-contract',
@@ -117,6 +142,11 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
         id: 'product-design-acceptance',
         status: 'passed',
         evidence: '1440x900 and 1180x720 bilingual layouts, 125%/150% scale, dialogs, focus return, and forced-colors boundaries passed'
+      },
+      {
+        id: 'startup-design-acceptance',
+        status: 'passed',
+        evidence: 'Neutral dark launch shell, bilingual responsive layouts, 125%/150% scale, escaped recovery details, reduced motion, and forced colors passed'
       }
     ],
     not_claimed: {
@@ -148,4 +178,4 @@ if (require.main === module) {
   console.log(`- Manifest SHA256: ${result.digest}`);
 }
 
-module.exports = { buildReleaseEvidence, sha256File, validateDesignEvidence, writeReleaseEvidence };
+module.exports = { buildReleaseEvidence, sha256File, validateDesignEvidence, validateStartupEvidence, writeReleaseEvidence };

@@ -19,7 +19,7 @@
 
 - 版本：**v0.5.0 Public Alpha 发布候选**。v0.3 软件项、v0.4 Action Manifest/动作库/3D 禁区与 v0.5 手册/PDF simulation-only 双重审核闭环均已完成。
 - **持续开发令（2026-07-14，所有者指示）**：取消真机验收前置条件，持续开发到软件成品；六条安全不变量、默认拦截和自动验证门禁不变。
-- **Windows 安装包 v0.5.0 ✅**：`npm run desktop:pack` 已生成 `release/RealityWarden-0.5.0-Setup.exe`（NSIS x64，186429876 bytes / 177.79 MiB，SHA256 `85761D9A4A25B6A24DDEA0791DC81063311FD3EE44044F3FD08003450F58842C`）。产物包含 `dist-electron-runtime` 同源安全链、Next 生产运行时、手册/PDF 导入 UI、固定 pdfjs 运行时、`firmware/prebuilt` SHA256 配对与 3 个 Windows serialport 原生绑定；asar/unpacked/品牌资源检查、exe FileVersion/ProductVersion 0.5.0、未安装态 renderer smoke 与打包后产品设计验收矩阵均通过。`desktop:pack` 现会在验包后自动执行上述门禁。
+- **Windows 安装包 v0.5.0 ✅**：`npm run desktop:pack` 已生成 `release/RealityWarden-0.5.0-Setup.exe`（NSIS x64，186444992 bytes / 177.81 MiB，SHA256 `3911A67C8C24299AC3F691EF4F7187F91FDA85BAB2355D4EB8856D88D31DBB2C`）。产物包含 `dist-electron-runtime` 同源安全链、Next 生产运行时、手册/PDF 导入 UI、固定 pdfjs 运行时、`firmware/prebuilt` SHA256 配对与 3 个 Windows serialport 原生绑定；asar/unpacked/品牌资源检查、exe FileVersion/ProductVersion 0.5.0、未安装态 renderer smoke、打包后启动体验与主工作台设计验收矩阵均通过。`desktop:pack` 现会在验包后自动执行上述门禁。
 - **UI 真机执行路径 ✅（成品主线）**：REAL HARDWARE 面板新增“真机执行”区。主进程运行时 require `dist-electron-runtime`（build-electron 同时编译根项目）——与 CLI/测试**同一份**编译后安全链（采样→保守中值→SafetyMonitor→gate→ticket→transport），ipc 层零协议复制、零手搓 actuation 帧（desktop 回归断言此契约）。执行默认 `real_execution_locked`：`docs/acceptance/evidence/` 集齐 4 份验收 JSON 才解锁（或 ORS_REAL_EXECUTION=enabled 台架督导模式），且每次执行需 UI 显式勾选确认。结果带 executionMode=real_hardware + hardwareSignalSent + 审计。
 - **v0.4 自定义动作 ✅（Action Composer）**：顶栏“自定义动作”打开可视化编辑器——基元步骤（能力/目标/速度/力度下拉）+ 安全包络选择，实时 `validateActionManifest` 校验（越权包络拒绝不收窄、内建意图重名拒绝、未知目标拒绝）；保存进工作区文件（加载时重新校验，非法即拒并提示）；“运行（仿真）”经 `expandManifestToTaskDsl` 展开为基元 TaskDSL，走与任意指令**完全相同**的运行时安全管线（LocalRuntime 新增 `manifest` 编译器来源，审计如实标注，绝不伪装成 llm/rules）。
 - **v0.4 动作库 JSON ✅**：Action Composer 支持严格版本化的 `realitywarden.action-library` 导入/导出。导入逐条重新执行权威 `validateActionManifest`，任一非法动作整包原子拒绝；重复 ID、已有动作覆盖、未知包字段均显式拒绝，不做静默覆盖或收窄放行。
@@ -65,12 +65,13 @@
 
 - **工程 v2 无损资产往返与耐久自动保存 ✅**：工程/工作区写格式升级为 v2，用户导入 DeviceAsset 与内嵌 GLB/GLTF 字节随 Save/Open 完整往返；v1 显式迁移且绝不伪造旧格式从未保存的模型字节。导入资产递归严格校验，未知字段不再被 Zod 静默剥离，真实 Adapter 权限、外部/临时路径、悬空引用、内建/手册资产遮蔽及超限文件均拒绝。完整 v2 工程自动保存迁入 IndexedDB，旧 localStorage 记录仅在耐久写入成功后删除；损坏与存储失败仍隔离、可见、可重试。未修改执行门、安全审计或真机语义。
 
-- **Windows 安装生命周期闭环 ✅**：`desktop:pack` 在验包、未安装态 renderer smoke 与打包后产品设计矩阵后，于专用临时目录执行当前用户静默干净安装、安装态首启、强制断网显式规则编译器降级、原位重装、卸载载荷/登记清零与用户数据保留；发现任意既有 RealityWarden 安装登记会默认拒绝，绝不覆盖用户安装。设计验收、生命周期清单与总发布证据均带 SHA256，总证据 schema v3 仅在全部门禁通过后写出；历史版本迁移、签名与真机仍明确不在本记录声明范围。2026-07-15 实际安装包 `186429876` bytes，SHA256 `85761D9A4A25B6A24DDEA0791DC81063311FD3EE44044F3FD08003450F58842C`，完整生命周期实跑通过。
+- **Windows 安装生命周期闭环 ✅**：`desktop:pack` 在验包、未安装态 renderer smoke、打包后启动体验与主工作台设计矩阵后，于专用临时目录执行当前用户静默干净安装、安装态首启、强制断网显式规则编译器降级、原位重装、卸载载荷/登记清零与用户数据保留；发现任意既有 RealityWarden 安装登记会默认拒绝，绝不覆盖用户安装。启动/产品设计验收、生命周期清单与总发布证据均带 SHA256，总证据 schema v4 仅在全部门禁通过后写出；历史版本迁移、签名与真机仍明确不在本记录声明范围。2026-07-15 实际安装包 `186444992` bytes，SHA256 `3911A67C8C24299AC3F691EF4F7187F91FDA85BAB2355D4EB8856D88D31DBB2C`，完整生命周期实跑通过。
+- **启动体验成品化 ✅**：Electron 在服务启动前以 `show:false` 和 `backgroundColor:#090A0C` 建立中性深色首帧，加载壳完成后才显示；超过 2 秒诚实标记初始化较长，不显示虚假进度。Next 根背景、hydration shell、route/global error 与 Electron 启动错误使用同一 token；恢复页具备折叠/复制详情、恶意详情转义、Retry/Recover/Reload/Exit、键盘焦点和 Audit Evidence 不确定性声明。LLM 离线仍由既有工作台显式规则编译器降级，不阻塞启动。源码与打包后启动矩阵均通过 1440×900 / 1180×720、中英文、125% / 150%、reduced-motion 与 forced-colors；未修改业务、安全、审计或真实执行语义。
 - **最终主工作台产品设计验收矩阵 ✅**：真实 Electron 生产 renderer 与打包后 `RealityWarden.exe` 均通过 1440×900 / 1180×720、中英文、Windows 125% / 150% 缩放、Action Composer / Asset Import / Manual Import 模态边界、可信键盘焦点和 forced-colors 验收。持久错误通知不再盖住 File 菜单；资产导入面板在 1180×720 保留 16px 安全边距。版本化 `Design-Acceptance.json` 及 SHA256 已成为 `desktop:pack` 的发布前门禁；未修改业务、安全、审计或真实执行语义。
 
 ## 下一步
 
-1. **启动体验成品化**：按首席设计规格统一 Electron 冷启动、Next hydration、工作区恢复、离线降级与启动错误界面；消灭蓝白默认页/闪白，补齐缩放、双语、reduced-motion、forced-colors 与键盘恢复的可复现启动证据，不修改业务或安全逻辑。
+1. **发布候选最终一致性巡检**：集中检查帮助/支持/错误文案、安装包内文档链接、恢复路径与版本信息，继续只做可自动验证的软件收口；不得覆盖尚未提交的资产预览健壮性改动，不修改业务或安全逻辑。
 2. **发布操作（所有者）**：可选代码签名、tag、上传安装包与 SHA256；这些外部动作不改变软件完成状态。
 
 ## 待决策事项

@@ -72,6 +72,190 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
+
+  html {
+    background: var(--color-background);
+    color-scheme: dark;
+  }
+}
+
+.rw-startup-viewport {
+  display: flex;
+  width: 100%;
+  min-width: 100%;
+  height: 100vh;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--color-background);
+  padding: 16px;
+  color: var(--color-text-primary);
+}
+
+.rw-launch-shell {
+  width: min(30rem, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 32px 40px;
+}
+
+.rw-startup-brand {
+  height: 24px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.rw-startup-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.rw-startup-status h1 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.rw-launch-shell > p {
+  margin: 8px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.rw-startup-indicator {
+  position: relative;
+  width: 16px;
+  height: 2px;
+  flex: 0 0 16px;
+  overflow: hidden;
+  background: var(--color-border-strong);
+}
+
+.rw-startup-indicator::after {
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  content: '';
+  background: var(--color-text-secondary);
+  animation: rw-startup-progress 1.5s linear infinite;
+}
+
+.rw-lang-zh { display: none; }
+html[lang^='zh'] .rw-lang-en { display: none; }
+html[lang^='zh'] .rw-lang-zh { display: inline; }
+
+.rw-startup-failure {
+  border-left: 3px solid var(--color-danger);
+}
+
+.rw-startup-details-toggle {
+  margin-top: 20px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.rw-startup-details {
+  position: relative;
+  max-height: 160px;
+  margin-top: 8px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  padding: 32px 12px 12px;
+  color: var(--color-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+}
+
+.rw-startup-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-height: 24px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  padding: 0 8px;
+  color: var(--color-text-primary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.rw-launch-shell > .rw-startup-evidence {
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.rw-startup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.rw-startup-actions button {
+  min-width: 88px;
+  min-height: 36px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  padding: 0 16px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.rw-launch-shell button:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+}
+
+@keyframes rw-startup-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(210%); }
+}
+
+@media (max-height: 540px), (max-width: 640px) {
+  .rw-launch-shell { padding: 24px; }
+  .rw-startup-status { margin-top: 16px; }
+  .rw-startup-actions { margin-top: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rw-startup-indicator::after {
+    width: 100%;
+    animation: none;
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .rw-launch-shell { border-color: CanvasText; }
+  .rw-startup-failure { border-left: 3px double CanvasText; }
+  .rw-startup-details,
+  .rw-startup-actions button { border-color: CanvasText; }
+  .rw-launch-shell button:focus-visible { outline: 2px solid Highlight; }
 }
 
 /* Three.js Html overlays use an intentionally high z-index range. Every app

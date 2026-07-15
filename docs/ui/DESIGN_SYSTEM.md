@@ -76,6 +76,11 @@ SHA256 companion 的版本化证据。`npm run desktop:pack` 会对打包后的
 `RealityWarden.exe` 再执行同一矩阵；完整规格见
 [`PRODUCT_DESIGN_ACCEPTANCE.md`](./PRODUCT_DESIGN_ACCEPTANCE.md)。
 
+启动、hydration 与启动失败使用同一组 token，且启动阶段不得使用仿真蓝或
+真实硬件橙暗示执行模式。完整状态、无闪白和恢复规格见
+[`STARTUP_EXPERIENCE.md`](./STARTUP_EXPERIENCE.md)，自动入口为
+`npm run desktop:startup-acceptance`。
+
 ### Keyboard and contrast contract
 
 - 横向 Tab 组采用 roving `tabIndex`：只有当前 Tab 进入 Tab 顺序；`ArrowLeft` / `ArrowRight` 循环切换并同步焦点，`Home` / `End` 到首尾。Tab 与面板必须使用 `aria-controls` / `aria-labelledby` 成对关联。

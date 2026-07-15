@@ -55,6 +55,8 @@ Expected output:
 
 ```text
 release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.0-Startup-Acceptance.json
+release/RealityWarden-0.5.0-Startup-Acceptance.json.sha256
 release/RealityWarden-0.5.0-Design-Acceptance.json
 release/RealityWarden-0.5.0-Design-Acceptance.json.sha256
 release/RealityWarden-0.5.0-Install-Lifecycle.json
@@ -64,13 +66,15 @@ release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 ```
 
 The release evidence JSON is written only after package inspection, packaged
-first-run renderer smoke, the 1440×900 / 1180×720 bilingual product-design
-matrix (including Windows scaling, keyboard focus, dialogs, and forced colors),
+first-run renderer smoke, the neutral no-flash startup/recovery matrix
+(including Windows scaling, reduced motion, and forced colors), the 1440×900 /
+1180×720 bilingual product-design matrix (including keyboard focus and dialogs),
 and an isolated clean-install/reinstall/offline/uninstall lifecycle pass. Use it
-to verify the installer SHA256, packaged BUILD_ID, design evidence digest, and
-lifecycle evidence digest; it does not claim code signing, migration from a
-different historical version, or physical-device acceptance. Uninstall removes
-the application but preserves user projects and preferences by default.
+to verify the installer SHA256, packaged BUILD_ID, startup/design evidence
+digests, and lifecycle evidence digest; it does not claim code signing,
+migration from a different historical version, or physical-device acceptance.
+Uninstall removes the application but preserves user projects and preferences
+by default.
 
 If you only want to run the desktop shell from source in a production-like mode without generating an installer:
 
