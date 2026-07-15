@@ -64,6 +64,7 @@
     "productName": "RealityWarden",
     "icon": "assets/branding/realitywarden.ico",
     "asar": true,
+    "npmRebuild": false,
     "afterPack": "scripts/after-pack.cjs",
     "directories": {
       "output": "release"
@@ -155,7 +156,7 @@
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
     "electron": "^43.1.1",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^26.15.3",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.3",
     "postcss": "^8.4.38",
