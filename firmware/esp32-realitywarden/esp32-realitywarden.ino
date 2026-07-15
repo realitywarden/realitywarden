@@ -28,9 +28,11 @@ const int SERVO_PIN = 18;
 const int TRIG_PIN = 5;
 const int ECHO_PIN = 4;
 const unsigned long ECHO_TIMEOUT_US = 30000;
+const size_t MAX_REQUEST_LINE_BYTES = 512;
 
 Servo servo;
 String lineBuffer;
+bool discardingOversizedLine = false;
 
 void setup() {
   Serial.begin(115200);
@@ -175,11 +177,25 @@ void loop() {
   while (Serial.available() > 0) {
     const char c = (char)Serial.read();
     if (c == '\n') {
-      lineBuffer.trim();
-      if (lineBuffer.length() > 0) handleLine(lineBuffer);
+      if (discardingOversizedLine) {
+        // Never parse a retained prefix of an oversized command: a valid
+        // actuation JSON prefix followed by padding must not reach the servo.
+        sendError("unknown", "request line too long");
+        discardingOversizedLine = false;
+      } else {
+        lineBuffer.trim();
+        if (lineBuffer.length() > 0) handleLine(lineBuffer);
+      }
       lineBuffer = "";
-    } else if (lineBuffer.length() < 512) {
+    } else if (discardingOversizedLine) {
+      continue;
+    } else if (lineBuffer.length() < MAX_REQUEST_LINE_BYTES) {
       lineBuffer += c;
+    } else {
+      // Drop the whole physical line through its newline. Silently truncating
+      // here would allow the truncated prefix to be interpreted as a command.
+      lineBuffer = "";
+      discardingOversizedLine = true;
     }
   }
 }

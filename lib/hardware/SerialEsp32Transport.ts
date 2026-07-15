@@ -1,6 +1,6 @@
 import { ACTUATION_TICKET, isActuationCommand } from './internal/actuation';
 import type { ActuationTicket } from './internal/actuation';
-import { TransportOfflineError } from './RealDeviceTransport';
+import { TransportFrameRejectedError, TransportOfflineError } from './RealDeviceTransport';
 import type { RealDeviceTransport } from './RealDeviceTransport';
 import type { TransportFrame, TransportResponse } from './types';
 
@@ -35,14 +35,20 @@ export interface SerialEsp32TransportOptions {
  */
 export class SerialEsp32Transport implements RealDeviceTransport {
   private static readonly MAX_LINE_LENGTH = 4096;
+  // Matches the checked-in firmware's bounded host-request line buffer.
+  private static readonly MAX_FRAME_LENGTH_BYTES = 512;
   private buffer = '';
+  private discardingOversizedLine = false;
   private connected = false;
   private lastProtocolError: string | null = null;
   private readonly pending = new Map<
     string,
     { resolve: (response: TransportResponse) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
   >();
+  /** IDs whose response ownership became ambiguous after timeout/write/close. */
+  private readonly retiredRequestIds = new Set<string>();
   private readonly requestTimeoutMs: number;
+  private lifecycleQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly port: SerialPortLike,
@@ -56,21 +62,28 @@ export class SerialEsp32Transport implements RealDeviceTransport {
     this.port.onClose(() => this.handleClose());
   }
 
-  async connect(): Promise<void> {
-    if (this.isConnected()) return;
-    this.buffer = '';
-    this.lastProtocolError = null;
-    await this.port.open();
-    this.connected = true;
+  connect(): Promise<void> {
+    return this.enqueueLifecycle(async () => {
+      if (this.isConnected()) return;
+      this.resetParser();
+      this.lastProtocolError = null;
+      await this.port.open();
+      if (!this.port.isOpen()) {
+        throw new TransportOfflineError('serial port closed while opening');
+      }
+      this.connected = true;
+    });
   }
 
-  async disconnect(): Promise<void> {
-    this.connected = false;
-    this.failAllPending(new TransportOfflineError('transport disconnected'));
-    this.buffer = '';
-    if (this.port.isOpen()) {
-      await this.port.close();
-    }
+  disconnect(): Promise<void> {
+    return this.enqueueLifecycle(async () => {
+      this.connected = false;
+      this.failAllPending(new TransportOfflineError('transport disconnected'));
+      this.resetParser();
+      if (this.port.isOpen()) {
+        await this.port.close();
+      }
+    });
   }
 
   isConnected(): boolean {
@@ -109,22 +122,38 @@ export class SerialEsp32Transport implements RealDeviceTransport {
     if (!this.isConnected()) {
       return Promise.reject(new TransportOfflineError());
     }
-    if (frame.id.length === 0) {
-      return Promise.reject(new Error('invalid_request_id: frame id must not be empty'));
+    if (typeof frame.id !== 'string' || frame.id.trim().length === 0) {
+      return Promise.reject(new TransportFrameRejectedError('invalid_request_id: frame id must be a non-empty string'));
     }
     if (this.pending.has(frame.id)) {
-      return Promise.reject(new Error(`duplicate_request_id: request id already pending (id=${frame.id})`));
+      return Promise.reject(new TransportFrameRejectedError(
+        `duplicate_request_id: request id already pending (id=${frame.id})`
+      ));
+    }
+    if (this.retiredRequestIds.has(frame.id)) {
+      return Promise.reject(new TransportFrameRejectedError(
+        `reused_request_id: request id was retired after an ambiguous request outcome (id=${frame.id})`
+      ));
     }
     let line: string;
     try {
       line = `${JSON.stringify(frame)}\n`;
     } catch (error) {
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+      return Promise.reject(new TransportFrameRejectedError(
+        `invalid_transport_frame: ${error instanceof Error ? error.message : String(error)}`
+      ));
+    }
+    const frameBytes = new TextEncoder().encode(line.slice(0, -1)).byteLength;
+    if (frameBytes > SerialEsp32Transport.MAX_FRAME_LENGTH_BYTES) {
+      return Promise.reject(new TransportFrameRejectedError(
+        `outgoing_frame_too_large: ${frameBytes} bytes exceeds firmware limit ${SerialEsp32Transport.MAX_FRAME_LENGTH_BYTES}`
+      ));
     }
 
     return new Promise<TransportResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(frame.id);
+        this.retiredRequestIds.add(frame.id);
         reject(new Error(`device response timeout after ${this.requestTimeoutMs}ms (id=${frame.id})`));
       }, this.requestTimeoutMs);
       this.pending.set(frame.id, { resolve, reject, timer });
@@ -135,6 +164,7 @@ export class SerialEsp32Transport implements RealDeviceTransport {
           if (entry) {
             clearTimeout(entry.timer);
             this.pending.delete(frame.id);
+            this.retiredRequestIds.add(frame.id);
             reject(new TransportOfflineError(
               `serial write failed: ${error instanceof Error ? error.message : String(error)}`
             ));
@@ -143,6 +173,7 @@ export class SerialEsp32Transport implements RealDeviceTransport {
       } catch (error) {
         clearTimeout(timer);
         this.pending.delete(frame.id);
+        this.retiredRequestIds.add(frame.id);
         reject(new TransportOfflineError(
           `serial write failed: ${error instanceof Error ? error.message : String(error)}`
         ));
@@ -151,10 +182,17 @@ export class SerialEsp32Transport implements RealDeviceTransport {
   }
 
   private handleData(chunk: string) {
+    if (this.discardingOversizedLine) {
+      const newlineIndex = chunk.indexOf('\n');
+      if (newlineIndex < 0) return;
+      this.discardingOversizedLine = false;
+      chunk = chunk.slice(newlineIndex + 1);
+    }
     this.buffer += chunk;
     if (this.buffer.length > SerialEsp32Transport.MAX_LINE_LENGTH && !this.buffer.includes('\n')) {
       this.lastProtocolError = `oversized device line discarded (>${SerialEsp32Transport.MAX_LINE_LENGTH} chars)`;
       this.buffer = '';
+      this.discardingOversizedLine = true;
       return;
     }
     let newlineIndex = this.buffer.indexOf('\n');
@@ -173,6 +211,7 @@ export class SerialEsp32Transport implements RealDeviceTransport {
     if (this.buffer.length > SerialEsp32Transport.MAX_LINE_LENGTH) {
       this.lastProtocolError = `oversized device line discarded (>${SerialEsp32Transport.MAX_LINE_LENGTH} chars)`;
       this.buffer = '';
+      this.discardingOversizedLine = true;
     }
   }
 
@@ -206,16 +245,28 @@ export class SerialEsp32Transport implements RealDeviceTransport {
 
   private handleClose() {
     this.connected = false;
-    this.buffer = '';
+    this.resetParser();
     this.failAllPending(new TransportOfflineError('serial port closed'));
   }
 
   private failAllPending(error: Error) {
-    for (const entry of Array.from(this.pending.values())) {
+    for (const [id, entry] of Array.from(this.pending.entries())) {
       clearTimeout(entry.timer);
+      this.retiredRequestIds.add(id);
       entry.reject(error);
     }
     this.pending.clear();
+  }
+
+  private resetParser() {
+    this.buffer = '';
+    this.discardingOversizedLine = false;
+  }
+
+  private enqueueLifecycle(operation: () => Promise<void>): Promise<void> {
+    const result = this.lifecycleQueue.then(operation, operation);
+    this.lifecycleQueue = result.then(() => undefined, () => undefined);
+    return result;
   }
 }
 

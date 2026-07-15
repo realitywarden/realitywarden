@@ -25,9 +25,9 @@ export class MedianFilter {
     }
   }
 
-  /** Add a sample and return the current median. NaN samples are rejected. */
+  /** Add a sample and return the current median. Non-finite samples are rejected. */
   push(value: number): number | null {
-    if (!Number.isNaN(value)) {
+    if (Number.isFinite(value)) {
       this.values.push(value);
       if (this.values.length > this.windowSize) {
         this.values.shift();
@@ -107,7 +107,10 @@ export class DistanceInterlock {
   private locked = false;
 
   constructor(private readonly options: DistanceInterlockOptions) {
-    if (!(options.releaseAboveCm > options.lockBelowCm)) {
+    if (!Number.isFinite(options.lockBelowCm)
+      || !Number.isFinite(options.releaseAboveCm)
+      || options.lockBelowCm < 0
+      || !(options.releaseAboveCm > options.lockBelowCm)) {
       throw new Error(
         `DistanceInterlock requires releaseAboveCm (${options.releaseAboveCm}) > lockBelowCm (${options.lockBelowCm})`
       );
@@ -120,7 +123,7 @@ export class DistanceInterlock {
    * state is kept, which is what prevents threshold flapping.
    */
   update(filteredDistanceCm: number | null): DistanceInterlockState {
-    if (filteredDistanceCm === null || Number.isNaN(filteredDistanceCm)) {
+    if (filteredDistanceCm === null || !Number.isFinite(filteredDistanceCm)) {
       this.locked = true; // no data fails closed, consistent with default-block
     } else if (filteredDistanceCm < this.options.lockBelowCm) {
       this.locked = true;
