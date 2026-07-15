@@ -27,6 +27,43 @@ mismatches, unknown fields, and stored-record tampering. Its output is always a
 a serial port, or grant execution authority. Those later stages require their
 own explicit review and independently verified gates.
 
+## The complete controlled onboarding loop
+
+For the current conservative hardware matrix the loop is closed end to end,
+with a separate human decision at every stage and zero execution authority
+granted anywhere along it:
+
+1. **Manual import** (`lib/manual-import/ManualProfileImport.ts`): a local
+   model turns a manual into an untrusted DeviceProfile + Action Manifest
+   proposal; first human review saves a `simulation_only` record.
+2. **Simulation enablement**: the existing Virtual Lab second gate creates the
+   user-owned simulation asset (`real_device_enabled:false`); actions need the
+   third gate. This is where the device becomes usable in 3D simulation.
+3. **Firmware configuration draft**
+   (`lib/device-onboarding/FirmwareConfiguration.ts`): reviewed, source-hashed
+   pin/component contract; always write-disabled.
+4. **Write order** (`lib/device-onboarding/FirmwareWriteOrder.ts`): a second
+   explicit authorization pairs the draft with exactly one reviewed prebuilt
+   image (sha256-pinned). Templates without a reviewed image are refused —
+   nothing is compiled ad hoc or substituted. `npm run hardware:flash --
+   --port COMx --order <order.json>` flashes only when the on-disk image, its
+   `.sha256` companion, and the order digest all agree.
+5. **Read-only diagnostics** (`npm run hardware:diagnose -- --port COMx
+   --json <report.json>`): produces a machine-readable report whose schema
+   structurally cannot name an actuation command.
+   `lib/device-onboarding/DiagnosticsEvidence.ts` accepts it only for
+   RealityWarden firmware with a device-side clock and, when the draft uses
+   the distance interlock, at least three plausible sensor samples.
+6. **Closure** (`completeOnboardingClosure`): links manual source digest,
+   reviewed profile, write order, and diagnostics evidence into an
+   `onboarded_simulation_only` record. It requires stage 2 to have happened
+   and grants nothing: `supported_adapters` stays `['simulator']`,
+   `real_adapter_enabled` stays `false`, and the runtime evidence lock for
+   real execution is untouched.
+
+Physical-device steps (4–5 on a real board) remain optional operator evidence;
+they are never a development or release gate.
+
 Use this guide when you want to add a new device shape to the runtime, not when you want to bypass the safety boundary.
 
 ## Minimum onboarding checklist

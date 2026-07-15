@@ -4,6 +4,13 @@
 //   npm run hardware:flash -- --port COM3
 //   npm run hardware:flash -- --port COM3 --esptool "C:\\path\\to\\esptool.exe"
 //   npm run hardware:flash -- --port COM3 --binary firmware/prebuilt/xxx.merged.bin
+//   npm run hardware:flash -- --port COM3 --order <firmware-write-order.json>
+//
+// --order flashes ONLY the reviewed prebuilt image a governed firmware write
+// order authorizes (schema realitywarden.firmware-write-order, produced by
+// lib/device-onboarding/FirmwareWriteOrder.ts after an explicit second human
+// review). The image digest must match the order AND the .sha256 companion.
+// A write order never grants execution authority.
 //
 // Flashes firmware/prebuilt/esp32s3-realitywarden-v0.1.4.merged.bin (a full
 // merged image, written at offset 0x0) using esptool. esptool is discovered in
@@ -95,20 +102,61 @@ function resolveEsptool() {
   return null;
 }
 
+// Minimal, duplicated-on-purpose contract checks for governed write orders.
+// The authoritative validator is lib/device-onboarding/FirmwareWriteOrder.ts
+// (covered by test:device-onboarding); this script re-checks the literals it
+// depends on so a tampered JSON file cannot steer the flasher.
+function loadWriteOrder(orderPath) {
+  if (!fs.existsSync(orderPath)) fail(`write order not found: ${orderPath}`);
+  let order;
+  try {
+    order = JSON.parse(fs.readFileSync(orderPath, 'utf8'));
+  } catch (error) {
+    fail(`write order is not valid JSON: ${error.message}`);
+  }
+  if (!order || typeof order !== 'object' || Array.isArray(order)) fail('write order must be a JSON object');
+  if (order.schema !== 'realitywarden.firmware-write-order') fail('write order has the wrong schema identifier');
+  if (order.schema_version !== 1) fail('unsupported write order schema_version');
+  if (order.status !== 'write_authorized') fail(`write order status must be "write_authorized", got "${String(order.status)}"`);
+  if (!order.write_review || order.write_review.confirmed !== true) fail('write order lacks an explicit write authorization review');
+  if (order.execution_authority_granted !== false) fail('a write order can never grant execution authority; refusing tampered order');
+  if (order.real_adapter_enabled !== false) fail('a write order can never enable a real adapter; refusing tampered order');
+  if (!order.image || typeof order.image.file !== 'string' || !/^[a-f0-9]{64}$/.test(String(order.image.sha256))) {
+    fail('write order image reference is malformed');
+  }
+  return order;
+}
+
 function main() {
   const port = argValue('--port');
   if (!port) fail('missing --port. Example: npm run hardware:flash -- --port COM3  (ESP32-S3: use the "COM/UART" flashing port)');
 
-  const binaryPath = argValue('--binary') ?? DEFAULT_BINARY;
+  const orderPath = argValue('--order');
+  if (orderPath && argValue('--binary')) fail('--order and --binary are mutually exclusive: the order decides the image');
+  const order = orderPath ? loadWriteOrder(orderPath) : null;
+
+  const binaryPath = order
+    ? path.resolve(path.join(__dirname, '..'), order.image.file)
+    : (argValue('--binary') ?? DEFAULT_BINARY);
   if (!fs.existsSync(binaryPath)) fail(`firmware image not found: ${binaryPath}`);
 
   // Integrity check: refuse to flash a corrupted image.
   const shaPath = `${binaryPath}.sha256`;
-  if (fs.existsSync(shaPath)) {
+  const actualSha = crypto.createHash('sha256').update(fs.readFileSync(binaryPath)).digest('hex');
+  if (order) {
+    // Order mode: the companion digest is mandatory and every leg must agree.
+    if (!fs.existsSync(shaPath)) fail('write orders require the .sha256 companion next to the image');
+    const companion = fs.readFileSync(shaPath, 'utf8').trim().split(/\s+/)[0];
+    if (companion !== actualSha) fail(`firmware image failed its integrity check (sha256 mismatch).\n      expected ${companion}\n      actual   ${actualSha}`);
+    if (order.image.sha256 !== actualSha) {
+      fail(`the image on disk is not the image this write order authorizes.\n      order    ${order.image.sha256}\n      actual   ${actualSha}`);
+    }
+    console.log('PASS  write order verified: image, companion digest, and order digest all match');
+    console.log('INFO  a write order grants NO execution authority; the runtime evidence lock is unchanged.');
+  } else if (fs.existsSync(shaPath)) {
     const expected = fs.readFileSync(shaPath, 'utf8').trim().split(/\s+/)[0];
-    const actual = crypto.createHash('sha256').update(fs.readFileSync(binaryPath)).digest('hex');
-    if (expected !== actual) {
-      fail(`firmware image failed its integrity check (sha256 mismatch).\n      expected ${expected}\n      actual   ${actual}\n      Re-checkout ${binaryPath} and retry.`);
+    if (expected !== actualSha) {
+      fail(`firmware image failed its integrity check (sha256 mismatch).\n      expected ${expected}\n      actual   ${actualSha}\n      Re-checkout ${binaryPath} and retry.`);
     }
     console.log('PASS  firmware image integrity verified (sha256)');
   } else {
@@ -140,6 +188,10 @@ function main() {
   }
   console.log('PASS  firmware flashed. Press RESET (or replug), then verify with:');
   console.log(`      npm run hardware:diagnose -- --port ${port}`);
+  if (order) {
+    console.log('      For onboarding evidence, capture a read-only diagnostics report:');
+    console.log(`      npm run hardware:diagnose -- --port ${port} --json <report.json>`);
+  }
 }
 
 main();

@@ -8,8 +8,10 @@
  * HC-SR04 firmware is). Keep the branch until that variant lands or is
  * abandoned; the checked-in firmware always reports `pulse_width`.
  */
+import { writeFileSync } from 'node:fs';
 import { SerialEsp32Transport, createNodeSerialPort } from '../lib/hardware';
 import type { TransportResponse } from '../lib/hardware';
+import { readonlyDiagnosticsReportSchema } from '../lib/device-onboarding/DiagnosticsEvidence';
 
 function argValue(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);
@@ -148,6 +150,54 @@ async function main() {
         console.log(`  #${index} FAIL ${detail}`);
       }
       await sleep(100);
+    }
+
+    const jsonPath = argValue('--json');
+    if (jsonPath) {
+      // Onboarding evidence export: a machine-readable, read-only report for
+      // lib/device-onboarding/DiagnosticsEvidence. It is refused (not guessed)
+      // when the firmware identity is incomplete, and it grants nothing.
+      const data = firmwareDiagnostic?.ok ? firmwareDiagnostic.data : undefined;
+      const firmware = typeof data?.firmware === 'string' ? data.firmware : null;
+      const firmwareVersion = typeof data?.firmwareVersion === 'string' ? data.firmwareVersion : null;
+      const protocolVersion = typeof data?.protocolVersion === 'number' ? data.protocolVersion : null;
+      const sensorInterface = data?.sensorInterface === 'pulse_width' || data?.sensorInterface === 'serial_ttl'
+        ? data.sensorInterface
+        : null;
+      const reportsDeviceMs = typeof data?.deviceMs === 'number' || samples.some((sample) => sample.deviceMs !== undefined);
+      if (!firmware || !firmwareVersion || protocolVersion === null) {
+        console.log('FAIL  无法生成入网诊断报告：diagnose_hardware 未上报完整的 RealityWarden 固件身份（旧固件或非本项目设备不可作为入网证据）。');
+        process.exitCode = 1;
+      } else {
+        const candidate = {
+          schema: 'realitywarden.readonly-diagnostics-report' as const,
+          schema_version: 1 as const,
+          port: portPath,
+          captured_at: new Date().toISOString(),
+          commands_used: ['diagnose_hardware' as const, 'read_distance' as const],
+          firmware: {
+            firmware,
+            firmware_version: firmwareVersion,
+            protocol_version: protocolVersion,
+            sensor_interface: sensorInterface,
+            reports_device_ms: reportsDeviceMs,
+            legacy: false as const
+          },
+          samples: samples.map((sample) => ({
+            ok: sample.ok,
+            ...(sample.distanceCm !== undefined ? { distance_cm: sample.distanceCm } : {}),
+            ...(sample.deviceMs !== undefined ? { device_ms: sample.deviceMs } : {})
+          }))
+        };
+        const checked = readonlyDiagnosticsReportSchema.safeParse(candidate);
+        if (!checked.success) {
+          console.log(`FAIL  诊断报告未通过只读报告契约校验：${checked.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
+          process.exitCode = 1;
+        } else {
+          writeFileSync(jsonPath, `${JSON.stringify(checked.data, null, 2)}\n`);
+          console.log(`PASS  只读诊断报告已写入 ${jsonPath}（仅通信与传感证据，不含任何执行授权）。`);
+        }
+      }
     }
 
     console.log('[4/4] 诊断结论');
