@@ -82,9 +82,11 @@ Project schema:
 }
 ```
 
+The current write format is project/workspace version 2. Version 2 stores every user-imported `DeviceAsset` inside `workspace.imported_assets`; GLB/GLTF bytes are embedded as data URLs so a project does not depend on a temporary blob URL or a path on the machine that created it. Version 1 remains readable and is explicitly normalized to version 2 with an empty imported-asset collection. A legacy file that referenced bytes it never contained cannot invent those bytes and is rejected if the referenced asset cannot be resolved.
+
 The renderer and Main Process both use the same strict, versioned contract before saving or opening project files. Validation rejects unknown keys, unsupported device/config values, duplicate or dangling workspace references, divergent `devices` copies, unsafe `real_device_execution_enabled` metadata, non-finite values, excessive nesting, and prototype-pollution keys. Files larger than 25 MiB are rejected before the desktop process reads them; values are never clamped or silently repaired.
 
-Browser workspace import uses the same contract. A corrupt autosave is quarantined without changing the current workspace or overwriting/deleting the saved bytes; the operator must explicitly discard it before autosave resumes.
+Browser workspace import uses the same contract. Complete validated v2 projects, including embedded imported assets, autosave to IndexedDB instead of the small synchronous localStorage quota. Existing localStorage v1 autosaves are recovered once and migrated only after a durable write succeeds. A corrupt autosave is quarantined without changing the current workspace or overwriting/deleting the saved bytes; the operator must explicitly discard it before autosave resumes. Storage failures remain visible and retryable.
 
 ## Local Export
 

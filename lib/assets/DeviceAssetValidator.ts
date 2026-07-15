@@ -1,6 +1,6 @@
 import type { DeviceAsset } from './DeviceAsset';
 import { validateAssetLicense } from './AssetLicenseValidator';
-import { DeviceGeometrySchema, DeviceMetaSchema } from '@/lib/schemas/deviceMeta.schema';
+import { DeviceGeometrySchema, DeviceMetaSchema } from '../schemas/deviceMeta.schema';
 
 export function validateDeviceAsset(asset: DeviceAsset) {
   const failures: string[] = [];

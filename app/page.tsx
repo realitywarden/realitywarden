@@ -23,6 +23,7 @@ import { VirtualDeviceStage } from '@/components/VirtualDeviceStage';
 import type { SemanticWorkspaceDevice } from '@/components/SemanticDeviceStage';
 import { builtInDeviceAssets } from '@/lib/assets/DeviceAssetRegistry';
 import type { DeviceAsset } from '@/lib/assets/DeviceAsset';
+import { validateDeviceAsset } from '@/lib/assets/DeviceAssetValidator';
 import type { AdapterCommand } from '@/lib/adapter/AdapterCommand';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import { localizeDeviceType, localizeDisplayName, t } from '@/lib/i18n';
@@ -45,7 +46,8 @@ import { ScenarioRunner } from '@/lib/virtual-lab/ScenarioRunner';
 import { deviceScenarios, getScenarioForProfile } from '@/lib/virtual-lab/scenarios';
 import type { DeviceType } from '@/types/deviceMeta';
 import type { TaskDSL } from '@/types/taskDsl';
-import { MAX_PROJECT_FILE_BYTES, validateLabWorkspaceFile, validateOpenRealityProjectFile } from '@/lib/project/ProjectFileContract';
+import { MAX_PROJECT_FILE_BYTES, serializeOpenRealityProjectFile, validateLabWorkspaceFile, validateOpenRealityProjectFile } from '@/lib/project/ProjectFileContract';
+import { discardProjectAutosave, loadProjectAutosave, saveProjectAutosave } from '@/lib/project/ProjectAutosaveStore';
 
 interface WorkspaceDeviceRecord {
   id: string;
@@ -68,7 +70,7 @@ interface WorkspaceDeviceRecord {
 
 interface LabWorkspaceFile {
   file_type: 'open_reality_lab_workspace';
-  version: 1;
+  version: 2;
   saved_at: string;
   language: UiLanguage;
   selected_profile_id: string;
@@ -76,6 +78,7 @@ interface LabWorkspaceFile {
   selected_workspace_device_id: string | null;
   prompt: string;
   devices: WorkspaceDeviceRecord[];
+  imported_assets: DeviceAsset[];
   /** v0.4 custom actions (untrusted on load; revalidated per manifest). */
   custom_actions?: unknown[];
   /** v0.5 reviewed, simulation-only manual import proposals. */
@@ -86,7 +89,7 @@ interface OpenRealityProjectFile {
   project: {
     name: string;
     file_type: 'open_reality_desktop_project';
-    version: 1;
+    version: 2;
   };
   devices: WorkspaceDeviceRecord[];
   scenarios: Array<{ id: string; device_profile: string; prompt: string; expected_safety_result: string }>;
@@ -174,7 +177,6 @@ interface QuickStartPath {
 const deviceTypes: DeviceType[] = ['robot_arm', 'mobile_robot', 'smart_light', 'camera_sensor', 'conveyor_belt', 'plc_cabinet', 'lab_instrument', 'warehouse_rack', 'sensor_box'];
 const publicAlphaRunnableDeviceTypes: DeviceType[] = ['robot_arm', 'smart_light', 'camera_sensor'];
 const builtinRealityAssets = getBuiltinRealityAssets();
-const workspaceStorageKey = 'open-reality-studio:last-workspace';
 const firstRunGuideStorageKey = 'open-reality-studio:first-run-guide-dismissed';
 const firstRunDemoStorageKey = 'realitywarden:first-run-demo-done';
 const workspaceSlots: [number, number, number][] = [
@@ -456,6 +458,39 @@ function createDefaultWorkspaceDevice(language: UiLanguage) {
 
 function noticeMessage(language: UiLanguage, zh: string, en: string) {
   return language === 'zh' ? zh : en;
+}
+
+const maxPersistedModelBytes = 12 * 1024 * 1024;
+
+function blobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Unable to read the selected model bytes.'));
+    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Model conversion did not produce text.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function makeImportedAssetPortable(asset: DeviceAsset) {
+  const path = asset.manifest.visual_model.path;
+  if (!path || path.startsWith('data:')) return asset;
+  if (!path.startsWith('blob:')) throw new Error('Imported model paths must be embedded; external and machine-local paths are not portable.');
+  try {
+    const response = await fetch(path);
+    if (!response.ok) throw new Error(`Unable to read imported model (${response.status}).`);
+    const blob = await response.blob();
+    if (blob.size > maxPersistedModelBytes) throw new Error(`Imported model exceeds ${maxPersistedModelBytes} bytes.`);
+    const portablePath = await blobAsDataUrl(blob);
+    return {
+      ...asset,
+      manifest: {
+        ...asset.manifest,
+        visual_model: { ...asset.manifest.visual_model, path: portablePath }
+      }
+    };
+  } finally {
+    URL.revokeObjectURL(path);
+  }
 }
 
 function isRunnableDeviceV01(deviceType: DeviceType) {
@@ -1264,6 +1299,7 @@ export default function Home() {
   const [running, setRunning] = useState(false);
   const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
   const [autosaveQuarantined, setAutosaveQuarantined] = useState(false);
+  const [autosaveReady, setAutosaveReady] = useState(false);
   const [projectFilePath, setProjectFilePath] = useState<string | null>(null);
   const [projectName, setProjectName] = useState('Untitled Project');
   const [workspaceValidation, setWorkspaceValidation] = useState<WorkspaceValidationResult | null>(null);
@@ -1505,7 +1541,7 @@ export default function Home() {
 
   const buildWorkspaceFile = useCallback((): LabWorkspaceFile => ({
     file_type: 'open_reality_lab_workspace',
-    version: 1,
+    version: 2,
     saved_at: new Date().toISOString(),
     language,
     selected_profile_id: selectedProfile.id,
@@ -1513,15 +1549,16 @@ export default function Home() {
     selected_workspace_device_id: selectedWorkspaceDeviceId,
     prompt,
     devices: workspaceDevices,
+    imported_assets: importedAssets,
     custom_actions: customActions,
     manual_imports: manualImports
-  }), [customActions, language, manualImports, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
+  }), [customActions, importedAssets, language, manualImports, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
 
   const buildProjectFile = useCallback((): OpenRealityProjectFile => ({
     project: {
       name: projectName,
       file_type: 'open_reality_desktop_project',
-      version: 1
+      version: 2
     },
     devices: workspaceDevices,
     scenarios: deviceScenarios.map((scenario) => ({
@@ -1544,9 +1581,29 @@ export default function Home() {
     }
   }), [buildWorkspaceFile, labReport, language, projectName, workspaceDevices]);
 
-  const applyWorkspaceFile = useCallback((workspace: LabWorkspaceFile) => {
-    const checked = validateLabWorkspaceFile(workspace);
+  const applyWorkspaceFile = useCallback((input: unknown) => {
+    const checked = validateLabWorkspaceFile(input);
     if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
+    const workspace = checked.value as unknown as LabWorkspaceFile;
+    const nextImportedAssets = workspace.imported_assets.map((asset) => {
+      const validation = validateDeviceAsset(asset);
+      if (!validation.valid) throw new Error(`Imported asset ${asset.manifest?.asset_id ?? 'unknown'} was rejected: ${validation.failures.join(' ')}`);
+      return asset;
+    });
+    const importedAssetIds = new Set<string>();
+    const reservedAssetIds = new Set(builtInDeviceAssets.map((asset) => asset.manifest.asset_id));
+    const declaredManualAssetIds = new Set((workspace.manual_imports ?? []).flatMap((raw) => {
+      if (!raw || typeof raw !== 'object') return [];
+      const profileId = (raw as { device_meta?: { profile_id?: unknown } }).device_meta?.profile_id;
+      return typeof profileId === 'string' ? [profileId] : [];
+    }));
+    for (const asset of nextImportedAssets) {
+      const assetId = asset.manifest.asset_id;
+      if (reservedAssetIds.has(assetId)) throw new Error(`Imported asset shadows built-in asset: ${assetId}`);
+      if (declaredManualAssetIds.has(assetId)) throw new Error(`Imported asset shadows manual-review asset: ${assetId}`);
+      if (importedAssetIds.has(assetId)) throw new Error(`Duplicate imported asset: ${assetId}`);
+      importedAssetIds.add(assetId);
+    }
     const nextProfile = deviceProfiles.find((profile) => profile.id === workspace.selected_profile_id);
     if (!nextProfile) throw new Error(`Unknown selected profile: ${workspace.selected_profile_id}`);
     const nextScenario = deviceScenarios.find((scenario) => scenario.id === workspace.selected_scenario_id);
@@ -1556,6 +1613,10 @@ export default function Home() {
     for (const device of workspace.devices) {
       if (device.assetId) {
         if (device.profileId !== device.assetId) throw new Error(`Device ${device.id} profile does not match its asset identity`);
+        const isBuiltIn = reservedAssetIds.has(device.assetId);
+        const isImported = importedAssetIds.has(device.assetId);
+        const isDeclaredManual = declaredManualAssetIds.has(device.assetId);
+        if (!isBuiltIn && !isImported && !isDeclaredManual) throw new Error(`Device ${device.id} references missing asset ${device.assetId}`);
         continue;
       }
       const profile = deviceProfilesById.get(device.profileId);
@@ -1615,6 +1676,7 @@ export default function Home() {
     const filteredWorkspaceDevices = loadedWorkspaceDevices.filter((device) => !device.assetId || !claimedManualAssetIds.has(device.assetId) || enabledManualAssetIds.has(device.assetId));
     if (filteredWorkspaceDevices.length !== loadedWorkspaceDevices.length) showNotice('warning', noticeMessage(workspace.language, '未通过 simulation-only 启用校验的手册设备已从工作区移除。', 'Manual devices without valid simulation-only enablement were removed from the workspace.'));
     setWorkspaceDevices(filteredWorkspaceDevices);
+    setImportedAssets(nextImportedAssets);
     setSelectedWorkspaceDeviceId(filteredWorkspaceDevices.some((device) => device.id === workspace.selected_workspace_device_id) ? workspace.selected_workspace_device_id : filteredWorkspaceDevices[0]?.id ?? null);
     setManualImports(loadedManualImports);
     setManualSimulationAssets(loadedManualAssets);
@@ -1637,9 +1699,10 @@ export default function Home() {
     setCurrentActionFrame(null);
   }, [cancelActiveWork, clearRuntimeDecision, showNotice]);
 
-  const applyProjectFile = useCallback((project: OpenRealityProjectFile, filePath?: string | null) => {
-    const checked = validateOpenRealityProjectFile(project);
+  const applyProjectFile = useCallback((input: unknown, filePath?: string | null) => {
+    const checked = validateOpenRealityProjectFile(input);
     if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
+    const project = checked.value as unknown as OpenRealityProjectFile;
     applyWorkspaceFile(project.workspace);
     setProjectName(project.project?.name || 'Untitled Project');
     setProjectFilePath(filePath ?? null);
@@ -1650,36 +1713,72 @@ export default function Home() {
     setCurrentActionFrame(lastSnapshot?.action_frame ?? null);
   }, [applyWorkspaceFile]);
 
-  useEffect(() => {
-    const rawWorkspace = window.localStorage.getItem(workspaceStorageKey);
-    if (!rawWorkspace) return;
-    try {
-      applyWorkspaceFile(JSON.parse(rawWorkspace) as LabWorkspaceFile);
-      setAutosaveQuarantined(false);
-    } catch (error) {
-      setAutosaveQuarantined(true);
-      showNotice(
-        'error',
-        noticeMessage(language, `自动保存已隔离：${error instanceof Error ? error.message : '数据无效'}`, `Autosave quarantined: ${error instanceof Error ? error.message : 'invalid data'}`),
-        {
-          persistent: true,
-          action: { kind: 'discard_autosave', label: language === 'zh' ? '清除损坏的自动保存' : 'Discard corrupted autosave' }
-        }
-      );
-    }
-  }, [applyWorkspaceFile, language, showNotice]);
+  const applySavedDocument = useCallback((text: string) => {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === 'object' && 'project' in parsed && 'workspace' in parsed) applyProjectFile(parsed);
+    else applyWorkspaceFile(parsed);
+  }, [applyProjectFile, applyWorkspaceFile]);
 
   useEffect(() => {
-    if (autosaveQuarantined) return;
+    if (autosaveReady || autosaveQuarantined) return;
+    let active = true;
+    void (async () => {
+      let record;
+      try {
+        record = await loadProjectAutosave();
+      } catch (error) {
+        if (!active) return;
+        setAutosaveQuarantined(true);
+        showNotice('error', noticeMessage(language, `读取自动保存失败：${error instanceof Error ? error.message : '存储不可用'}`, `Autosave read failed: ${error instanceof Error ? error.message : 'storage unavailable'}`), { persistent: true });
+        return;
+      }
+      if (!active) return;
+      if (!record) {
+        setAutosaveReady(true);
+        return;
+      }
+      try {
+        applySavedDocument(record.text);
+        setAutosaveQuarantined(false);
+        setAutosaveReady(true);
+        if (record.source === 'legacy-localstorage') showNotice('info', noticeMessage(language, '旧版自动保存已恢复，将迁移到成品级存储。', 'Legacy autosave restored and will migrate to durable project storage.'));
+      } catch (error) {
+        setAutosaveQuarantined(true);
+        showNotice(
+          'error',
+          noticeMessage(language, `自动保存已隔离：${error instanceof Error ? error.message : '数据无效'}`, `Autosave quarantined: ${error instanceof Error ? error.message : 'invalid data'}`),
+          { persistent: true, action: { kind: 'discard_autosave', label: language === 'zh' ? '清除损坏的自动保存' : 'Discard corrupted autosave' } }
+        );
+      }
+    })();
+    return () => { active = false; };
+  }, [applySavedDocument, autosaveQuarantined, autosaveReady, language, showNotice]);
+
+  useEffect(() => {
+    if (!autosaveReady || autosaveQuarantined) return;
     // Debounced autosave: serializing the whole workspace on every keystroke
     // caused needless main-thread work; 600ms of quiet is enough.
+    let active = true;
     const timer = window.setTimeout(() => {
-      const workspace = buildWorkspaceFile();
-      window.localStorage.setItem(workspaceStorageKey, JSON.stringify(workspace));
-      setAutosavedAt(workspace.saved_at);
+      void (async () => {
+        try {
+          const project = buildProjectFile();
+          const serialized = serializeOpenRealityProjectFile(project);
+          if (!serialized.ok) throw new Error(`${serialized.code}: ${serialized.detail}`);
+          await saveProjectAutosave(serialized.value);
+          if (active) setAutosavedAt(project.workspace.saved_at);
+        } catch (error) {
+          if (!active) return;
+          setAutosaveQuarantined(true);
+          showNotice('error', noticeMessage(language, `自动保存失败：${error instanceof Error ? error.message : '存储不可用'}`, `Autosave failed: ${error instanceof Error ? error.message : 'storage unavailable'}`), {
+            persistent: true,
+            action: { kind: 'retry_autosave', label: language === 'zh' ? '重试自动保存' : 'Retry autosave' }
+          });
+        }
+      })();
     }, 600);
-    return () => window.clearTimeout(timer);
-  }, [autosaveQuarantined, buildWorkspaceFile]);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [autosaveQuarantined, autosaveReady, buildProjectFile, language, showNotice]);
 
   const dismissFirstRunGuide = useCallback(() => {
     window.localStorage.setItem(firstRunGuideStorageKey, '1');
@@ -1758,9 +1857,18 @@ export default function Home() {
   }, [cancelActiveWork, clearRuntimeDecision, language]);
 
   const handleImportedAsset = useCallback((asset: DeviceAsset) => {
-    invalidateWorkspaceResults();
-    setImportedAssets((assets) => [...assets.filter((item) => item.manifest.asset_id !== asset.manifest.asset_id), asset]);
-    showNotice('success', noticeMessage(language, `\u8d44\u4ea7\u5df2\u5bfc\u5165\uff1a${asset.manifest.display_name}`, `Asset imported: ${asset.manifest.display_name}`));
+    void (async () => {
+      try {
+        const portableAsset = await makeImportedAssetPortable(asset);
+        const validation = validateDeviceAsset(portableAsset);
+        if (!validation.valid) throw new Error(validation.failures.join(' '));
+        invalidateWorkspaceResults();
+        setImportedAssets((assets) => [...assets.filter((item) => item.manifest.asset_id !== portableAsset.manifest.asset_id), portableAsset]);
+        showNotice('success', noticeMessage(language, `\u8d44\u4ea7\u5df2\u5bfc\u5165\uff1a${portableAsset.manifest.display_name}`, `Asset imported: ${portableAsset.manifest.display_name}`));
+      } catch (error) {
+        showNotice('error', noticeMessage(language, `资产导入失败：${error instanceof Error ? error.message : localUnknownError(language)}`, `Asset import failed: ${error instanceof Error ? error.message : localUnknownError(language)}`));
+      }
+    })();
   }, [invalidateWorkspaceResults, language, showNotice]);
 
   const updateWorkspaceDevice = useCallback((deviceId: string, patch: Partial<WorkspaceDeviceRecord>) => {
@@ -2439,8 +2547,8 @@ export default function Home() {
   const saveWorkspace = useCallback(async (saveAs = false) => {
     try {
       const project = buildProjectFile();
-      const checked = validateOpenRealityProjectFile(project);
-      if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
+      const serialized = serializeOpenRealityProjectFile(project);
+      if (!serialized.ok) throw new Error(`${serialized.code}: ${serialized.detail}`);
       if (window.openReality) {
         const result = saveAs
           ? await window.openReality.project.saveAs(project)
@@ -2501,15 +2609,16 @@ export default function Home() {
     }
   }, [applyProjectFile, language, requestProjectFile, showNotice]);
 
-  const restoreLastWorkspace = useCallback(() => {
-    const rawWorkspace = window.localStorage.getItem(workspaceStorageKey);
-    if (!rawWorkspace) {
-      showNotice('warning', noticeMessage(language, '\u6ca1\u6709\u53ef\u6062\u590d\u7684\u4e0a\u6b21\u5de5\u7a0b\u3002', 'No previous workspace to restore.'));
-      return;
-    }
+  const restoreLastWorkspace = useCallback(async () => {
     try {
-      applyWorkspaceFile(JSON.parse(rawWorkspace) as LabWorkspaceFile);
+      const record = await loadProjectAutosave();
+      if (!record) {
+        showNotice('warning', noticeMessage(language, '\u6ca1\u6709\u53ef\u6062\u590d\u7684\u4e0a\u6b21\u5de5\u7a0b\u3002', 'No previous workspace to restore.'));
+        return;
+      }
+      applySavedDocument(record.text);
       setAutosaveQuarantined(false);
+      setAutosaveReady(true);
       showNotice('success', noticeMessage(language, '\u5df2\u6062\u590d\u4e0a\u6b21\u5de5\u7a0b\u3002', 'Last workspace restored.'));
     } catch (error) {
       showNotice(
@@ -2524,7 +2633,7 @@ export default function Home() {
         }
       );
     }
-  }, [applyWorkspaceFile, language, showNotice]);
+  }, [applySavedDocument, language, showNotice]);
 
   const exportDeploymentConfig = useCallback(async () => {
     try {
@@ -2622,9 +2731,19 @@ export default function Home() {
   const handleNoticeAction = useCallback((action: OperatorNoticeAction) => {
     setOperatorNotice(null);
     if (action === 'discard_autosave') {
-      window.localStorage.removeItem(workspaceStorageKey);
+      void discardProjectAutosave().then(() => {
+        setAutosaveQuarantined(false);
+        setAutosaveReady(true);
+        showNotice('success', noticeMessage(language, '损坏的自动保存已清除；当前工作区未被修改。', 'Corrupted autosave cleared; the current workspace was not changed.'));
+      }).catch((error) => {
+        setAutosaveQuarantined(true);
+        showNotice('error', noticeMessage(language, `清除自动保存失败：${error instanceof Error ? error.message : '存储不可用'}`, `Autosave clear failed: ${error instanceof Error ? error.message : 'storage unavailable'}`), { persistent: true, action: { kind: 'discard_autosave', label: language === 'zh' ? '重试清除' : 'Retry discard' } });
+      });
+      return;
+    }
+    if (action === 'retry_autosave') {
       setAutosaveQuarantined(false);
-      showNotice('success', noticeMessage(language, '损坏的自动保存已清除；当前工作区未被修改。', 'Corrupted autosave cleared; the current workspace was not changed.'));
+      setAutosaveReady(true);
       return;
     }
     if (action === 'retry_project_save') void saveWorkspace(false);

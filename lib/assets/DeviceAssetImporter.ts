@@ -1,4 +1,4 @@
-import { DeviceGeometrySchema, DeviceMetaSchema } from '@/lib/schemas/deviceMeta.schema';
+import { DeviceGeometrySchema, DeviceMetaSchema } from '../schemas/deviceMeta.schema';
 import type { DeviceAsset, DeviceAssetManifest, AdapterManifest, DeviceAssetScenario } from './DeviceAsset';
 import { DeviceAssetRegistry } from './DeviceAssetRegistry';
 import { validateDeviceAsset } from './DeviceAssetValidator';
@@ -69,6 +69,9 @@ export function validateAdapterManifest(adapterManifest: Partial<AdapterManifest
   if (!adapterManifest.adapter_type) failures.push('adapter_type is required.');
   if (!adapterManifest.interface) failures.push('interface is required.');
   if (!Array.isArray(adapterManifest.supported_commands) || adapterManifest.supported_commands.length === 0) failures.push('supported_commands are required.');
+  if (adapterManifest.adapter_type !== 'simulator') failures.push('imported assets must use a simulator adapter.');
+  if (adapterManifest.interface !== 'AdapterInterface') failures.push('imported assets must use AdapterInterface.');
+  if (adapterManifest.real_device_enabled !== false) failures.push('real_device_enabled must remain false.');
   return { valid: failures.length === 0, failures };
 }
 
@@ -98,6 +101,13 @@ export function createImportedAsset(file: OpenRealityDeviceFile): DeviceAsset {
     adapterManifest: file.adapter_manifest,
     scenarios: { safe, unsafe }
   } as DeviceAsset;
+  if (asset.deviceMeta.profile_id !== asset.manifest.asset_id) throw new Error('Cannot import device asset: device_meta.profile_id must match asset_id.');
+  if (asset.deviceMeta.device_type !== asset.manifest.device_type) throw new Error('Cannot import device asset: device_meta.device_type must match asset device_type.');
+  if (asset.deviceMeta.supported_adapters.length !== 1 || asset.deviceMeta.supported_adapters[0] !== 'simulator') throw new Error('Cannot import device asset: supported_adapters must be simulator-only.');
+  const visualPath = asset.manifest.visual_model.path;
+  if (visualPath && !visualPath.startsWith('blob:') && !visualPath.startsWith('data:')) throw new Error('Cannot import device asset: visual model must be selected locally or embedded.');
+  if (asset.deviceMeta.model_asset && !asset.deviceMeta.model_asset.uri.startsWith('data:')) throw new Error('Cannot import device asset: device_meta.model_asset.uri must be embedded.');
+  if (safe.device_profile !== asset.manifest.asset_id || unsafe.device_profile !== asset.manifest.asset_id) throw new Error('Cannot import device asset: scenarios must reference asset_id.');
   const validation = validateDeviceAsset(asset);
   if (!validation.valid) throw new Error(`Cannot import device asset: ${validation.failures.join(' ')}`);
   return asset;

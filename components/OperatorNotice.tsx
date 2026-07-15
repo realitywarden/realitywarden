@@ -5,6 +5,7 @@ import type { UiLanguage } from './LabConfigurator';
 export type OperatorNoticeSeverity = 'info' | 'success' | 'warning' | 'error';
 export type OperatorNoticeAction =
   | 'discard_autosave'
+  | 'retry_autosave'
   | 'retry_project_save'
   | 'retry_project_save_as'
   | 'retry_project_open'

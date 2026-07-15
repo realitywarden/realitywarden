@@ -1,3 +1,5 @@
+import { DeviceGeometrySchema, DeviceMetaSchema } from '../schemas/deviceMeta.schema';
+
 export const MAX_PROJECT_FILE_BYTES = 25 * 1024 * 1024;
 export const PROJECT_FILE_TYPE = 'open_reality_desktop_project';
 export const WORKSPACE_FILE_TYPE = 'open_reality_lab_workspace';
@@ -119,12 +121,74 @@ function validateWorkspaceDevice(value: unknown, path: string): string | null {
   return null;
 }
 
+function validatePersistedImportedAsset(value: unknown, path: string): string | null {
+  if (!record(value)) return `${path} must be an object`;
+  const topKeys = exactKeys(value, ['manifest', 'deviceMeta', 'geometry', 'adapterManifest', 'scenarios'], path);
+  if (topKeys) return topKeys;
+  const jsonError = jsonValue(value, path);
+  if (jsonError) return jsonError;
+  if (!record(value.manifest)) return `${path}.manifest must be an object`;
+  const manifestKeys = exactKeys(value.manifest, ['asset_id', 'display_name', 'category', 'device_type', 'license', 'brand', 'source', 'visual_model', 'allowed_use', 'simulator_fidelity', 'risk_class'], `${path}.manifest`);
+  if (manifestKeys) return manifestKeys;
+  for (const field of ['asset_id', 'display_name', 'category', 'license', 'brand', 'source'] as const) {
+    const error = boundedString(value.manifest[field], `${path}.manifest.${field}`, field === 'display_name' ? 500 : 300);
+    if (error) return error;
+  }
+  if (typeof value.manifest.device_type !== 'string' || !deviceTypes.has(value.manifest.device_type)) return `${path}.manifest.device_type is unsupported`;
+  if (!Array.isArray(value.manifest.allowed_use) || !value.manifest.allowed_use.includes('simulation')) return `${path}.manifest.allowed_use must include simulation`;
+  if (!record(value.manifest.visual_model)) return `${path}.manifest.visual_model must be an object`;
+  const visualKeys = exactKeys(value.manifest.visual_model, ['type', 'path'], `${path}.manifest.visual_model`);
+  if (visualKeys) return visualKeys;
+  const modelType = value.manifest.visual_model.type;
+  const modelPath = value.manifest.visual_model.path;
+  if (modelType === 'procedural_fallback') {
+    if (modelPath !== null) return `${path}.manifest.visual_model.path must be null for procedural fallback`;
+  } else if (modelType === 'glb' || modelType === 'gltf') {
+    if (typeof modelPath !== 'string' || !modelPath.startsWith('data:') || !modelPath.includes(';base64,')) return `${path}.manifest.visual_model.path must contain an embedded base64 model`;
+  } else {
+    return `${path}.manifest.visual_model.type is unsupported`;
+  }
+  if (!record(value.deviceMeta)) return `${path}.deviceMeta must be an object`;
+  const metaCheck = DeviceMetaSchema.safeParse(value.deviceMeta);
+  if (!metaCheck.success) return `${path}.deviceMeta is invalid: ${metaCheck.error.issues[0]?.message ?? 'schema rejected'}`;
+  if (value.deviceMeta.profile_id !== value.manifest.asset_id) return `${path}.deviceMeta.profile_id must match manifest.asset_id`;
+  if (value.deviceMeta.device_type !== value.manifest.device_type) return `${path}.deviceMeta.device_type must match manifest.device_type`;
+  if (!Array.isArray(value.deviceMeta.supported_adapters) || value.deviceMeta.supported_adapters.length !== 1 || value.deviceMeta.supported_adapters[0] !== 'simulator') return `${path}.deviceMeta.supported_adapters must be simulator-only`;
+  if (value.deviceMeta.model_asset !== undefined) {
+    if (!record(value.deviceMeta.model_asset)) return `${path}.deviceMeta.model_asset must be an object`;
+    const uri = value.deviceMeta.model_asset.uri;
+    if (typeof uri !== 'string' || !uri.startsWith('data:')) return `${path}.deviceMeta.model_asset.uri must be embedded`;
+  }
+  const geometryCheck = DeviceGeometrySchema.safeParse(value.geometry);
+  if (!geometryCheck.success) return `${path}.geometry is invalid: ${geometryCheck.error.issues[0]?.message ?? 'schema rejected'}`;
+  if (!record(value.adapterManifest)) return `${path}.adapterManifest must be an object`;
+  const adapterKeys = exactKeys(value.adapterManifest, ['adapter_id', 'adapter_type', 'interface', 'supported_commands', 'transport', 'real_device_enabled'], `${path}.adapterManifest`);
+  if (adapterKeys) return adapterKeys;
+  if (value.adapterManifest.adapter_type !== 'simulator') return `${path}.adapterManifest.adapter_type must be simulator`;
+  if (value.adapterManifest.interface !== 'AdapterInterface') return `${path}.adapterManifest.interface must be AdapterInterface`;
+  if (value.adapterManifest.real_device_enabled !== false) return `${path}.adapterManifest.real_device_enabled must remain false`;
+  if (!Array.isArray(value.adapterManifest.supported_commands) || value.adapterManifest.supported_commands.length === 0 || value.adapterManifest.supported_commands.length > 100) return `${path}.adapterManifest.supported_commands must contain 1-100 commands`;
+  for (let index = 0; index < value.adapterManifest.supported_commands.length; index += 1) {
+    const error = boundedString(value.adapterManifest.supported_commands[index], `${path}.adapterManifest.supported_commands[${index}]`, 200);
+    if (error) return error;
+  }
+  const transportError = boundedString(value.adapterManifest.transport, `${path}.adapterManifest.transport`, 300);
+  if (transportError) return transportError;
+  if (!record(value.scenarios) || !record(value.scenarios.safe) || !record(value.scenarios.unsafe)) return `${path}.scenarios must contain safe and unsafe objects`;
+  const scenarioKeys = exactKeys(value.scenarios, ['safe', 'unsafe'], `${path}.scenarios`);
+  if (scenarioKeys) return scenarioKeys;
+  if (value.scenarios.safe.expected_safety_result !== 'pass' || value.scenarios.unsafe.expected_safety_result !== 'blocked') return `${path}.scenarios must preserve pass/blocked roles`;
+  if (value.scenarios.safe.device_profile !== value.manifest.asset_id || value.scenarios.unsafe.device_profile !== value.manifest.asset_id) return `${path}.scenarios must reference manifest.asset_id`;
+  return null;
+}
+
 export function validateLabWorkspaceFile(value: unknown): ProjectContractResult<Record<string, unknown>> {
   if (!record(value)) return schemaFailure('workspace must be an object');
-  const keyError = exactKeys(value, ['file_type', 'version', 'saved_at', 'language', 'selected_profile_id', 'selected_scenario_id', 'selected_workspace_device_id', 'prompt', 'devices', 'custom_actions', 'manual_imports'], 'workspace');
-  if (keyError) return schemaFailure(keyError);
   if (value.file_type !== WORKSPACE_FILE_TYPE) return schemaFailure(`workspace.file_type must be ${WORKSPACE_FILE_TYPE}`);
-  if (value.version !== 1) return schemaFailure('workspace.version must be 1');
+  if (value.version !== 1 && value.version !== 2) return schemaFailure('workspace.version must be 1 or 2');
+  const workspaceKeys = ['file_type', 'version', 'saved_at', 'language', 'selected_profile_id', 'selected_scenario_id', 'selected_workspace_device_id', 'prompt', 'devices', 'custom_actions', 'manual_imports'];
+  const keyError = exactKeys(value, value.version === 2 ? [...workspaceKeys, 'imported_assets'] : workspaceKeys, 'workspace');
+  if (keyError) return schemaFailure(keyError);
   const savedAtError = timestamp(value.saved_at, 'workspace.saved_at');
   if (savedAtError) return schemaFailure(savedAtError);
   if (value.language !== 'zh' && value.language !== 'en') return schemaFailure('workspace.language must be zh or en');
@@ -148,13 +212,23 @@ export function validateLabWorkspaceFile(value: unknown): ProjectContractResult<
     deviceIds.add(id);
   }
   if (value.selected_workspace_device_id !== null && !deviceIds.has(value.selected_workspace_device_id as string)) return schemaFailure('workspace.selected_workspace_device_id does not reference a workspace device');
+  const importedAssets = value.version === 2 ? value.imported_assets : [];
+  if (!Array.isArray(importedAssets) || importedAssets.length > 100) return schemaFailure('workspace.imported_assets must be an array of at most 100 assets');
+  const importedAssetIds = new Set<string>();
+  for (let index = 0; index < importedAssets.length; index += 1) {
+    const error = validatePersistedImportedAsset(importedAssets[index], `workspace.imported_assets[${index}]`);
+    if (error) return schemaFailure(error);
+    const assetId = ((importedAssets[index] as Record<string, unknown>).manifest as Record<string, unknown>).asset_id as string;
+    if (importedAssetIds.has(assetId)) return schemaFailure(`workspace.imported_assets contains duplicate id ${assetId}`);
+    importedAssetIds.add(assetId);
+  }
   for (const field of ['custom_actions', 'manual_imports'] as const) {
     if (value[field] === undefined) continue;
     if (!Array.isArray(value[field]) || (value[field] as unknown[]).length > 1_000) return schemaFailure(`workspace.${field} must be an array of at most 1000 records`);
     const error = jsonValue(value[field], `workspace.${field}`);
     if (error) return schemaFailure(error);
   }
-  return { ok: true, value };
+  return { ok: true, value: { ...value, version: 2, imported_assets: importedAssets } };
 }
 
 function validateScenario(value: unknown, path: string) {
@@ -188,7 +262,7 @@ export function validateOpenRealityProjectFile(value: unknown): ProjectContractR
   const nameError = boundedString(value.project.name, 'document.project.name', 200);
   if (nameError) return schemaFailure(nameError);
   if (value.project.file_type !== PROJECT_FILE_TYPE) return schemaFailure(`document.project.file_type must be ${PROJECT_FILE_TYPE}`);
-  if (value.project.version !== 1) return schemaFailure('document.project.version must be 1');
+  if (value.project.version !== 1 && value.project.version !== 2) return schemaFailure('document.project.version must be 1 or 2');
   const workspace = validateLabWorkspaceFile(value.workspace);
   if (!workspace.ok) return workspace;
   if (!Array.isArray(value.devices) || value.devices.length > 500) return schemaFailure('document.devices must be an array of at most 500 devices');
@@ -196,7 +270,7 @@ export function validateOpenRealityProjectFile(value: unknown): ProjectContractR
     const error = validateWorkspaceDevice(value.devices[index], `document.devices[${index}]`);
     if (error) return schemaFailure(error);
   }
-  if (JSON.stringify(value.devices) !== JSON.stringify((value.workspace as Record<string, unknown>).devices)) return schemaFailure('document.devices must exactly match workspace.devices');
+  if (JSON.stringify(value.devices) !== JSON.stringify(workspace.value.devices)) return schemaFailure('document.devices must exactly match workspace.devices');
   if (!Array.isArray(value.scenarios) || value.scenarios.length > 2_000) return schemaFailure('document.scenarios must be an array of at most 2000 scenarios');
   for (let index = 0; index < value.scenarios.length; index += 1) {
     const error = validateScenario(value.scenarios[index], `document.scenarios[${index}]`);
@@ -217,7 +291,7 @@ export function validateOpenRealityProjectFile(value: unknown): ProjectContractR
   if (metadataTime) return schemaFailure(metadataTime);
   if (value.metadata.app !== 'RealityWarden Desktop') return schemaFailure('document.metadata.app must be RealityWarden Desktop');
   if (value.metadata.real_device_execution_enabled !== false) return schemaFailure('document.metadata.real_device_execution_enabled must remain false');
-  return { ok: true, value };
+  return { ok: true, value: { ...value, project: { ...value.project, version: 2 }, workspace: workspace.value } };
 }
 
 export function parseOpenRealityProjectText(text: string): ProjectContractResult<Record<string, unknown>> {
@@ -235,5 +309,7 @@ export function parseOpenRealityProjectText(text: string): ProjectContractResult
 export function serializeOpenRealityProjectFile(value: unknown): ProjectContractResult<string> {
   const checked = validateOpenRealityProjectFile(value);
   if (!checked.ok) return checked;
-  return { ok: true, value: `${JSON.stringify(checked.value, null, 2)}\n` };
+  const serialized = `${JSON.stringify(checked.value, null, 2)}\n`;
+  if (new TextEncoder().encode(serialized).byteLength > MAX_PROJECT_FILE_BYTES) return { ok: false, code: 'file_too_large', detail: `project content exceeds ${MAX_PROJECT_FILE_BYTES} bytes` };
+  return { ok: true, value: serialized };
 }

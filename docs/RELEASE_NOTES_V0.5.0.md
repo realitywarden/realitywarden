@@ -7,6 +7,10 @@ industrial safety certification, or production readiness.
 
 ## Highlights since v0.3.0
 
+- Project/workspace version 2 preserves user-imported DeviceAssets, including
+  embedded GLB/GLTF bytes, across Save/Open and durable IndexedDB autosave.
+  Version 1 migrates explicitly; unknown fields, non-portable paths, dangling
+  assets, oversized files, and simulator-boundary tampering are rejected.
 - A product-grade desktop information architecture keeps the 3D Workspace as
   the visual center, AI Command as the only Run/Stop surface, evidence one step
   away, and REAL HARDWARE inside an independent danger boundary.

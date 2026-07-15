@@ -59,7 +59,7 @@ export const DeviceMetaSchema = z.object({
     level: z.enum(['semantic', 'kinematic', 'physics']),
     validates: z.array(z.string()).min(1),
     limitations: z.array(z.string())
-  }).optional(),
+  }).strict().optional(),
   supported_adapters: z.array(z.string()).min(1),
   risk_class: z.enum(['low', 'medium', 'high']),
   display_name: z.string().min(1),
@@ -72,7 +72,7 @@ export const DeviceMetaSchema = z.object({
     scale: z.number().positive().optional(),
     rotation: z.tuple([z.number(), z.number(), z.number()]).optional(),
     position: z.tuple([z.number(), z.number(), z.number()]).optional()
-  }).optional(),
+  }).strict().optional(),
   capabilities: z.array(DeviceCapabilitySchema).min(1),
   constraints: z.object({
     workspace: z.object({
@@ -82,12 +82,12 @@ export const DeviceMetaSchema = z.object({
       y_max: z.number(),
       z_min: z.number(),
       z_max: z.number()
-    }),
+    }).strict(),
     max_speed: z.enum(['slow', 'normal', 'fast']),
     force_limit: z.enum(['low', 'medium', 'high']),
     forbidden_zones: z.array(z.string()),
     known_targets: z.array(z.string()).optional()
-  }),
+  }).strict(),
   safety_profile: z.object({
     allow_throwing: z.boolean(),
     allow_high_force: z.boolean(),
@@ -96,12 +96,12 @@ export const DeviceMetaSchema = z.object({
     block_medium_risk: z.boolean().optional(),
     require_logging: z.boolean(),
     require_human_confirmation_for_risky_actions: z.boolean()
-  }),
+  }).strict(),
   runtime_state: z.object({
     status: z.enum(['idle', 'executing', 'blocked', 'completed']),
     current_position: z.string()
-  })
-});
+  }).strict()
+}).strict();
 
 const Vector3Schema = z.tuple([z.number(), z.number(), z.number()]);
 
@@ -110,21 +110,21 @@ export const DeviceGeometrySchema = z.object({
     width: z.number().positive(),
     depth: z.number().positive(),
     height: z.number().positive()
-  }),
+  }).strict(),
   robot: z.object({
     base_position: Vector3Schema,
     arm_segments: z.tuple([z.number().positive(), z.number().positive()]),
     gripper_size: z.number().positive()
-  }),
+  }).strict(),
   objects: z.object({
-    red_cube: z.object({ position: Vector3Schema, size: z.number().positive() }),
-    blue_cube: z.object({ position: Vector3Schema, size: z.number().positive() }),
-    glass_cup: z.object({ position: Vector3Schema, radius: z.number().positive(), height: z.number().positive() })
-  }),
+    red_cube: z.object({ position: Vector3Schema, size: z.number().positive() }).strict(),
+    blue_cube: z.object({ position: Vector3Schema, size: z.number().positive() }).strict(),
+    glass_cup: z.object({ position: Vector3Schema, radius: z.number().positive(), height: z.number().positive() }).strict()
+  }).strict(),
   zones: z.record(z.object({
     position: Vector3Schema,
     size: z.tuple([z.number().positive(), z.number().positive()])
-  })),
+  }).strict()),
   workspace: z.object({
     x_min: z.number(),
     x_max: z.number(),
@@ -132,14 +132,14 @@ export const DeviceGeometrySchema = z.object({
     y_max: z.number(),
     z_min: z.number(),
     z_max: z.number()
-  }),
+  }).strict(),
   camera: z.object({
     position: Vector3Schema,
     target: Vector3Schema
-  }),
+  }).strict(),
   stage: z.object({
     layout: z.string(),
-    nodes: z.record(z.object({ position: Vector3Schema, label: z.string().optional() })).optional(),
+    nodes: z.record(z.object({ position: Vector3Schema, label: z.string().optional() }).strict()).optional(),
     indicators: z.record(z.string()).optional()
-  }).optional()
-});
+  }).strict().optional()
+}).strict();
