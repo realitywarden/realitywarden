@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { validateAuthenticodeEvidence } = require('./windows-authenticode.cjs');
 const { validateSupplyChainEvidence } = require('./write-supply-chain-evidence.cjs');
+const { validateLegalReleaseInputs } = require('./legal-release-inputs.cjs');
 
 const SHA256 = /^[A-Fa-f0-9]{64}$/;
 const MAX_EVIDENCE_BYTES = 5 * 1024 * 1024;
@@ -114,12 +115,23 @@ function buildPublicReleaseManifest(root, options = {}) {
   const releaseEvidencePath = path.join(releaseDir, releaseEvidenceName);
   const releaseEvidenceSha256 = requireMatchingChecksum(releaseEvidencePath, 'release evidence');
   const releaseEvidence = readJson(releaseEvidencePath, 'release evidence');
-  if (releaseEvidence.schema !== 'realitywarden.release-evidence' || releaseEvidence.schema_version !== 5 || releaseEvidence.release_version !== version || releaseEvidence.release_mode !== 'production') throw new Error('public release requires schema-v5 production release evidence');
+  if (releaseEvidence.schema !== 'realitywarden.release-evidence' || releaseEvidence.schema_version !== 6 || releaseEvidence.release_version !== version || releaseEvidence.release_mode !== 'production') throw new Error('public release requires schema-v6 production release evidence');
   if (releaseEvidence.artifact?.file !== installerName || releaseEvidence.artifact?.sha256 !== installerSha256 || releaseEvidence.artifact?.size_bytes !== fs.statSync(installerPath).size) throw new Error('production release evidence does not match the exact installer bytes');
   if (releaseEvidence.code_signing?.status !== 'passed' || !Array.isArray(releaseEvidence.gates) || releaseEvidence.gates.some((gate) => gate?.status !== 'passed')) throw new Error('production release evidence contains an unpassed gate');
   const source = options.sourceRevision ?? sourceRevision(root);
   if (source.worktree !== 'clean') throw new Error('public release preparation requires a clean worktree');
   if (releaseEvidence.source?.worktree !== 'clean' || releaseEvidence.source?.commit !== source.commit) throw new Error('production release evidence source does not match the current clean commit');
+
+  const validateLegalInputs = options.validateLegalInputs ?? validateLegalReleaseInputs;
+  const legal = validateLegalInputs(root, options.legalInputRoot ? { inputRoot: options.legalInputRoot } : undefined);
+  const recordedLegal = releaseEvidence.legal_release;
+  if (recordedLegal?.status !== 'passed' || recordedLegal.input_manifest_sha256 !== legal.manifest_sha256.toUpperCase()) throw new Error('production release evidence does not match the current owner legal input manifest');
+  if (JSON.stringify(recordedLegal.publisher) !== JSON.stringify(legal.publisher) || JSON.stringify(recordedLegal.sales_jurisdictions) !== JSON.stringify(legal.sales_jurisdictions)) throw new Error('production release evidence publisher or sales jurisdictions changed after packaging');
+  for (const id of ['eula', 'privacy_notice']) {
+    const recorded = recordedLegal.documents?.[id];
+    const current = legal.documents[id];
+    if (recorded?.file !== current.file || recorded?.sha256 !== current.sha256.toUpperCase() || recorded?.size_bytes !== current.size_bytes) throw new Error(`production release evidence legal document changed after packaging: ${id}`);
+  }
 
   const authName = `RealityWarden-${version}-Authenticode-Evidence.json`;
   const authPath = path.join(releaseDir, authName);
@@ -183,6 +195,17 @@ function buildPublicReleaseManifest(root, options = {}) {
     if (!item.sha256) item.sha256 = sha256File(absolute);
     if (!item.size_bytes) item.size_bytes = fs.statSync(absolute).size;
   }
+  const legalOutputNames = {
+    eula: `RealityWarden-${version}-EULA.txt`,
+    privacy_notice: `RealityWarden-${version}-Privacy-Notice.txt`
+  };
+  for (const id of ['eula', 'privacy_notice']) {
+    const source = legal.documents[id];
+    const outputName = legalOutputNames[id];
+    const checksumBytes = `${source.sha256.toUpperCase()}  ${outputName}\n`;
+    referenced.push({ file: outputName, role: id === 'eula' ? 'product_eula' : 'privacy_notice', sha256: source.sha256.toUpperCase(), size_bytes: source.size_bytes });
+    referenced.push({ file: `${outputName}.sha256`, role: id === 'eula' ? 'product_eula_checksum' : 'privacy_notice_checksum', sha256: sha256Bytes(checksumBytes), size_bytes: Buffer.byteLength(checksumBytes) });
+  }
   const installerChecksumName = `${installerName}.sha256`;
   const installerChecksumBytes = `${installerSha256}  ${installerName}\n`;
   referenced.push({ file: installerChecksumName, role: 'windows_installer_checksum', sha256: sha256Bytes(installerChecksumBytes), size_bytes: Buffer.byteLength(installerChecksumBytes) });
@@ -198,6 +221,7 @@ function buildPublicReleaseManifest(root, options = {}) {
     marketplace: { catalog_url: live.catalogUrl, catalog_key_id: live.catalogKeyId, catalog_digest_sha256: live.catalogDigestSha256, checked_at: live.checked_at, expires_at: live.expiresAt, package_count: live.packages.length },
     supply_chain: { package_lock_sha256: supply.package_lock.sha256, audit_total_vulnerabilities: supply.audit.vulnerabilities.total, audited_at: supply.generated_at, sbom_sha256: supply.sbom.sha256, production_component_count: supply.sbom.component_count },
     authenticode: { signer_thumbprint: [...signerThumbprints][0], artifact_count: auth.artifacts.length },
+    legal_release: { input_manifest_sha256: legal.manifest_sha256.toUpperCase(), publisher: legal.publisher, sales_jurisdictions: legal.sales_jurisdictions, approved_at: legal.approved_at },
     files: referenced,
     not_claimed: { industrial_safety_certification: false, general_purpose_hardware_control: false, physical_outcome_verified: false }
   };
@@ -208,16 +232,30 @@ function writePublicReleaseManifest(root, options = {}) {
   const releaseDir = path.join(root, 'release');
   const installerChecksumName = `RealityWarden-${manifest.release_version}-Setup.exe.sha256`;
   const manifestName = `RealityWarden-${manifest.release_version}-Public-Release-Manifest.json`;
-  const outputPaths = [path.join(releaseDir, installerChecksumName), path.join(releaseDir, manifestName), path.join(releaseDir, `${manifestName}.sha256`)];
+  const eulaName = `RealityWarden-${manifest.release_version}-EULA.txt`;
+  const privacyName = `RealityWarden-${manifest.release_version}-Privacy-Notice.txt`;
+  const outputNames = [installerChecksumName, eulaName, `${eulaName}.sha256`, privacyName, `${privacyName}.sha256`, manifestName, `${manifestName}.sha256`];
+  const outputPaths = outputNames.map((name) => path.join(releaseDir, name));
   if (outputPaths.some((file) => fs.existsSync(file))) throw new Error('public release output already exists; overwrite is refused');
   const installer = manifest.files.find((item) => item.role === 'windows_installer');
   const installerChecksum = `${installer.sha256}  ${installer.file}\n`;
+  const validateLegalInputs = options.validateLegalInputs ?? validateLegalReleaseInputs;
+  const legal = validateLegalInputs(root, options.legalInputRoot ? { inputRoot: options.legalInputRoot } : undefined);
+  const eulaBytes = fs.readFileSync(legal.documents.eula.path);
+  const privacyBytes = fs.readFileSync(legal.documents.privacy_notice.path);
+  if (sha256Bytes(eulaBytes) !== manifest.files.find((item) => item.role === 'product_eula')?.sha256 || sha256Bytes(privacyBytes) !== manifest.files.find((item) => item.role === 'privacy_notice')?.sha256) throw new Error('owner legal documents changed while preparing the public release');
+  const eulaChecksum = `${sha256Bytes(eulaBytes)}  ${eulaName}\n`;
+  const privacyChecksum = `${sha256Bytes(privacyBytes)}  ${privacyName}\n`;
   const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
   const manifestChecksum = `${sha256Bytes(serialized)}  ${manifestName}\n`;
   fs.writeFileSync(outputPaths[0], installerChecksum, { encoding: 'utf8', flag: 'wx' });
-  fs.writeFileSync(outputPaths[1], serialized, { encoding: 'utf8', flag: 'wx' });
-  fs.writeFileSync(outputPaths[2], manifestChecksum, { encoding: 'utf8', flag: 'wx' });
-  return { manifest, manifestPath: outputPaths[1], digest: sha256Bytes(serialized) };
+  fs.writeFileSync(outputPaths[1], eulaBytes, { flag: 'wx' });
+  fs.writeFileSync(outputPaths[2], eulaChecksum, { encoding: 'utf8', flag: 'wx' });
+  fs.writeFileSync(outputPaths[3], privacyBytes, { flag: 'wx' });
+  fs.writeFileSync(outputPaths[4], privacyChecksum, { encoding: 'utf8', flag: 'wx' });
+  fs.writeFileSync(outputPaths[5], serialized, { encoding: 'utf8', flag: 'wx' });
+  fs.writeFileSync(outputPaths[6], manifestChecksum, { encoding: 'utf8', flag: 'wx' });
+  return { manifest, manifestPath: outputPaths[5], digest: sha256Bytes(serialized) };
 }
 
 if (require.main === module) {

@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { validateLifecycleEvidence } = require('./verify-windows-install-lifecycle.cjs');
 const { validateAuthenticodeEvidence } = require('./windows-authenticode.cjs');
+const { validateLegalReleaseInputs } = require('./legal-release-inputs.cjs');
 
 function sha256File(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex').toUpperCase();
@@ -94,6 +95,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
   const startup = validateStartupEvidence(JSON.parse(fs.readFileSync(startupFile, 'utf8')));
   const productionRelease = options.productionRelease === true;
   let codeSigning = { status: 'not_assessed', evidence_file: null, evidence_sha256: null, artifacts: [] };
+  let legalRelease = { status: 'not_assessed', input_manifest_sha256: null, publisher: null, sales_jurisdictions: [], documents: {} };
   if (productionRelease) {
     const signingName = `RealityWarden-${packageJson.version}-Authenticode-Evidence.json`;
     const signingFile = requireFile(path.join(releaseDir, signingName), 'Windows Authenticode evidence');
@@ -103,11 +105,25 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
       [installerName]: installerSha256
     });
     codeSigning = { status: 'passed', evidence_file: signingName, evidence_sha256: signingHash, artifacts: signing.artifacts };
+    const legal = (options.validateLegalInputs ?? validateLegalReleaseInputs)(root);
+    legalRelease = {
+      status: 'passed',
+      input_manifest_sha256: legal.manifest_sha256.toUpperCase(),
+      approved_at: legal.approved_at,
+      approved_by: legal.approved_by,
+      approval_reference: legal.approval_reference,
+      publisher: legal.publisher,
+      sales_jurisdictions: legal.sales_jurisdictions,
+      documents: {
+        eula: { file: legal.documents.eula.file, sha256: legal.documents.eula.sha256.toUpperCase(), size_bytes: legal.documents.eula.size_bytes },
+        privacy_notice: { file: legal.documents.privacy_notice.file, sha256: legal.documents.privacy_notice.sha256.toUpperCase(), size_bytes: legal.documents.privacy_notice.size_bytes }
+      }
+    };
   }
 
   return {
     schema: 'realitywarden.release-evidence',
-    schema_version: 5,
+    schema_version: 6,
     product: 'RealityWarden',
     release_version: packageJson.version,
     release_mode: productionRelease ? 'production' : 'internal_acceptance',
@@ -140,6 +156,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
       gates: startup.gates
     },
     code_signing: codeSigning,
+    legal_release: legalRelease,
     gates: [
       {
         id: 'electron-package-contract',
@@ -170,10 +187,16 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
         id: 'windows-authenticode',
         status: productionRelease ? 'passed' : 'not_assessed',
         evidence: productionRelease ? 'Both packaged RealityWarden.exe and the NSIS installer have Valid timestamped Authenticode signatures bound to exact artifact digests' : 'Internal acceptance package; Authenticode was not assessed'
+      },
+      {
+        id: 'owner-legal-release-inputs',
+        status: productionRelease ? 'passed' : 'not_assessed',
+        evidence: productionRelease ? 'Owner-approved publisher identity, sales jurisdictions, EULA, and privacy notice are version- and digest-bound; the EULA is supplied to NSIS' : 'Internal acceptance package; owner legal release inputs were not assessed'
       }
     ],
     not_claimed: {
       ...(productionRelease ? {} : { code_signing: 'not assessed by this internal-acceptance record' }),
+      ...(productionRelease ? {} : { owner_legal_release_inputs: 'not assessed by this internal-acceptance record' }),
       physical_hardware_acceptance: 'optional evidence; not assessed by this record',
       physical_outcome: 'not inferred from packaged startup or command acknowledgement'
     }

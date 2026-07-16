@@ -1,5 +1,6 @@
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { validateLegalReleaseInputs } = require('./legal-release-inputs.cjs');
 
 const root = path.resolve(__dirname, '..');
 const productionRelease = process.argv.includes('--production-release');
@@ -14,7 +15,13 @@ try {
   process.exit(1);
 }
 
-execFileSync(process.execPath, [builderCli, '--win', 'nsis'], {
+const builderArguments = [builderCli, '--win', 'nsis'];
+if (productionRelease) {
+  const legal = validateLegalReleaseInputs(root);
+  builderArguments.push(`--config.nsis.license=${legal.documents.eula.path}`);
+}
+
+execFileSync(process.execPath, builderArguments, {
   cwd: root,
   stdio: 'inherit',
   windowsHide: true

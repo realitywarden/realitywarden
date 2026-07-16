@@ -185,7 +185,7 @@ The publishable entry point is:
 npm run desktop:pack:production
 ```
 
-That command fails before packaging unless `marketplace/distribution.json` passes the compiled authoritative production validator, binds a fixed HTTPS catalog to a bundled non-revoked Official Ed25519 public key, and `WIN_CSC_LINK` or `CSC_LINK` supplies Windows code-signing input. `marketplace/distribution.json` is release-specific and ignored by Git. Generate it from public material with `npm run marketplace:provision`; private Marketplace signing keys must never enter the application or repository. The exact config is packaged as `resources/marketplace/distribution.json` and package verification requires a byte-for-byte match.
+That command fails before packaging unless `marketplace/distribution.json` passes the compiled authoritative production validator, binds a fixed HTTPS catalog to a bundled non-revoked Official Ed25519 public key, `WIN_CSC_LINK` or `CSC_LINK` supplies Windows code-signing input, and `release-inputs/legal/` contains the exact owner-approved release manifest, EULA, privacy notice, publisher identity, and sales jurisdictions for the package version. `marketplace/distribution.json` and the legal input files are release-specific and ignored by Git. Generate the Marketplace config from public material with `npm run marketplace:provision`; private Marketplace signing keys must never enter the application or repository. Have the owner/counsel prepare legal inputs using `release-inputs/legal/README.md`, then run `npm run release:legal:verify`. The software validates integrity and absence of placeholders, not legal adequacy. The exact Marketplace config is packaged as `resources/marketplace/distribution.json`; the approved EULA is passed directly to NSIS.
 
 Both paths package the compiled shared hardware safety runtime, the Next production runtime, the SHA256-paired prebuilt firmware image, and rebuilt Windows `serialport` native bindings. Next runs from `app.asar.unpacked` because Windows child processes require a real working directory; Electron and the shared safety runtime remain loaded from the packaged application.
 
@@ -216,13 +216,13 @@ release/RealityWarden-<version>-Authenticode-Evidence.json
 release/RealityWarden-<version>-Authenticode-Evidence.json.sha256
 ```
 
-The schema-v5 machine-readable manifest records the release mode, exact installer and packaged executable SHA256/size,
+The schema-v6 machine-readable manifest records the release mode, exact installer and packaged executable SHA256/size,
 packaged executable size, Next BUILD_ID, source commit, clean/dirty worktree
 state, startup and product-design evidence, and the clean install/offline/
 reinstall/uninstall lifecycle evidence. The installed lifecycle includes a real
 renderer journey that proves one safe task reaches `completed`, one unsafe task
 reaches `blocked`, and Audit & Governor is selected with evidence after both.
-For `desktop:pack:production`, a separate checksummed Authenticode evidence file must bind both exact binary digests to `Valid`, timestamped signatures before schema-v5 release evidence records `code_signing: passed`. Internal `desktop:pack` evidence says `not_assessed`. If Git metadata is unavailable it says
+For `desktop:pack:production`, a separate checksummed Authenticode evidence file must bind both exact binary digests to `Valid`, timestamped signatures before schema-v6 release evidence records `code_signing: passed`. The same evidence binds the current owner legal-input manifest, publisher, jurisdictions, EULA, and privacy notice digests. Internal `desktop:pack` evidence says both signing and legal inputs are `not_assessed`. If Git metadata is unavailable it says
 so instead of guessing. The historical internal artifact below does not claim code-signing status,
 historical cross-version migration, physical hardware acceptance, or a verified
 physical outcome.

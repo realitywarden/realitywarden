@@ -111,11 +111,15 @@ release/RealityWarden-0.5.0-SBOM.cdx.json.sha256
 release/RealityWarden-0.5.0-Supply-Chain-Evidence.json
 release/RealityWarden-0.5.0-Supply-Chain-Evidence.json.sha256
 release/RealityWarden-0.5.0-Setup.exe.sha256
+release/RealityWarden-0.5.0-EULA.txt
+release/RealityWarden-0.5.0-EULA.txt.sha256
+release/RealityWarden-0.5.0-Privacy-Notice.txt
+release/RealityWarden-0.5.0-Privacy-Notice.txt.sha256
 release/RealityWarden-0.5.0-Public-Release-Manifest.json
 release/RealityWarden-0.5.0-Public-Release-Manifest.json.sha256
 ```
 
-The schema-v5 release evidence manifest is emitted only after package
+The schema-v6 release evidence manifest is emitted only after package
 verification, first-run renderer smoke, packaged startup/product-design
 acceptance, and the Windows install lifecycle succeed. It records the exact
 installer SHA256 and size, packaged Next BUILD_ID, startup/design/lifecycle
@@ -123,25 +127,31 @@ manifest digests, source commit, and clean/dirty worktree state. Companion
 checksums protect all evidence records. Production mode additionally requires
 checksummed Authenticode evidence proving both the packaged executable and NSIS
 installer are `Valid` and timestamped, bound to their exact SHA256 digests.
+It also requires the strict owner-controlled legal input manifest for this
+version and binds its publisher identity, sales jurisdictions, approval
+metadata, EULA, and privacy-notice digests. The approved EULA is supplied to
+NSIS. Internal packaging marks legal inputs `not_assessed` rather than implying
+owner or counsel approval.
 Historical internal-pack evidence deliberately marks code signing, migration
 from a different historical version, and optional physical-hardware acceptance
 as not assessed rather than inventing evidence. A publishable build must use
 `desktop:pack:production`, which additionally refuses to start unless the
-release has a production-valid Official signed-catalog configuration and a
-Windows code-signing certificate input.
+release has a production-valid Official signed-catalog configuration, a Windows
+code-signing certificate input, and current owner-approved legal inputs.
 
 `release:prepare-public` is the final handoff gate before creating a tag or
 uploading files. It refuses internal-acceptance evidence, dirty or divergent
 source revisions, installer digest changes, an unpassed release gate, invalid
 or inconsistent Authenticode identities, stale/expired/wrong-key Marketplace
 live evidence, stale/vulnerable/lockfile-divergent supply-chain evidence,
-missing companion checksums, and existing outputs. `release:supply-chain` is an
+changed/missing/placeholder legal inputs, missing companion checksums, and
+existing outputs. `release:supply-chain` is an
 explicit online release action: npm audit must complete with zero known records;
 there is no offline pass or cached fallback. It emits a package-lock-bound
 CycloneDX production-dependency SBOM and checksummed evidence. Success of the
-final gate emits an exclusive installer checksum and checksummed public-release
-manifest listing the exact upload set. It performs no tag, push, or upload
-itself.
+final gate emits an exclusive installer checksum, versioned EULA and privacy
+notice with companion checksums, and a checksummed public-release manifest
+listing the exact upload set. It performs no tag, push, or upload itself.
 
 Verified local artifact record (2026-07-15):
 
@@ -168,8 +178,9 @@ Verified local artifact record (2026-07-15):
 - hosting followed by the no-redirect, no-retry live catalog/package evidence check;
 - owner-controlled Windows certificate issuance and signing identity;
 - owner-approved product EULA/privacy terms, publisher legal identity, and legal
-  review for the target sales jurisdictions (third-party notices do not license
-  RealityWarden itself);
+  review for the target sales jurisdictions, supplied through
+  `release-inputs/legal/` (third-party notices do not license RealityWarden
+  itself; the software gate cannot judge legal adequacy);
 - manual tag and GitHub release creation;
 - upload of exactly the files listed by the generated public-release manifest;
 - optional refreshed demo or physical reference-kit evidence.
