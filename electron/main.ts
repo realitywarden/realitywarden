@@ -237,7 +237,7 @@ async function setDesignLanguage(window: BrowserWindow, language: 'zh' | 'en') {
   if (!changed) throw new Error('Design acceptance could not find the interface language control.');
   const runLabel = language === 'zh' ? '运行' : 'Run';
   const stopLabel = language === 'zh' ? '停止' : 'Stop';
-  await waitForDomCondition(window, `Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === ${JSON.stringify(runLabel)}).length === 1 && Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === ${JSON.stringify(stopLabel)}).length === 1`);
+  await waitForDomCondition(window, `document.querySelectorAll('button[data-run-control][aria-label=${JSON.stringify(runLabel)}]').length === 1 && document.querySelectorAll('button[data-stop-control][aria-label=${JSON.stringify(stopLabel)}]').length === 1`);
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
@@ -273,8 +273,8 @@ async function captureDesignLayout(window: BrowserWindow, width: number, height:
       .filter((element) => element instanceof HTMLElement && element.getClientRects().length > 0 && element.scrollWidth > element.clientWidth + 1)
       .map((element) => ({ text: (element.textContent ?? '').trim().slice(0, 80), tag: element.tagName, className: element.className, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
     if (clippedControls.length > 0) violations.push('clipped_controls');
-    const runControls = Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === (${language === 'zh' ? "'运行'" : "'Run'"})).length;
-    const stopControls = Array.from(document.querySelectorAll('button')).filter((button) => button.textContent?.trim() === (${language === 'zh' ? "'停止'" : "'Stop'"})).length;
+    const runControls = document.querySelectorAll('button[data-run-control]').length;
+    const stopControls = document.querySelectorAll('button[data-stop-control]').length;
     if (runControls !== 1 || stopControls !== 1) violations.push('run_stop_count');
     return { viewport: { width: innerWidth, height: innerHeight, devicePixelRatio }, requestedScale: ${scale}, language: '${language}', header, navigator, workspace, dock, sidebar, hardware, clippedControls, runControls, stopControls, violations };
   })()`, true) as { violations: string[]; [key: string]: unknown };

@@ -16,6 +16,14 @@ export interface VerifiedMarketplaceRuntimeAsset {
   realAdapterEnabled: false;
 }
 
+export interface MarketplaceWorkspaceReference {
+  package_id: string;
+  package_version: string;
+  digest_sha256: string;
+  signed_asset_id: string;
+  workspace_asset_id: string;
+}
+
 export type MarketplaceWorkspaceBindingResult =
   | { ok: true; asset: DeviceAsset }
   | { ok: false; code: string; detail: string };
@@ -38,6 +46,9 @@ function riskClass(asset: RealityAssetPackage): DeviceMeta['risk_class'] {
   if (risks.some((risk) => risk === 'high' || risk === 'critical')) return 'high';
   return risks.includes('medium') ? 'medium' : 'low';
 }
+
+const speedRank = { slow: 0, normal: 1, fast: 2 } as const;
+const forceRank = { low: 0, medium: 1, high: 2 } as const;
 
 /**
  * Binds a main-process-verified Marketplace Reality Asset to an existing,
@@ -93,6 +104,9 @@ function bindVerifiedMarketplaceAsset(input: {
     if (!templateAsset.adapterManifest.supported_commands.includes(parsed.data)) {
       return reject('template_capability_mismatch', `trusted template does not support signed capability: ${parsed.data}`);
     }
+    if (!templateAsset.deviceMeta.capabilities.includes(parsed.data)) {
+      return reject('template_capability_mismatch', `trusted template profile does not declare signed capability: ${parsed.data}`);
+    }
     if (capability.executionPermission !== 'simulation_only' && capability.executionPermission !== 'read_only') {
       return reject('capability_permission_rejected', `capability ${capability.id} is not simulation_only/read_only`);
     }
@@ -108,6 +122,18 @@ function bindVerifiedMarketplaceAsset(input: {
   if (repeatedZone) return reject('duplicate_zone', `zone cannot be both repeated or ambiguous: ${repeatedZone}`);
   const unknownZone = declaredZones.find((zone) => !geometryZones.has(zone));
   if (unknownZone) return reject('template_zone_mismatch', `signed zone is absent from trusted geometry: ${unknownZone}`);
+  const templateForbiddenZones = templateAsset.deviceMeta.constraints.forbidden_zones;
+  const signedForbiddenZones = new Set(asset.deviceManifest.workspace.forbiddenZones);
+  const allowedTemplateForbidden = asset.deviceManifest.workspace.allowedZones.find((zone) => templateForbiddenZones.includes(zone));
+  if (allowedTemplateForbidden) return reject('template_safety_loosened', `signed allowed zone conflicts with trusted forbidden zone: ${allowedTemplateForbidden}`);
+  const omittedTemplateForbidden = templateForbiddenZones.find((zone) => !signedForbiddenZones.has(zone));
+  if (omittedTemplateForbidden) return reject('template_safety_loosened', `signed asset omits trusted forbidden zone: ${omittedTemplateForbidden}`);
+  if (speedRank[asset.deviceManifest.constraints.maxSpeed] > speedRank[templateAsset.deviceMeta.constraints.max_speed]) {
+    return reject('template_safety_loosened', 'signed max speed is looser than the trusted template; binding is refused rather than clamped');
+  }
+  if (forceRank[asset.deviceManifest.constraints.maxForce] > forceRank[templateAsset.deviceMeta.constraints.force_limit]) {
+    return reject('template_safety_loosened', 'signed force limit is looser than the trusted template; binding is refused rather than clamped');
+  }
   const worldZoneIds = asset.worldModelAssumptions.zones.map((zone) => zone.id);
   if (duplicate(worldZoneIds)) return reject('duplicate_world_zone', 'world model contains duplicate zone ids');
   for (const zone of declaredZones) {
@@ -209,4 +235,38 @@ export function bindMarketplaceAssetToVirtualLab(input: {
       `Marketplace workspace input was malformed and was refused: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+}
+
+export function marketplaceWorkspaceReference(
+  runtimeAsset: VerifiedMarketplaceRuntimeAsset,
+  workspaceAsset: DeviceAsset
+): MarketplaceWorkspaceReference | null {
+  const expectedId = `marketplace-${runtimeAsset.packageId}-${runtimeAsset.digestSha256.slice(0, 12)}`;
+  if (
+    runtimeAsset.executionAuthorityGranted !== false
+    || runtimeAsset.realAdapterEnabled !== false
+    || workspaceAsset.manifest.asset_id !== expectedId
+    || workspaceAsset.manifest.source !== `marketplace:${runtimeAsset.packageId}:${runtimeAsset.digestSha256}`
+    || workspaceAsset.adapterManifest.real_device_enabled !== false
+  ) return null;
+  return {
+    package_id: runtimeAsset.packageId,
+    package_version: runtimeAsset.packageVersion,
+    digest_sha256: runtimeAsset.digestSha256,
+    signed_asset_id: runtimeAsset.asset.assetId,
+    workspace_asset_id: workspaceAsset.manifest.asset_id
+  };
+}
+
+export function removeUnavailableMarketplaceWorkspaceDevices<T extends { assetId?: string }>(
+  devices: readonly T[],
+  activeWorkspaceAssetIds: ReadonlySet<string>
+): { devices: T[]; removedAssetIds: string[] } {
+  const removedAssetIds: string[] = [];
+  const retained = devices.filter((device) => {
+    if (!device.assetId?.startsWith('marketplace-') || activeWorkspaceAssetIds.has(device.assetId)) return true;
+    removedAssetIds.push(device.assetId);
+    return false;
+  });
+  return { devices: retained, removedAssetIds };
 }

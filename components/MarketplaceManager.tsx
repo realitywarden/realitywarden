@@ -16,7 +16,17 @@ interface Bridge {
 
 const api = () => (window as unknown as { openReality?: { marketplace?: Bridge } }).openReality?.marketplace ?? null;
 
-export function MarketplaceManager({ language, onClose }: { language: UiLanguage; onClose: () => void }) {
+export function MarketplaceManager({
+  language,
+  onClose,
+  onLifecycleChange,
+  workspaceBindings = {}
+}: {
+  language: UiLanguage;
+  onClose: () => void;
+  onLifecycleChange?: () => Promise<unknown>;
+  workspaceBindings?: Record<string, { ok: boolean; detail: string }>;
+}) {
   const zh = language === 'zh';
   const desktopAvailable = api() !== null;
   const [state, setState] = useState<StateView>({ ok: true, records: [], communityTrustEntries: [] });
@@ -36,7 +46,7 @@ export function MarketplaceManager({ language, onClose }: { language: UiLanguage
     try {
       const result = await operation();
       if (!result.ok) setMessage(result.error ?? (zh ? '操作被拒绝。' : 'Operation rejected.'));
-      else { setMessage(success); setConfirmed({}); setPackageReview(null); setPublisherReview(null); await refresh(); }
+      else { setMessage(success); setConfirmed({}); setPackageReview(null); setPublisherReview(null); await refresh(); await onLifecycleChange?.(); }
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
@@ -68,6 +78,9 @@ export function MarketplaceManager({ language, onClose }: { language: UiLanguage
           {(state.records ?? []).length === 0 ? <p className="mt-3 text-sm text-text-secondary">{zh ? '没有已安装包。当前无网络目录，也不会静默下载。' : 'No installed packages. There is no network catalog and nothing downloads silently.'}</p> : <div className="mt-3 grid gap-3 lg:grid-cols-2">{(state.records ?? []).map((record) => <article key={record.packageId} className="border border-border bg-surface-raised p-3">
             <div className="flex justify-between gap-3"><div><div className="font-semibold">{record.assetId}</div><div className="text-xs text-text-secondary">{record.packageId} · v{record.packageVersion}</div></div><span className={`border px-2 py-1 text-[10px] font-bold ${record.state === 'simulation_enabled' ? 'border-status-executed-edge text-status-executed-soft' : 'border-status-warning-edge text-status-warning'}`}>{record.state === 'simulation_enabled' ? 'SIMULATION ENABLED' : 'INSTALLED DISABLED'}</span></div>
             <div className="mt-2 text-xs text-text-secondary">{record.trustTier.toUpperCase()} · {record.publisherName}</div><div className="mt-1 truncate font-mono text-[10px] text-text-muted">{record.digestSha256}</div>
+            {record.state === 'simulation_enabled' && <div role={workspaceBindings[record.packageId]?.ok === false ? 'alert' : undefined} className={`mt-2 border px-2 py-1.5 text-xs ${workspaceBindings[record.packageId]?.ok ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
+              {workspaceBindings[record.packageId]?.detail ?? (zh ? 'Virtual Lab 绑定尚未完成；不会静默回退。' : 'Virtual Lab binding is not ready; no fallback is used.')}
+            </div>}
             {record.state === 'installed_disabled' && <><label className="mt-3 flex gap-2 text-xs text-text-secondary"><input type="checkbox" checked={!!confirmed[`enable:${record.packageId}`]} onChange={() => toggle(`enable:${record.packageId}`)} />{zh ? '我明确启用此资产用于仿真；真机权限仍为 false。' : 'I explicitly enable this asset for simulation; real authority stays false.'}</label><button disabled={!confirmed[`enable:${record.packageId}`] || busy} type="button" onClick={() => void run(() => api()!.enableSimulation(record.packageId, true), zh ? '仿真已启用；真机权限仍为 false。' : 'Simulation enabled; real authority remains false.')} className="mt-2 text-xs font-semibold text-status-executed-soft disabled:opacity-40">{zh ? '二次确认启用仿真' : 'Second-confirm simulation'}</button></>}
             <label className="mt-3 flex gap-2 text-xs text-text-secondary"><input type="checkbox" checked={!!confirmed[`uninstall:${record.packageId}`]} onChange={() => toggle(`uninstall:${record.packageId}`)} />{zh ? '我确认完整卸载并移除运行时可见性。' : 'I confirm complete uninstall and removal from runtime visibility.'}</label><button disabled={!confirmed[`uninstall:${record.packageId}`] || busy} type="button" onClick={() => void run(() => api()!.uninstall(record.packageId, true), zh ? '已完整卸载。' : 'Fully uninstalled.')} className="mt-2 text-xs font-semibold text-status-blocked-soft disabled:opacity-40">{zh ? '卸载' : 'Uninstall'}</button>
           </article>)}</div>}

@@ -7,6 +7,8 @@ import {
   installMarketplacePackage,
   bindMarketplaceAssetToVirtualLab,
   marketplaceRuntimeAsset,
+  marketplaceWorkspaceReference,
+  removeUnavailableMarketplaceWorkspaceDevices,
   marketplaceRuntimeManifest,
   marketplaceSigningPayload,
   restoreMarketplaceState,
@@ -50,6 +52,8 @@ function cameraMarketplaceAsset(): RealityAssetPackage {
       displayName: 'Signed Marketplace Camera',
       capabilities: contracts.map((contract) => ({ ...contract })),
       workspace: { allowedZones: ['camera_view'], forbiddenZones: ['privacy_zone'] },
+      constraints: { ...asset.deviceManifest.constraints },
+      riskProfile: { ...asset.deviceManifest.riskProfile, hazardousCapabilities: [...asset.deviceManifest.riskProfile.hazardousCapabilities], blockedGoals: [...asset.deviceManifest.riskProfile.blockedGoals] },
       adapter: { ...asset.deviceManifest.adapter, realAdapterEnabled: false }
     },
     capabilityContracts: contracts,
@@ -247,6 +251,22 @@ assert.equal(boundCamera.asset.adapterManifest.real_device_enabled, false);
 assert.deepEqual(boundCamera.asset.deviceMeta.supported_adapters, ['simulator']);
 assert.match(boundCamera.asset.deviceMeta.simulator_fidelity?.limitations[0] ?? '', /not vendor CAD or physical proof/,
   'template geometry limitations must remain explicit');
+const cameraReference = marketplaceWorkspaceReference(runtimeCamera, boundCamera.asset);
+assert.deepEqual(cameraReference, {
+  package_id: runtimeCamera.packageId,
+  package_version: runtimeCamera.packageVersion,
+  digest_sha256: runtimeCamera.digestSha256,
+  signed_asset_id: runtimeCamera.asset.assetId,
+  workspace_asset_id: boundCamera.asset.manifest.asset_id
+}, 'project persistence must retain only the signed identity and digest-bound workspace id');
+assert.equal(marketplaceWorkspaceReference(runtimeCamera, { ...boundCamera.asset, adapterManifest: { ...boundCamera.asset.adapterManifest, real_device_enabled: true } }), null,
+  'a derived asset with real authority can never produce a persistence reference');
+const reconciled = removeUnavailableMarketplaceWorkspaceDevices(
+  [{ assetId: boundCamera.asset.manifest.asset_id }, { assetId: 'ordinary-import' }],
+  new Set<string>()
+);
+assert.deepEqual(reconciled.devices, [{ assetId: 'ordinary-import' }], 'revoked or uninstalled Marketplace devices must leave no workspace residue');
+assert.deepEqual(reconciled.removedAssetIds, [boundCamera.asset.manifest.asset_id]);
 
 const unsupportedDeviceBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset }, templateAsset: cameraTemplate() });
 assert.equal(unsupportedDeviceBinding.ok, false, 'unknown device types must be refused instead of coerced into a template');
@@ -264,6 +284,37 @@ narrowedTemplate.adapterManifest.supported_commands = ['capture_frame', 'read_se
 const narrowingBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: runtimeCamera, templateAsset: narrowedTemplate });
 assert.equal(narrowingBinding.ok, false, 'unsupported signed capabilities must reject the whole asset, never be intersected away');
 if (!narrowingBinding.ok) assert.equal(narrowingBinding.code, 'template_capability_mismatch');
+
+const profileNarrowedTemplate = cameraTemplate();
+profileNarrowedTemplate.deviceMeta.capabilities = ['capture_frame', 'read_sensor'];
+const profileNarrowingBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: runtimeCamera, templateAsset: profileNarrowedTemplate });
+assert.equal(profileNarrowingBinding.ok, false, 'adapter support cannot replace the trusted profile capability declaration');
+if (!profileNarrowingBinding.ok) assert.equal(profileNarrowingBinding.code, 'template_capability_mismatch');
+
+const fasterAsset = cameraMarketplaceAsset();
+fasterAsset.deviceManifest.constraints.maxSpeed = 'fast';
+const fasterBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset: fasterAsset }, templateAsset: cameraTemplate() });
+assert.equal(fasterBinding.ok, false, 'publisher constraints may never loosen trusted-template speed and must not be clamped');
+if (!fasterBinding.ok) assert.equal(fasterBinding.code, 'template_safety_loosened');
+
+const strongerAsset = cameraMarketplaceAsset();
+strongerAsset.deviceManifest.constraints.maxForce = 'high';
+const strongerBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset: strongerAsset }, templateAsset: cameraTemplate() });
+assert.equal(strongerBinding.ok, false, 'publisher constraints may never loosen trusted-template force and must not be clamped');
+if (!strongerBinding.ok) assert.equal(strongerBinding.code, 'template_safety_loosened');
+
+const omittedForbiddenAsset = cameraMarketplaceAsset();
+omittedForbiddenAsset.deviceManifest.workspace.forbiddenZones = [];
+const omittedForbiddenBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset: omittedForbiddenAsset }, templateAsset: cameraTemplate() });
+assert.equal(omittedForbiddenBinding.ok, false, 'publisher workspace policy may never omit a trusted-template forbidden zone');
+if (!omittedForbiddenBinding.ok) assert.equal(omittedForbiddenBinding.code, 'template_safety_loosened');
+
+const allowedForbiddenAsset = cameraMarketplaceAsset();
+allowedForbiddenAsset.deviceManifest.workspace.allowedZones = ['camera_view', 'privacy_zone'];
+allowedForbiddenAsset.deviceManifest.workspace.forbiddenZones = [];
+const allowedForbiddenBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset: allowedForbiddenAsset }, templateAsset: cameraTemplate() });
+assert.equal(allowedForbiddenBinding.ok, false, 'publisher allowed zones may never reclassify a trusted forbidden zone');
+if (!allowedForbiddenBinding.ok) assert.equal(allowedForbiddenBinding.code, 'template_safety_loosened');
 
 const unknownZoneAsset = cameraMarketplaceAsset();
 unknownZoneAsset.deviceManifest.workspace.allowedZones = ['unreviewed_zone'];
@@ -465,7 +516,7 @@ const duplicateRecords = { ...durableState, records: [importedEnabled.record, im
 assert.equal(restoreMarketplaceState(duplicateRecords, trustStore).ok, false,
   'duplicate persisted identities must reject atomically');
 
-console.log('Marketplace trust-boundary and Virtual Lab binding tests passed (49 cases).');
+console.log('Marketplace trust-boundary and Virtual Lab binding tests passed (58 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

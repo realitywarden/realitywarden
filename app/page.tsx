@@ -32,6 +32,13 @@ import type { ActionFrame } from '@/lib/action-runtime/ActionState';
 import { localizeDeviceType, localizeDisplayName, t } from '@/lib/i18n';
 import type { OpenRealityRuntimeResult } from '@/lib/open-reality-runtime/types';
 import { getBuiltinRealityAssets } from '@/lib/reality-assets';
+import {
+  bindMarketplaceAssetToVirtualLab,
+  marketplaceWorkspaceReference,
+  removeUnavailableMarketplaceWorkspaceDevices,
+  type MarketplaceWorkspaceReference,
+  type VerifiedMarketplaceRuntimeAsset
+} from '@/lib/marketplace';
 import { buildLocalRuntimeDecisionLabReport } from '@/lib/reporting/buildLabReport';
 import { PlaybackEngine } from '@/lib/action-runtime/PlaybackEngine';
 import type { PlaybackEvent } from '@/lib/action-runtime/PlaybackEngine';
@@ -82,7 +89,7 @@ interface LabWorkspaceFile {
   prompt: string;
   devices: WorkspaceDeviceRecord[];
   imported_assets: DeviceAsset[];
-  marketplace_assets: Array<{ package_id: string; package_version: string; digest_sha256: string; signed_asset_id: string; workspace_asset_id: string }>;
+  marketplace_assets: MarketplaceWorkspaceReference[];
   /** v0.4 custom actions (untrusted on load; revalidated per manifest). */
   custom_actions?: unknown[];
   /** v0.5 reviewed, simulation-only manual import proposals. */
@@ -896,6 +903,8 @@ function CommandDock({
         </div>
         <button
           type="button"
+          data-run-control
+          aria-label={labels.run}
           disabled={running || !runTargetRunnable}
           onClick={submit}
           className="h-10 self-start border border-accent bg-accent px-5 text-[13px] font-semibold text-[#061018] disabled:cursor-not-allowed disabled:opacity-40"
@@ -904,6 +913,8 @@ function CommandDock({
         </button>
         <button
           type="button"
+          data-stop-control
+          aria-label={labels.stop}
           onClick={onStop}
           className="h-10 self-start border border-status-blocked-edge px-4 text-[13px] font-semibold text-status-blocked-soft hover:bg-status-blocked-surface"
         >
@@ -1288,6 +1299,10 @@ export default function Home() {
   const [actionComposerOpen, setActionComposerOpen] = useState(false);
   const [manualImportOpen, setManualImportOpen] = useState(false);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
+  const [marketplaceSimulationAssets, setMarketplaceSimulationAssets] = useState<DeviceAsset[]>([]);
+  const [marketplaceReferences, setMarketplaceReferences] = useState<MarketplaceWorkspaceReference[]>([]);
+  const [marketplaceBindings, setMarketplaceBindings] = useState<Record<string, { ok: boolean; detail: string }>>({});
+  const [marketplaceRuntimeReady, setMarketplaceRuntimeReady] = useState(false);
   const [customActions, setCustomActions] = useState<ActionManifest[]>([]);
   const [realHardwareTelemetry, setRealHardwareTelemetry] = useState<RealHardwareTelemetry>({
     connected: false,
@@ -1348,7 +1363,10 @@ export default function Home() {
     () => getWorkspaceIssues(workspaceDevices, labReport, workspaceValidation, language),
     [labReport, language, workspaceDevices, workspaceValidation]
   );
-  const availableAssets = useMemo(() => [...builtInDeviceAssets, ...importedAssets, ...manualSimulationAssets], [importedAssets, manualSimulationAssets]);
+  const availableAssets = useMemo(
+    () => [...builtInDeviceAssets, ...importedAssets, ...manualSimulationAssets, ...marketplaceSimulationAssets],
+    [importedAssets, manualSimulationAssets, marketplaceSimulationAssets]
+  );
   const workspaceBlocked = workspaceIssues.some((issue) => issue.severity === 'blocked');
   const workspaceWarnings = workspaceIssues.filter((issue) => issue.severity === 'warning').length;
 
@@ -1432,6 +1450,97 @@ export default function Home() {
   const showNotice = useCallback((severity: OperatorNoticeState['severity'], message: string, options?: Pick<OperatorNoticeState, 'persistent' | 'action'>) => {
     setOperatorNotice({ id: Date.now(), severity, message, ...options });
   }, []);
+
+  const refreshMarketplaceWorkspace = useCallback(async () => {
+    const bridge = window.openReality?.marketplace;
+    if (!bridge) {
+      setMarketplaceSimulationAssets([]);
+      setMarketplaceReferences([]);
+      setMarketplaceBindings({});
+      setMarketplaceRuntimeReady(true);
+      return { assets: [] as DeviceAsset[], references: [] as MarketplaceWorkspaceReference[] };
+    }
+    const nextAssets: DeviceAsset[] = [];
+    const nextReferences: MarketplaceWorkspaceReference[] = [];
+    const nextBindings: Record<string, { ok: boolean; detail: string }> = {};
+    try {
+      const response = await bridge.runtimeAssets() as {
+        ok?: unknown;
+        error?: unknown;
+        assets?: unknown;
+        rejected?: unknown;
+      };
+      if (response?.ok !== true || !Array.isArray(response.assets)) {
+        throw new Error(typeof response?.error === 'string' ? response.error : 'Marketplace runtime asset response was rejected');
+      }
+      for (const raw of response.assets) {
+        if (!raw || typeof raw !== 'object' || typeof (raw as { packageId?: unknown }).packageId !== 'string') {
+          nextBindings.unknown = { ok: false, detail: 'Malformed main-process runtime asset was refused.' };
+          continue;
+        }
+        const runtimeAsset = raw as VerifiedMarketplaceRuntimeAsset;
+        const packageId = runtimeAsset.packageId;
+        const deviceType = runtimeAsset.asset?.deviceType;
+        const templates = builtInDeviceAssets.filter((candidate) => candidate.manifest.device_type === deviceType);
+        if (templates.length !== 1) {
+          nextBindings[packageId] = { ok: false, detail: `Virtual Lab requires exactly one trusted semantic template for ${String(deviceType)}.` };
+          continue;
+        }
+        const binding = bindMarketplaceAssetToVirtualLab({ runtimeAsset, templateAsset: templates[0] });
+        if (!binding.ok) {
+          nextBindings[packageId] = { ok: false, detail: `${binding.code}: ${binding.detail}` };
+          continue;
+        }
+        const reference = marketplaceWorkspaceReference(runtimeAsset, binding.asset);
+        if (!reference) {
+          nextBindings[packageId] = { ok: false, detail: 'Digest-bound project reference could not be created.' };
+          continue;
+        }
+        nextAssets.push(binding.asset);
+        nextReferences.push(reference);
+        nextBindings[packageId] = { ok: true, detail: 'Available in Virtual Lab · simulation only · real authority false' };
+      }
+      if (Array.isArray(response.rejected)) {
+        for (const raw of response.rejected) {
+          if (!raw || typeof raw !== 'object') continue;
+          const packageId = (raw as { packageId?: unknown }).packageId;
+          const detail = (raw as { detail?: unknown }).detail;
+          if (typeof packageId === 'string') nextBindings[packageId] = { ok: false, detail: typeof detail === 'string' ? detail : 'Current trust policy refused this enabled package.' };
+        }
+      }
+      setMarketplaceSimulationAssets(nextAssets);
+      setMarketplaceReferences(nextReferences);
+      setMarketplaceBindings(nextBindings);
+      const activeIds = new Set(nextAssets.map((asset) => asset.manifest.asset_id));
+      setWorkspaceDevices((current) => {
+        const reconciled = removeUnavailableMarketplaceWorkspaceDevices(current, activeIds);
+        if (reconciled.removedAssetIds.length > 0) {
+          setSelectedWorkspaceDeviceId((selected) => reconciled.devices.some((device) => device.id === selected) ? selected : reconciled.devices[0]?.id ?? null);
+          showNotice('warning', noticeMessage(language, 'Marketplace 信任或安装状态已变化；失效资产已从工作区移除。', 'Marketplace trust or installation changed; unavailable assets were removed from the workspace.'));
+        }
+        return reconciled.devices;
+      });
+      if (Object.values(nextBindings).some((binding) => !binding.ok)) {
+        showNotice('warning', noticeMessage(language, '部分 Marketplace 资产未通过 Virtual Lab 绑定；详情已显示在 Marketplace。', 'Some Marketplace assets were refused by Virtual Lab binding; details are visible in Marketplace.'));
+      }
+      return { assets: nextAssets, references: nextReferences };
+    } catch (error) {
+      setMarketplaceSimulationAssets([]);
+      setMarketplaceReferences([]);
+      setMarketplaceBindings({ runtime: { ok: false, detail: error instanceof Error ? error.message : String(error) } });
+      setWorkspaceDevices((current) => {
+        const reconciled = removeUnavailableMarketplaceWorkspaceDevices(current, new Set<string>());
+        setSelectedWorkspaceDeviceId((selected) => reconciled.devices.some((device) => device.id === selected) ? selected : reconciled.devices[0]?.id ?? null);
+        return reconciled.devices;
+      });
+      showNotice('error', noticeMessage(language, `Marketplace 运行时不可用：${error instanceof Error ? error.message : String(error)}`, `Marketplace runtime unavailable: ${error instanceof Error ? error.message : String(error)}`), { persistent: true });
+      return { assets: [] as DeviceAsset[], references: [] as MarketplaceWorkspaceReference[] };
+    } finally {
+      setMarketplaceRuntimeReady(true);
+    }
+  }, [language, showNotice]);
+
+  useEffect(() => { void refreshMarketplaceWorkspace(); }, [refreshMarketplaceWorkspace]);
 
   const closeAssetImport = useCallback(() => {
     setAssetImportOpen(false);
@@ -1571,21 +1680,24 @@ export default function Home() {
     setConsoleLogs(startupLogs(nextLanguage));
   }, [cancelActiveWork, clearRuntimeDecision, language]);
 
-  const buildWorkspaceFile = useCallback((): LabWorkspaceFile => ({
-    file_type: 'open_reality_lab_workspace',
-    version: 3,
-    saved_at: new Date().toISOString(),
-    language,
-    selected_profile_id: selectedProfile.id,
-    selected_scenario_id: selectedScenario.id,
-    selected_workspace_device_id: selectedWorkspaceDeviceId,
-    prompt,
-    devices: workspaceDevices,
-    imported_assets: importedAssets,
-    marketplace_assets: [],
-    custom_actions: customActions,
-    manual_imports: manualImports
-  }), [customActions, importedAssets, language, manualImports, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
+  const buildWorkspaceFile = useCallback((): LabWorkspaceFile => {
+    const usedMarketplaceAssetIds = new Set(workspaceDevices.flatMap((device) => device.assetId?.startsWith('marketplace-') ? [device.assetId] : []));
+    return {
+      file_type: 'open_reality_lab_workspace',
+      version: 3,
+      saved_at: new Date().toISOString(),
+      language,
+      selected_profile_id: selectedProfile.id,
+      selected_scenario_id: selectedScenario.id,
+      selected_workspace_device_id: selectedWorkspaceDeviceId,
+      prompt,
+      devices: workspaceDevices,
+      imported_assets: importedAssets,
+      marketplace_assets: marketplaceReferences.filter((reference) => usedMarketplaceAssetIds.has(reference.workspace_asset_id)),
+      custom_actions: customActions,
+      manual_imports: manualImports
+    };
+  }, [customActions, importedAssets, language, manualImports, marketplaceReferences, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
 
   const buildProjectFile = useCallback((): OpenRealityProjectFile => ({
     project: {
@@ -1614,7 +1726,10 @@ export default function Home() {
     }
   }), [buildWorkspaceFile, labReport, language, projectName, workspaceDevices]);
 
-  const applyWorkspaceFile = useCallback((input: unknown) => {
+  const applyWorkspaceFile = useCallback((
+    input: unknown,
+    marketplaceContext: { references: MarketplaceWorkspaceReference[]; assets: DeviceAsset[] } = { references: marketplaceReferences, assets: marketplaceSimulationAssets }
+  ) => {
     const checked = validateLabWorkspaceFile(input);
     if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
     const workspace = checked.value as unknown as LabWorkspaceFile;
@@ -1630,10 +1745,12 @@ export default function Home() {
       const profileId = (raw as { device_meta?: { profile_id?: unknown } }).device_meta?.profile_id;
       return typeof profileId === 'string' ? [profileId] : [];
     }));
+    const declaredMarketplaceAssetIds = new Set(workspace.marketplace_assets.map((reference) => reference.workspace_asset_id));
     for (const asset of nextImportedAssets) {
       const assetId = asset.manifest.asset_id;
       if (reservedAssetIds.has(assetId)) throw new Error(`Imported asset shadows built-in asset: ${assetId}`);
       if (declaredManualAssetIds.has(assetId)) throw new Error(`Imported asset shadows manual-review asset: ${assetId}`);
+      if (declaredMarketplaceAssetIds.has(assetId)) throw new Error(`Imported asset shadows Marketplace asset: ${assetId}`);
       if (importedAssetIds.has(assetId)) throw new Error(`Duplicate imported asset: ${assetId}`);
       importedAssetIds.add(assetId);
     }
@@ -1649,7 +1766,8 @@ export default function Home() {
         const isBuiltIn = reservedAssetIds.has(device.assetId);
         const isImported = importedAssetIds.has(device.assetId);
         const isDeclaredManual = declaredManualAssetIds.has(device.assetId);
-        if (!isBuiltIn && !isImported && !isDeclaredManual) throw new Error(`Device ${device.id} references missing asset ${device.assetId}`);
+        const isDeclaredMarketplace = declaredMarketplaceAssetIds.has(device.assetId);
+        if (!isBuiltIn && !isImported && !isDeclaredManual && !isDeclaredMarketplace) throw new Error(`Device ${device.id} references missing asset ${device.assetId}`);
         continue;
       }
       const profile = deviceProfilesById.get(device.profileId);
@@ -1711,8 +1829,26 @@ export default function Home() {
       loadedManualImports.push(checked.record);
     }
     const enabledManualAssetIds = new Set(loadedManualAssets.map((asset) => asset.manifest.asset_id));
-    const filteredWorkspaceDevices = loadedWorkspaceDevices.filter((device) => !device.assetId || !claimedManualAssetIds.has(device.assetId) || enabledManualAssetIds.has(device.assetId));
-    if (filteredWorkspaceDevices.length !== loadedWorkspaceDevices.length) showNotice('warning', noticeMessage(workspace.language, '未通过 simulation-only 启用校验的手册设备已从工作区移除。', 'Manual devices without valid simulation-only enablement were removed from the workspace.'));
+    const currentMarketplaceReferences = new Map(marketplaceContext.references.map((reference) => [reference.workspace_asset_id, reference]));
+    const validMarketplaceAssetIds = new Set(workspace.marketplace_assets.flatMap((reference) => {
+      const current = currentMarketplaceReferences.get(reference.workspace_asset_id);
+      return current
+        && current.package_id === reference.package_id
+        && current.package_version === reference.package_version
+        && current.digest_sha256 === reference.digest_sha256
+        && current.signed_asset_id === reference.signed_asset_id
+        ? [reference.workspace_asset_id]
+        : [];
+    }));
+    const filteredWorkspaceDevices = loadedWorkspaceDevices.filter((device) => (
+      !device.assetId
+      || ((!claimedManualAssetIds.has(device.assetId) || enabledManualAssetIds.has(device.assetId))
+        && (!declaredMarketplaceAssetIds.has(device.assetId) || validMarketplaceAssetIds.has(device.assetId)))
+    ));
+    if (filteredWorkspaceDevices.some((device) => device.assetId && validMarketplaceAssetIds.has(device.assetId) && !marketplaceContext.assets.some((asset) => asset.manifest.asset_id === device.assetId))) {
+      throw new Error('Marketplace project reference passed identity checks but its bound simulation asset is unavailable');
+    }
+    if (filteredWorkspaceDevices.length !== loadedWorkspaceDevices.length) showNotice('warning', noticeMessage(workspace.language, '未通过当前 simulation-only 信任校验的手册或 Marketplace 设备已从工作区移除。', 'Manual or Marketplace devices without current simulation-only trust were removed from the workspace.'));
     setWorkspaceDevices(filteredWorkspaceDevices);
     setImportedAssets(nextImportedAssets);
     setSelectedWorkspaceDeviceId(filteredWorkspaceDevices.some((device) => device.id === workspace.selected_workspace_device_id) ? workspace.selected_workspace_device_id : filteredWorkspaceDevices[0]?.id ?? null);
@@ -1735,13 +1871,17 @@ export default function Home() {
     setWorkspaceValidation(null);
     setSelectedSnapshot(null);
     setCurrentActionFrame(null);
-  }, [cancelActiveWork, clearRuntimeDecision, showNotice]);
+  }, [cancelActiveWork, clearRuntimeDecision, marketplaceReferences, marketplaceSimulationAssets, showNotice]);
 
-  const applyProjectFile = useCallback((input: unknown, filePath?: string | null) => {
+  const applyProjectFile = useCallback((
+    input: unknown,
+    filePath?: string | null,
+    marketplaceContext?: { references: MarketplaceWorkspaceReference[]; assets: DeviceAsset[] }
+  ) => {
     const checked = validateOpenRealityProjectFile(input);
     if (!checked.ok) throw new Error(`${checked.code}: ${checked.detail}`);
     const project = checked.value as unknown as OpenRealityProjectFile;
-    applyWorkspaceFile(project.workspace);
+    applyWorkspaceFile(project.workspace, marketplaceContext);
     setProjectName(project.project?.name || 'Untitled Project');
     setProjectFilePath(filePath ?? null);
     const lastReport = project.lab_reports?.[project.lab_reports.length - 1] ?? null;
@@ -1758,7 +1898,7 @@ export default function Home() {
   }, [applyProjectFile, applyWorkspaceFile]);
 
   useEffect(() => {
-    if (autosaveReady || autosaveQuarantined) return;
+    if (!marketplaceRuntimeReady || autosaveReady || autosaveQuarantined) return;
     let active = true;
     void (async () => {
       let record;
@@ -1790,7 +1930,7 @@ export default function Home() {
       }
     })();
     return () => { active = false; };
-  }, [applySavedDocument, autosaveQuarantined, autosaveReady, language, showNotice]);
+  }, [applySavedDocument, autosaveQuarantined, autosaveReady, language, marketplaceRuntimeReady, showNotice]);
 
   useEffect(() => {
     if (!autosaveReady || autosaveQuarantined) return;
@@ -2638,14 +2778,15 @@ export default function Home() {
     try {
       const result = await window.openReality.project.open();
       if (result.canceled || !result.project) return;
-      applyProjectFile(result.project, result.filePath);
+      const marketplaceContext = await refreshMarketplaceWorkspace();
+      applyProjectFile(result.project, result.filePath, marketplaceContext);
       showNotice('success', noticeMessage(language, '\u5de5\u7a0b\u5df2\u6253\u5f00\u3002', 'Project opened.'));
     } catch (error) {
       showNotice('error', noticeMessage(language, `\u6253\u5f00\u5de5\u7a0b\u5931\u8d25\uff1a${error instanceof Error ? error.message : '\u6587\u4ef6\u683c\u5f0f\u65e0\u6548'}`, `Open failed: ${error instanceof Error ? error.message : 'Invalid file format'}`), {
         action: { kind: 'retry_project_open', label: language === 'zh' ? '重试打开' : 'Retry open' }
       });
     }
-  }, [applyProjectFile, language, requestProjectFile, showNotice]);
+  }, [applyProjectFile, language, refreshMarketplaceWorkspace, requestProjectFile, showNotice]);
 
   const restoreLastWorkspace = useCallback(async () => {
     try {
@@ -3248,7 +3389,12 @@ export default function Home() {
       {marketplaceOpen && (
         <div data-app-modal className="contents">
           <AccessibleDialogBoundary label="RealityWarden Marketplace" onClose={closeMarketplace}>
-            <MarketplaceManager language={language} onClose={closeMarketplace} />
+            <MarketplaceManager
+              language={language}
+              onClose={closeMarketplace}
+              onLifecycleChange={refreshMarketplaceWorkspace}
+              workspaceBindings={marketplaceBindings}
+            />
           </AccessibleDialogBoundary>
         </div>
       )}
