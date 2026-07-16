@@ -42,7 +42,8 @@ const api = {
     probe: (portPath: string) => ipcRenderer.invoke('hardware:probe', { portPath }),
     autoDetect: () => ipcRenderer.invoke('hardware:autoDetect'),
     executionStatus: () => ipcRenderer.invoke('hardware:executionStatus'),
-    execute: (portPath: string, angle: number, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, angle, confirm })
+    execute: (portPath: string, angle: number, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, angle, confirm }),
+    executeManifest: (portPath: string, manifest: unknown, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, manifest, confirm })
   },
   onMenuAction: (callback: (action: MenuAction) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, action: MenuAction) => callback(action);

@@ -16,8 +16,16 @@
  * a read_distance request.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { validateActionManifest } from '@/lib/action-manifest/ActionManifest';
+import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { adviceForFailure, interpretProbe } from '@/lib/hardware/SetupAdvisor';
 import type { FirmwareIdentity, SetupAdvice } from '@/lib/hardware/SetupAdvisor';
+import {
+  REAL_SERVO_TEACH_DEVICE_META,
+  REAL_TEACH_BUILTIN_INTENT_IDS,
+  buildTeachManifest,
+  waypointAfterJog
+} from '@/lib/hardware/TeachMode';
 
 export interface HardwareBridgeResult {
   ok: boolean;
@@ -53,6 +61,7 @@ export interface HardwareBridge {
   /** Real execution (product path): locked until acceptance evidence exists. */
   executionStatus?: () => Promise<HardwareExecutionLock>;
   execute?: (portPath: string, angle: number, confirm: boolean) => Promise<HardwareExecuteOutcome>;
+  executeManifest?: (portPath: string, manifest: unknown, confirm: boolean) => Promise<HardwareExecuteOutcome>;
 }
 
 export interface HardwareExecutionLock {
@@ -74,6 +83,10 @@ export interface HardwareExecuteOutcome {
   detail?: string;
   distanceCm?: number;
   readErrors?: string[];
+  lastAcknowledgedAngle?: number;
+  sequenceStatus?: string;
+  completedSteps?: number;
+  attemptedSteps?: number;
 }
 
 function bridge(): HardwareBridge | null {
@@ -88,7 +101,15 @@ function errorMessage(error: unknown): string {
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
 
-export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
+export function RealHardwarePanel({
+  language,
+  actions,
+  onSaveAction
+}: {
+  language: 'zh' | 'en';
+  actions: readonly ActionManifest[];
+  onSaveAction: (manifest: ActionManifest) => void;
+}) {
   const zh = language === 'zh';
   const [expanded, setExpanded] = useState(false);
   const [ports, setPorts] = useState<Array<{ path: string; label?: string }>>([]);
@@ -105,6 +126,12 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
   const [execConfirmed, setExecConfirmed] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [execOutcome, setExecOutcome] = useState<HardwareExecuteOutcome | null>(null);
+  const [lastRequestedAngle, setLastRequestedAngle] = useState<number | null>(null);
+  const [lastCommandAngle, setLastCommandAngle] = useState<number | null>(null);
+  const [waypoints, setWaypoints] = useState<number[]>([]);
+  const [teachActionId, setTeachActionId] = useState('taught_motion');
+  const [teachActionName, setTeachActionName] = useState(zh ? '\u793a\u6559\u52a8\u4f5c' : 'Taught motion');
+  const [teachFeedback, setTeachFeedback] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollGeneration = useRef(0);
   const mounted = useRef(true);
@@ -279,18 +306,18 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
 
 
   /** REAL actuation through the compiled gate chain (main process). */
-  const executeReal = useCallback(async () => {
+  const executeAngle = useCallback(async (angle: number): Promise<HardwareExecuteOutcome | null> => {
     const api = bridge();
-    if (!api?.execute || !selectedPort) return;
-    const angle = Number(execAngle);
+    if (!api?.execute || !selectedPort) return null;
+    setLastRequestedAngle(angle);
     setExecuting(true);
     setExecOutcome(null);
     stopPolling(); // main process closes our read connection during execution
+    let result: HardwareExecuteOutcome;
     try {
-      const outcome = await api.execute(selectedPort, angle, execConfirmed);
-      if (mounted.current) setExecOutcome(outcome);
+      result = await api.execute(selectedPort, angle, execConfirmed);
     } catch (error) {
-      if (mounted.current) setExecOutcome({ ok: false, error: errorMessage(error) });
+      result = { ok: false, error: errorMessage(error) };
     } finally {
       if (mounted.current) {
         setExecuting(false);
@@ -302,7 +329,97 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
         await connect(selectedPort);
       }
     }
-  }, [connect, execAngle, execConfirmed, selectedPort, stopPolling]);
+    if (mounted.current) {
+      setExecOutcome(result);
+      if (result.status === 'executed'
+        && result.signalSent === true
+        && result.signalState === 'device_acknowledged'
+        && result.executionEvidence === 'command_acknowledged_open_loop') {
+        setLastCommandAngle(typeof result.lastAcknowledgedAngle === 'number' ? result.lastAcknowledgedAngle : angle);
+        setExecAngle(String(typeof result.lastAcknowledgedAngle === 'number' ? result.lastAcknowledgedAngle : angle));
+      }
+    }
+    return result;
+  }, [connect, execConfirmed, selectedPort, stopPolling]);
+
+  const executeReal = useCallback(async () => {
+    await executeAngle(Number(execAngle));
+  }, [execAngle, executeAngle]);
+
+  const jog = useCallback(async (delta: number) => {
+    const base = lastCommandAngle ?? Number(execAngle);
+    const target = base + delta;
+    // Never clamp: even an out-of-range proposal is sent as-is to the gate,
+    // which rejects it with zero hardware frames and an honest outcome.
+    await executeAngle(target);
+  }, [execAngle, executeAngle, lastCommandAngle]);
+
+  const recordWaypoint = useCallback(() => {
+    if (waypoints.length >= 16) {
+      setTeachFeedback(zh ? '\u8def\u70b9\u4e0a\u9650\u4e3a 16\uff1b\u672a\u8bb0\u5f55\u65b0\u8def\u70b9\u3002' : 'Waypoint limit is 16; no new waypoint was recorded.');
+      return;
+    }
+    if (lastRequestedAngle === null || !execOutcome) {
+      setTeachFeedback(zh ? '\u5148\u6210\u529f\u6267\u884c\u4e00\u6b21\u70b9\u52a8\u6216\u89d2\u5ea6\u6307\u4ee4\u3002' : 'Execute a jog or angle command successfully first.');
+      return;
+    }
+    const next = waypointAfterJog(waypoints, lastRequestedAngle, execOutcome);
+    if (next.length === waypoints.length) {
+      setTeachFeedback(zh ? '\u672c\u6b21\u6307\u4ee4\u672a\u88ab\u8bbe\u5907\u786e\u8ba4\uff0c\u8def\u70b9\u672a\u8bb0\u5f55\u3002' : 'The last command was not acknowledged; no waypoint was recorded.');
+      return;
+    }
+    setWaypoints(next);
+    setTeachFeedback(zh ? `\u5df2\u8bb0\u5f55 ${lastRequestedAngle}\u00b0\uff08\u5f00\u73af\u6307\u4ee4\uff09` : `Recorded ${lastRequestedAngle}\u00b0 (open-loop command)`);
+  }, [execOutcome, lastRequestedAngle, waypoints, zh]);
+
+  const saveTeachAction = useCallback(() => {
+    setTeachFeedback(null);
+    if (actions.some((item) => item.action_id === teachActionId)) {
+      setTeachFeedback(zh ? `\u52a8\u4f5c ID \u5df2\u5b58\u5728\uff1a${teachActionId}\uff1b\u5df2\u62d2\u7edd\u8986\u76d6\u3002` : `Action ID already exists: ${teachActionId}; overwrite rejected.`);
+      return;
+    }
+    const checked = validateActionManifest(
+      buildTeachManifest(teachActionId, teachActionName, waypoints),
+      REAL_SERVO_TEACH_DEVICE_META,
+      REAL_TEACH_BUILTIN_INTENT_IDS
+    );
+    if (!checked.ok) {
+      setTeachFeedback(`${checked.code}: ${checked.detail}`);
+      return;
+    }
+    onSaveAction(checked.manifest);
+    setTeachFeedback(zh ? `\u5df2\u4fdd\u5b58\u52a8\u4f5c ${checked.manifest.action_id}` : `Saved action ${checked.manifest.action_id}`);
+  }, [actions, onSaveAction, teachActionId, teachActionName, waypoints, zh]);
+
+  const replayTeachAction = useCallback(async (manifest: ActionManifest) => {
+    const api = bridge();
+    if (!api?.executeManifest || !selectedPort) return;
+    setExecuting(true);
+    setExecOutcome(null);
+    stopPolling();
+    let result: HardwareExecuteOutcome;
+    try {
+      // The main process distrusts and revalidates this manifest, expands it,
+      // then runs every primitive through HardwareActionSequenceRunner.
+      result = await api.executeManifest(selectedPort, manifest, execConfirmed);
+    } catch (error) {
+      result = { ok: false, error: errorMessage(error) };
+    } finally {
+      if (mounted.current) {
+        setExecuting(false);
+        setStatus('disconnected');
+        setDistanceCm(null);
+        await connect(selectedPort);
+      }
+    }
+    if (mounted.current) {
+      setExecOutcome(result);
+      if (typeof result.lastAcknowledgedAngle === 'number') {
+        setLastCommandAngle(result.lastAcknowledgedAngle);
+        setExecAngle(String(result.lastAcknowledgedAngle));
+      }
+    }
+  }, [connect, execConfirmed, selectedPort, stopPolling]);
 
   // Advice shown to the operator: structured probe advice wins; otherwise the
   // last raw error is classified on the fly so no failure is ever unexplained.
@@ -311,6 +428,10 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
     : lastError
       ? [adviceForFailure(lastError)]
       : [];
+  const teachActions = actions.filter((manifest) => {
+    const checked = validateActionManifest(manifest, REAL_SERVO_TEACH_DEVICE_META, REAL_TEACH_BUILTIN_INTENT_IDS);
+    return checked.ok;
+  });
 
   const statusText = !available
     ? (zh ? '不可用（仅桌面版）' : 'unavailable (desktop app only)')
@@ -496,6 +617,110 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
                     {zh
                       ? '执行走完整安全链：传感器采样→中值→互锁→安全门。缺读数/过近/越界都会被拦截并如实审计。'
                       : 'Execution runs the full safety chain: sensor sampling, median, interlock, gate. Missing data / close obstacle / out-of-range all block, honestly audited.'}
+                  </div>
+                  <div className="mt-1 flex flex-col gap-2 border-t border-status-warning-edge pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] font-bold text-status-warning">
+                        {zh ? '\u793a\u6559\u6a21\u5f0f\uff08REAL \u70b9\u52a8\uff09' : 'Teach mode (REAL jog)'}
+                      </span>
+                      <span className="text-[10px] text-text-muted">
+                        {zh ? '\u6bcf\u6b21\u70b9\u52a8\u90fd\u662f\u5b8c\u6574 gated \u6307\u4ee4' : 'Every jog is a complete gated command'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[-5, -1, 1, 5].map((delta) => (
+                        <button
+                          key={delta}
+                          type="button"
+                          onClick={() => void jog(delta)}
+                          disabled={executing || !execConfirmed}
+                          className="h-7 min-w-10 rounded-[3px] border border-status-warning-edge px-2 font-mono text-[12px] font-bold text-status-warning hover:bg-status-warning-surface disabled:opacity-40"
+                        >
+                          {delta > 0 ? '+' : ''}{delta}&deg;
+                        </button>
+                      ))}
+                      <span className="ml-1 text-[11px] text-text-secondary">
+                        {zh ? '\u6700\u540e\u786e\u8ba4\u7684\u6307\u4ee4\u89d2\u5ea6' : 'last acknowledged command'}: {lastCommandAngle === null ? '\u2014' : `${lastCommandAngle}\u00b0`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={recordWaypoint}
+                        disabled={executing || waypoints.length >= 16}
+                        className="h-7 rounded-[3px] border border-status-executed-edge px-2 text-[11px] font-semibold text-status-executed-soft hover:bg-status-executed-surface disabled:opacity-40"
+                      >
+                        {zh ? '\u8bb0\u5f55\u8def\u70b9' : 'Record waypoint'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setWaypoints([]); setTeachFeedback(null); }}
+                        disabled={waypoints.length === 0}
+                        className="h-7 rounded-[3px] border border-border-panel px-2 text-[11px] text-text-secondary disabled:opacity-40"
+                      >
+                        {zh ? '\u6e05\u7a7a' : 'Clear'}
+                      </button>
+                      <span className="text-[11px] text-text-muted">{waypoints.length}/16</span>
+                    </div>
+                    {waypoints.length > 0 && (
+                      <ol className="flex flex-wrap gap-1" aria-label={zh ? '\u5df2\u8bb0\u5f55\u8def\u70b9' : 'Recorded waypoints'}>
+                        {waypoints.map((angle, index) => (
+                          <li key={`${index}-${angle}`} className="flex items-center rounded-[3px] border border-border-panel bg-[#0B0C0E] pl-2 font-mono text-[11px] text-text-primary">
+                            {index + 1}. {angle}&deg;
+                            <button
+                              type="button"
+                              onClick={() => setWaypoints((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                              className="ml-1 h-6 px-1.5 text-status-blocked-soft"
+                              aria-label={zh ? `\u5220\u9664\u8def\u70b9 ${index + 1}` : `Delete waypoint ${index + 1}`}
+                            >
+                              x
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5">
+                      <input
+                        value={teachActionId}
+                        onChange={(event) => setTeachActionId(event.target.value)}
+                        aria-label={zh ? '\u52a8\u4f5c ID' : 'Action ID'}
+                        placeholder="taught_motion"
+                        className="h-7 min-w-0 rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 text-[11px] text-text-primary"
+                      />
+                      <input
+                        value={teachActionName}
+                        onChange={(event) => setTeachActionName(event.target.value)}
+                        aria-label={zh ? '\u52a8\u4f5c\u540d\u79f0' : 'Action name'}
+                        className="h-7 min-w-0 rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 text-[11px] text-text-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={saveTeachAction}
+                        disabled={waypoints.length === 0}
+                        className="h-7 rounded-[3px] border border-status-warning-edge px-2 text-[11px] font-semibold text-status-warning hover:bg-status-warning-surface disabled:opacity-40"
+                      >
+                        {zh ? '\u4fdd\u5b58\u4e3a\u52a8\u4f5c' : 'Save as action'}
+                      </button>
+                    </div>
+                    {teachActions.length > 0 && (
+                      <div className="flex flex-col gap-1 border-t border-[#3a2f1d] pt-1.5">
+                        <span className="text-[11px] font-semibold text-text-secondary">{zh ? '\u5df2\u4fdd\u5b58\u7684\u793a\u6559\u52a8\u4f5c' : 'Saved teach actions'}</span>
+                        {teachActions.map((manifest) => (
+                          <div key={manifest.action_id} className="flex items-center gap-2 text-[11px]">
+                            <span className="min-w-0 flex-1 truncate text-text-primary">{manifest.action_id} &middot; {manifest.steps.length} {zh ? '\u6b65' : 'steps'}</span>
+                            <button
+                              type="button"
+                              onClick={() => void replayTeachAction(manifest)}
+                              disabled={executing || !execConfirmed}
+                              className="h-7 rounded-[3px] border border-status-blocked-edge px-2 font-semibold text-status-blocked-soft hover:bg-status-blocked-surface disabled:opacity-40"
+                            >
+                              {zh ? '\u901a\u8fc7\u5b89\u5168\u95e8\u56de\u653e' : 'Replay via gate'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {teachFeedback && <div role="status" className="break-all text-[11px] text-status-warning">{teachFeedback}</div>}
                   </div>
                 </>
               )}

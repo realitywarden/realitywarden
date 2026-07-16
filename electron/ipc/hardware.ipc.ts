@@ -376,7 +376,9 @@ interface RuntimeHardwareModule {
     run(commands: unknown[]): Promise<{
       status: string;
       reason: string;
+      completedSteps: number;
       steps: Array<{
+        command: { args: { angle?: unknown } };
         outcome: {
           status: 'executed' | 'failed' | 'blocked';
           reason: string;
@@ -393,6 +395,17 @@ interface RuntimeHardwareModule {
       }>;
     }>;
   };
+  REAL_SERVO_TEACH_DEVICE_META: unknown;
+  REAL_TEACH_BUILTIN_INTENT_IDS: ReadonlySet<string>;
+  hardwareCommandsFromTeachTaskDsl(taskDsl: unknown, idPrefix?: string):
+    { ok: true; commands: unknown[] } | { ok: false; detail: string };
+}
+
+interface RuntimeActionManifestModule {
+  validateActionManifest(raw: unknown, deviceMeta: unknown, builtinIntentIds: ReadonlySet<string>):
+    { ok: true; manifest: unknown } | { ok: false; code: string; detail: string };
+  expandManifestToTaskDsl(manifest: unknown, deviceMeta: unknown, prompt: string):
+    { ok: true; taskDsl: unknown } | { ok: false; code: string; detail: string };
 }
 
 function loadRuntimeHardware(): RuntimeHardwareModule | { error: string } {
@@ -407,22 +420,65 @@ function loadRuntimeHardware(): RuntimeHardwareModule | { error: string } {
   }
 }
 
-async function executeRealAngle(payload: { portPath?: string; angle?: number; confirm?: boolean }) {
+function loadRuntimeActionManifest(): RuntimeActionManifestModule | { error: string } {
+  try {
+    // Electron consumes the root build output; it never imports lib/ across
+    // the electron tsconfig rootDir and never copies validator semantics.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(path.join(RUNTIME_LIB, 'action-manifest', 'ActionManifest')) as RuntimeActionManifestModule;
+  } catch (error) {
+    return {
+      error: 'runtime_manifest_unavailable: compiled Action Manifest authority missing. Rebuild the desktop app. '
+        + `Underlying: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+async function executeRealAngle(payload: { portPath?: string; angle?: number; manifest?: unknown; confirm?: boolean }) {
+  if (!payload || typeof payload !== 'object') return { ok: false, error: 'invalid_execution_request: object payload required' };
   const lock = executionLock();
   if (lock.locked) return { ok: false, error: lock.reason };
   if (payload.confirm !== true) {
     return { ok: false, error: 'confirmation_required: the UI must submit an explicit operator confirmation' };
   }
-  const angle = payload.angle;
-  if (typeof angle !== 'number' || !Number.isFinite(angle)) {
-    return { ok: false, error: 'invalid_angle: numeric angle required' };
-  }
+  const hasAngle = Object.prototype.hasOwnProperty.call(payload, 'angle');
+  const hasManifest = Object.prototype.hasOwnProperty.call(payload, 'manifest');
+  if (hasAngle === hasManifest) return { ok: false, error: 'invalid_execution_request: provide exactly one angle or manifest' };
   const portPath = payload.portPath;
   if (typeof portPath !== 'string' || portPath.trim().length === 0) {
     return { ok: false, error: 'invalid serial port path' };
   }
   const runtime = loadRuntimeHardware();
   if ('error' in runtime) return { ok: false, error: runtime.error };
+  let commands: unknown[];
+  let replay = false;
+  if (hasAngle) {
+    const angle = payload.angle;
+    if (typeof angle !== 'number' || !Number.isFinite(angle)) {
+      return { ok: false, error: 'invalid_angle: numeric angle required' };
+    }
+    commands = [{
+      id: `ui-exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      deviceId: 'esp32-servo-rig',
+      capabilityId: 'move_to_angle',
+      args: { angle }
+    }];
+  } else {
+    const actionRuntime = loadRuntimeActionManifest();
+    if ('error' in actionRuntime) return { ok: false, error: actionRuntime.error };
+    const checked = actionRuntime.validateActionManifest(
+      payload.manifest,
+      runtime.REAL_SERVO_TEACH_DEVICE_META,
+      runtime.REAL_TEACH_BUILTIN_INTENT_IDS
+    );
+    if (!checked.ok) return { ok: false, error: `manifest_rejected:${checked.code}:${checked.detail}` };
+    const expanded = actionRuntime.expandManifestToTaskDsl(checked.manifest, runtime.REAL_SERVO_TEACH_DEVICE_META, 'REAL jog-teach replay');
+    if (!expanded.ok) return { ok: false, error: `manifest_expansion_rejected:${expanded.code}:${expanded.detail}` };
+    const mapped = runtime.hardwareCommandsFromTeachTaskDsl(expanded.taskDsl, `teach-replay-${Date.now()}`);
+    if (!mapped.ok) return { ok: false, error: `manifest_command_mapping_rejected:${mapped.detail}` };
+    commands = mapped.commands;
+    replay = true;
+  }
 
   // The panel's read-only client must release the port before the real chain
   // opens it; the UI reconnects afterwards.
@@ -451,15 +507,13 @@ async function executeRealAngle(payload: { portPath?: string; angle?: number; co
       if (evidence.lastError) readErrors.push(evidence.lastError);
     }
     const runner = new runtime.HardwareActionSequenceRunner(gate, sensors);
-    const sequence = await runner.run([
-      {
-        id: `ui-exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        deviceId: 'esp32-servo-rig',
-        capabilityId: 'move_to_angle',
-        args: { angle }
-      }
-    ]);
+    const sequence = await runner.run(commands);
     const outcome = sequence.steps[sequence.steps.length - 1]?.outcome;
+    const sentSteps = sequence.steps.filter((step) => step.outcome.result.signalSent);
+    const latestSentOutcome = sentSteps[sentSteps.length - 1]?.outcome;
+    const acknowledgedSteps = sequence.steps.filter((step) => step.outcome.status === 'executed'
+      && step.outcome.result.signalState === 'device_acknowledged');
+    const lastAcknowledgedAngle = acknowledgedSteps[acknowledgedSteps.length - 1]?.command.args.angle;
     const latestEvidence = sensors.snapshot();
     if (latestEvidence.lastError) readErrors.push(latestEvidence.lastError);
     sensors.stop();
@@ -474,16 +528,20 @@ async function executeRealAngle(payload: { portPath?: string; angle?: number; co
       };
     }
     return {
-      ok: outcome.result.ok,
-      status: outcome.status,
-      reason: outcome.reason,
+      ok: sequence.status === 'completed',
+      status: sequence.status === 'completed' ? 'executed' : outcome.status,
+      reason: replay ? sequence.reason : outcome.reason,
       executionMode: outcome.executionMode,
-      signalSent: outcome.result.signalSent,
-      signalState: outcome.result.signalState,
-      executionEvidence: outcome.result.executionEvidence,
+      signalSent: sentSteps.length > 0,
+      signalState: latestSentOutcome?.result.signalState ?? outcome.result.signalState,
+      executionEvidence: latestSentOutcome?.result.executionEvidence ?? outcome.result.executionEvidence,
       physicalOutcomeVerified: outcome.result.physicalOutcomeVerified,
       detail: outcome.result.detail,
       distanceCm: latestEvidence.readings[0]?.value,
+      lastAcknowledgedAngle: typeof lastAcknowledgedAngle === 'number' ? lastAcknowledgedAngle : undefined,
+      sequenceStatus: sequence.status,
+      completedSteps: sequence.completedSteps,
+      attemptedSteps: sequence.steps.length,
       readErrors,
       audit: gate.getAuditLog().list()
     };
@@ -506,6 +564,6 @@ export function registerHardwareIpc() {
     connection.probe(payload.portPath));
   ipcMain.handle('hardware:autoDetect', () => connection.autoDetect());
   ipcMain.handle('hardware:executionStatus', () => executionLock());
-  ipcMain.handle('hardware:execute', (_event, payload: { portPath?: string; angle?: number; confirm?: boolean }) =>
+  ipcMain.handle('hardware:execute', (_event, payload: { portPath?: string; angle?: number; manifest?: unknown; confirm?: boolean }) =>
     executeRealAngle(payload));
 }

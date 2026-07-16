@@ -17,6 +17,7 @@ import { OperatorNotice } from '@/components/OperatorNotice';
 import type { OperatorNoticeAction, OperatorNoticeState } from '@/components/OperatorNotice';
 import { enableManualImportForVirtualLab, restoreEnabledManualSimulationAsset, validateStoredManualImport, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
+import { REAL_SERVO_TEACH_DEVICE_META, REAL_TEACH_BUILTIN_INTENT_IDS } from '@/lib/hardware/TeachMode';
 import type { UiLanguage } from '@/components/LabConfigurator';
 import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
 import { VirtualDeviceStage } from '@/components/VirtualDeviceStage';
@@ -1650,7 +1651,12 @@ export default function Home() {
     const loadedActions: ActionManifest[] = [];
     for (const raw of workspace.custom_actions ?? []) {
       const checked = validateActionManifest(raw, nextProfile.deviceMeta, BUILTIN_INTENT_IDS);
-      if (checked.ok) loadedActions.push(checked.manifest);
+      if (checked.ok) {
+        loadedActions.push(checked.manifest);
+        continue;
+      }
+      const teachChecked = validateActionManifest(raw, REAL_SERVO_TEACH_DEVICE_META, REAL_TEACH_BUILTIN_INTENT_IDS);
+      if (teachChecked.ok) loadedActions.push(teachChecked.manifest);
       else showNotice('warning', noticeMessage(workspace.language, `自定义动作被拒绝（${checked.code}）：${checked.detail}`, `Custom action rejected (${checked.code}): ${checked.detail}`));
     }
     setCustomActions(loadedActions);
@@ -3109,7 +3115,13 @@ export default function Home() {
               onExportLabReport={() => void exportCurrentLabReport()}
             />
           )}
-          hardware={<RealHardwarePanel language={language} />}
+          hardware={(
+            <RealHardwarePanel
+              language={language}
+              actions={customActions}
+              onSaveAction={(manifest) => setCustomActions((current) => [...current, manifest])}
+            />
+          )}
         />
       </div>
       {assetImportOpen && (

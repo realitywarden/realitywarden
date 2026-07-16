@@ -207,6 +207,11 @@ const SAFE_LIGHT_COLORS = new Set<string>(ACTION_MANIFEST_LIGHT_COLORS);
  * arbitrary payload into an adapter.
  */
 function validatePrimitiveValue(action: string, value: string | number | boolean | undefined): string | null {
+  if (action === 'move_to_angle') {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 180
+      ? null
+      : 'move_to_angle requires a finite number in [0, 180]';
+  }
   if (action === 'set_light') {
     return typeof value === 'boolean' ? null : 'set_light requires a boolean';
   }

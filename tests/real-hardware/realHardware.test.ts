@@ -11,6 +11,8 @@
 import { Esp32DeviceAdapter, ESP32_SERVO_RIG_CAPABILITIES } from '../../lib/hardware/Esp32DeviceAdapter';
 import { HardwareExecutionGate } from '../../lib/hardware/HardwareExecutionGate';
 import { HardwareActionSequenceRunner } from '../../lib/hardware/HardwareActionSequenceRunner';
+import { hardwareCommandsFromTeachTaskDsl, waypointAfterJog } from '../../lib/hardware/TeachMode';
+import type { TaskDSL } from '../../types/taskDsl';
 import { DistanceSensorPollingService } from '../../lib/hardware/SensorPollingService';
 import type { SensorReadResult } from '../../lib/hardware/SensorPollingService';
 // Tests are a sanctioned importer of the gate-private ticket: they verify the
@@ -1460,6 +1462,51 @@ async function testSequenceStopsWhenPollingLosesSensor() {
   assert(adapter.executeCalls === 1 && transport.sentFrames.length === 1, 'evidence loss must result in zero further frames');
 }
 
+async function testBlockedJogIsNotRecordable() {
+  const previous = [45];
+  const after = waypointAfterJog(previous, 50, {
+    status: 'blocked',
+    signalSent: false,
+    signalState: 'not_sent',
+    executionEvidence: 'not_executed'
+  });
+  assert(after.join(',') === '45', 'a blocked jog must not change the recorded waypoint list');
+  assert(previous.join(',') === '45', 'waypoint handling must not mutate caller state');
+}
+
+async function testTeachReplayStopsAfterBlockedStep() {
+  const mapped = hardwareCommandsFromTeachTaskDsl({
+    task_id: 'teach-replay-test',
+    intent: 'replay recorded open-loop commands',
+    risk_level: 'low',
+    steps: [30, 60, 90].map((angle, index) => ({
+      id: `teach-${index}`,
+      action: 'move_to_angle',
+      value: angle,
+      speed: 'slow',
+      force: 'low'
+    }))
+  } as unknown as TaskDSL, 'teach-test');
+  assert(mapped.ok, 'validated teach TaskDSL must map to hardware commands');
+  const transport = new FakeTransport();
+  await transport.connect();
+  const { adapter, gate } = buildGate(transport);
+  const reader = new ScriptedSensorReader([
+    { reading: reading(100, 0, 1000) },
+    { reading: reading(5, 0, 1100) },
+    { reading: reading(100, 0, 1200) }
+  ]);
+  const runner = new HardwareActionSequenceRunner(gate, new DistanceSensorPollingService(reader, {
+    intervalMs: 100,
+    sampleWindow: 5,
+    now: () => NOW
+  }));
+  const result = await runner.run(mapped.commands);
+  assert(result.status === 'interrupted' && result.completedSteps === 1, 'teach replay must terminate at the first blocked step');
+  assert(result.steps.length === 2 && reader.calls === 2, 'blocked teach replay must not poll or evaluate later steps');
+  assert(adapter.executeCalls === 1 && transport.sentFrames.length === 1, 'blocked teach replay must emit zero subsequent actuation frames');
+}
+
 async function main() {
   const tests: Array<[string, () => Promise<void>]> = [
     ['blocked command never reaches hardware', testBlockedNeverReachesHardware],
@@ -1491,6 +1538,8 @@ async function main() {
     ['sensor polling latches device-clock regression until explicit reset', testPollingLatchesDeviceClockRegression],
     ['multi-step action stops with zero further frames when interlock changes', testSequenceStopsOnChangedInterlock],
     ['multi-step action stops with zero further frames when sensor polling fails', testSequenceStopsWhenPollingLosesSensor],
+    ['jog-teach: blocked jog is not recordable', testBlockedJogIsNotRecordable],
+    ['jog-teach replay: blocked step emits zero subsequent frames', testTeachReplayStopsAfterBlockedStep],
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['audit 1.1: raw transport send() refuses actuation frames', testRawSendRefusesActuationFrames],
     ['audit 1.1: adapter.execute requires the gate ticket', testAdapterExecuteRequiresGateTicket],

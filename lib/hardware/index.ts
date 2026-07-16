@@ -49,3 +49,11 @@ export {
 } from './SensorConditioning';
 export type { DistanceInterlockOptions, DistanceInterlockState, StuckValueDetectorOptions } from './SensorConditioning';
 export type { HardwareGateOutcome, HardwareGateRequest, HardwareGateStatus } from './HardwareExecutionGate';
+export {
+  REAL_SERVO_TEACH_DEVICE_META,
+  REAL_TEACH_BUILTIN_INTENT_IDS,
+  buildTeachManifest,
+  hardwareCommandsFromTeachTaskDsl,
+  waypointAfterJog
+} from './TeachMode';
+export type { TeachActionManifest, TeachExecutionEvidence } from './TeachMode';

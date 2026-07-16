@@ -8,6 +8,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { validateActionManifest, expandManifestToTaskDsl } from '../../lib/action-manifest/ActionManifest';
 import { exportActionLibrary, importActionLibrary } from '../../lib/action-manifest/ActionLibrary';
+import {
+  REAL_SERVO_TEACH_DEVICE_META,
+  REAL_TEACH_BUILTIN_INTENT_IDS,
+  buildTeachManifest,
+  hardwareCommandsFromTeachTaskDsl
+} from '../../lib/hardware/TeachMode';
 import { createAdapterCommand } from '../../lib/adapter/AdapterCommandCompiler';
 import { SmartLightActionModel } from '../../lib/action-runtime/models/SmartLightActionModel';
 import { CameraSensorActionModel } from '../../lib/action-runtime/models/CameraSensorActionModel';
@@ -79,6 +85,28 @@ const tests: Array<[string, () => void]> = [
     assert(expanded.ok, 'valid manifest must expand');
     assert(expanded.taskDsl.steps.length === 3, 'all steps expand');
     assert(expanded.taskDsl.risk_level === 'low', 'risk recomputed low for safe steps');
+  }],
+  ['jog-teach manifest uses authoritative validation and expansion', () => {
+    const checked = validateActionManifest(
+      buildTeachManifest('teach_sweep', 'Teach sweep', [30, 60, 90]),
+      REAL_SERVO_TEACH_DEVICE_META,
+      REAL_TEACH_BUILTIN_INTENT_IDS
+    );
+    assert(checked.ok, 'recorded waypoints must form a valid Action Manifest');
+    assert(checked.manifest.safety.declared_risk === 'low', 'declared risk remains informational input');
+    const expanded = expandManifestToTaskDsl(checked.manifest, REAL_SERVO_TEACH_DEVICE_META, 'Teach sweep');
+    assert(expanded.ok, 'validated teach manifest must expand through the authoritative expander');
+    assert(expanded.taskDsl.risk_level === 'low', 'risk must be recomputed by rules, not trusted from declared_risk');
+    const commands = hardwareCommandsFromTeachTaskDsl(expanded.taskDsl, 'test-teach');
+    assert(commands.ok && commands.commands.map((command) => command.args.angle).join(',') === '30,60,90', 'expanded steps must map exactly to gated commands without clamping');
+  }],
+  ['jog-teach rejects out-of-range waypoint instead of clamping', () => {
+    const checked = validateActionManifest(
+      buildTeachManifest('teach_bad', 'Teach bad', [30, 181]),
+      REAL_SERVO_TEACH_DEVICE_META,
+      REAL_TEACH_BUILTIN_INTENT_IDS
+    );
+    assert(!checked.ok && checked.code === 'invalid_value', 'out-of-range teach angle must be rejected');
   }],
   ['declared_risk gets zero weight', () => {
     const manifest = goodManifest();
