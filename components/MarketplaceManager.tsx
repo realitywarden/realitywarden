@@ -5,10 +5,15 @@ import type { UiLanguage } from './LabConfigurator';
 
 interface RecordView { packageId: string; packageVersion: string; assetId: string; trustTier: string; publisherName: string; state: 'installed_disabled' | 'simulation_enabled'; digestSha256: string }
 interface TrustView { keyId: string; displayName: string; revoked: boolean }
-interface StateView { ok: boolean; error?: string; quarantinedPath?: string | null; records?: RecordView[]; communityTrustEntries?: TrustView[] }
+interface DistributionView { configured: boolean; catalogUrl: string | null; catalogKeyId: string | null; error: string | null }
+interface StateView { ok: boolean; error?: string; quarantinedPath?: string | null; records?: RecordView[]; communityTrustEntries?: TrustView[]; distribution?: DistributionView }
 interface Review { canceled?: boolean; ok?: boolean; error?: string; rawPackage?: unknown; rawPublisher?: unknown; summary?: { packageId: string; packageVersion: string; assetId: string; assetName: string; digestSha256: string; trustTier: string; publisherName: string }; entry?: TrustView; fingerprintSha256?: string }
+interface CatalogEntry { package_id: string; package_version: string; asset_id: string; asset_name: string; device_type: string; support_level: 'simulation_only' | 'read_only'; package_url: string; package_file_sha256: string; package_digest_sha256: string }
+interface CatalogView { catalogId: string; generatedAt: string; expiresAt: string; digestSha256: string; trustTier: string; publisherName: string; entries: CatalogEntry[] }
+interface CatalogResponse { ok: boolean; error?: string; code?: string; source?: 'network' | 'verified_cache'; catalog?: CatalogView }
 interface Bridge {
   state(): Promise<StateView>; browsePackage(): Promise<Review>; install(raw: unknown, confirmed: boolean): Promise<StateView>;
+  catalog(useCache: boolean): Promise<CatalogResponse>; reviewCatalogPackage(id: string, version: string, digest: string): Promise<Review>;
   enableSimulation(id: string, confirmed: boolean): Promise<StateView>; uninstall(id: string, confirmed: boolean): Promise<StateView>;
   browsePublisher(): Promise<Review>; trustPublisher(raw: unknown, confirmed: boolean): Promise<StateView>;
   revokePublisher(id: string, confirmed: boolean): Promise<StateView>; resetState(confirmed: boolean): Promise<StateView>;
@@ -32,6 +37,7 @@ export function MarketplaceManager({
   const [state, setState] = useState<StateView>({ ok: true, records: [], communityTrustEntries: [] });
   const [packageReview, setPackageReview] = useState<Review | null>(null);
   const [publisherReview, setPublisherReview] = useState<Review | null>(null);
+  const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,6 +57,25 @@ export function MarketplaceManager({
     finally { setBusy(false); }
   };
   const toggle = (id: string) => setConfirmed((current) => ({ ...current, [id]: !current[id] }));
+  const loadCatalog = async (useCache: boolean) => {
+    setBusy(true); setMessage(null); setPackageReview(null);
+    try {
+      const result = await api()!.catalog(useCache);
+      setCatalog(result);
+      if (!result.ok) setMessage(result.error ?? (zh ? '签名目录被拒绝。' : 'Signed catalog rejected.'));
+    } catch (error) { setCatalog(null); setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
+  const reviewCatalogEntry = async (entry: CatalogEntry) => {
+    if (!catalog?.ok || !catalog.catalog) return;
+    setBusy(true); setMessage(null); setPackageReview(null); setConfirmed((current) => ({ ...current, install: false }));
+    try {
+      const result = await api()!.reviewCatalogPackage(entry.package_id, entry.package_version, catalog.catalog.digestSha256);
+      setPackageReview(result);
+      if (!result.ok) setMessage(result.error ?? (zh ? '目录包被拒绝。' : 'Catalog package rejected.'));
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
 
   return <div data-marketplace-modal className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6">
     <section className="flex max-h-[90vh] w-full max-w-5xl flex-col border border-border bg-surface shadow-2xl" aria-labelledby="marketplace-title">
@@ -61,6 +86,28 @@ export function MarketplaceManager({
       <div className="min-h-0 overflow-y-auto p-5">
         {message && <div role="alert" className="mb-4 border border-status-warning-edge bg-status-warning-surface p-3 text-sm text-status-warning">{message}</div>}
         {!state.ok && <section className="mb-5 border-2 border-status-blocked-edge bg-status-blocked-surface p-4"><h3 className="font-bold text-status-blocked-soft">{desktopAvailable ? (zh ? 'Marketplace 状态已阻断' : 'Marketplace state blocked') : (zh ? '需要桌面应用' : 'Desktop app required')}</h3><p className="mt-2 break-words text-sm">{state.error}</p>{state.quarantinedPath && <p className="mt-1 break-all text-xs text-text-secondary">{state.quarantinedPath}</p>}{desktopAvailable && <><label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={!!confirmed.reset} onChange={() => toggle('reset')} />{zh ? '我确认丢弃损坏状态并创建空白状态；不会静默修复或降级。' : 'I confirm discarding corrupt state and creating an empty state; nothing is silently repaired or downgraded.'}</label><button disabled={!confirmed.reset || busy} type="button" onClick={() => void run(() => api()!.resetState(true), zh ? '已显式重置。' : 'Explicitly reset.')} className="mt-3 border border-status-blocked-edge px-3 py-2 text-sm font-semibold text-status-blocked-soft disabled:opacity-40">{zh ? '重置空白状态' : 'Reset to empty state'}</button></>}</section>}
+
+        <section className="mb-5 border-2 border-status-warning-edge bg-status-warning-surface p-4" aria-labelledby="marketplace-catalog-title">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><h3 id="marketplace-catalog-title" className="font-semibold text-status-warning">{zh ? '签名分发目录' : 'Signed distribution catalog'}</h3><p className="mt-1 max-w-3xl text-xs text-text-secondary">{zh ? '只使用此签名应用内置的 Official 目录密钥和固定 HTTPS 地址。网络刷新与已验证缓存均需显式选择；失败时不自动回退、不重试。' : 'Uses only the Official catalog key and fixed HTTPS address bundled with this signed app. Network refresh and verified cache are explicit choices; failures never auto-fallback or retry.'}</p></div>
+            <span className={`border px-2 py-1 text-[10px] font-bold ${state.distribution?.configured ? 'border-status-executed-edge text-status-executed-soft' : 'border-status-blocked-edge text-status-blocked-soft'}`}>{state.distribution?.configured ? 'OFFICIAL KEY BOUND' : 'NOT PROVISIONED'}</span>
+          </div>
+          {!state.distribution?.configured && <div role="status" className="mt-3 border border-status-blocked-edge bg-status-blocked-surface p-3 text-xs text-status-blocked-soft">{state.distribution?.error ?? (zh ? '此构建未配置 Marketplace 目录；仍可本地审阅签名包。' : 'This build has no Marketplace catalog configuration; local signed-package review remains available.')}</div>}
+          {state.distribution?.configured && <div className="mt-3 grid gap-1 text-[11px] text-text-secondary"><div className="break-all"><span className="font-semibold">URL</span> {state.distribution.catalogUrl}</div><div className="break-all"><span className="font-semibold">KEY</span> {state.distribution.catalogKeyId}</div></div>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button disabled={!state.ok || !state.distribution?.configured || busy} type="button" onClick={() => void loadCatalog(false)} className="border border-status-warning-edge bg-surface px-3 py-2 text-sm font-semibold text-status-warning disabled:opacity-40">{zh ? '从网络刷新签名目录' : 'Refresh signed catalog from network'}</button>
+            <button disabled={!state.ok || !state.distribution?.configured || busy} type="button" onClick={() => void loadCatalog(true)} className="border border-border bg-surface px-3 py-2 text-sm font-semibold disabled:opacity-40">{zh ? '显式使用已验证缓存' : 'Explicitly use verified cache'}</button>
+          </div>
+          {catalog?.ok && catalog.catalog && <div className="mt-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-secondary"><span className="font-bold text-status-executed-soft">{catalog.source === 'network' ? 'VERIFIED NETWORK' : 'VERIFIED CACHE'}</span><span>{catalog.catalog.publisherName} · {catalog.catalog.trustTier.toUpperCase()}</span><span>{zh ? '到期' : 'Expires'} {catalog.catalog.expiresAt}</span></div>
+            <div className="mt-1 break-all font-mono text-[10px] text-text-muted">CATALOG SHA-256 {catalog.catalog.digestSha256}</div>
+            {catalog.catalog.entries.length === 0 ? <p className="mt-3 text-sm text-text-secondary">{zh ? '已验证目录当前为空。' : 'The verified catalog is empty.'}</p> : <div className="mt-3 grid gap-3 lg:grid-cols-2">{catalog.catalog.entries.map((entry) => <article key={`${entry.package_id}@${entry.package_version}`} className="border border-status-warning-edge bg-surface p-3 text-sm">
+              <div className="flex items-start justify-between gap-3"><div><div className="font-semibold">{entry.asset_name}</div><div className="mt-1 text-xs text-text-secondary">{entry.device_type} · {entry.package_id} · v{entry.package_version}</div></div><span className="border border-status-warning-edge px-2 py-1 text-[10px] font-bold text-status-warning">{entry.support_level === 'read_only' ? 'READ ONLY' : 'SIMULATION ONLY'}</span></div>
+              <div className="mt-2 break-all font-mono text-[10px] text-text-muted">PACKAGE SHA-256 {entry.package_digest_sha256}</div>
+              <button disabled={busy} type="button" onClick={() => void reviewCatalogEntry(entry)} className="mt-3 border border-accent px-3 py-2 text-xs font-semibold text-accent disabled:opacity-40">{zh ? '下载并权威审阅' : 'Download and authoritative review'}</button>
+            </article>)}</div>}
+          </div>}
+        </section>
 
         <div className="grid gap-5 lg:grid-cols-2">
           <section className="border border-border p-4"><h3 className="font-semibold">{zh ? '1. 发布者信任' : '1. Publisher trust'}</h3><p className="mt-1 text-xs text-text-secondary">{zh ? '本地密钥永远只能是 Community；Official / Verified 只能随签名应用更新提供。' : 'Local keys are always Community. Official / Verified keys only arrive in a signed app update.'}</p><button disabled={!state.ok || busy} type="button" onClick={async () => { const result = await api()!.browsePublisher(); if (!result.canceled) { setPublisherReview(result); setMessage(result.ok ? null : result.error ?? null); } }} className="mt-3 border border-border bg-surface-raised px-3 py-2 text-sm font-semibold disabled:opacity-40">{zh ? '浏览发布者密钥…' : 'Browse publisher key…'}</button>
@@ -75,7 +122,7 @@ export function MarketplaceManager({
 
         <section className="mt-5 border border-border p-4">
           <h3 className="font-semibold">{zh ? '3. 已安装资产' : '3. Installed assets'}</h3>
-          {(state.records ?? []).length === 0 ? <p className="mt-3 text-sm text-text-secondary">{zh ? '没有已安装包。当前无网络目录，也不会静默下载。' : 'No installed packages. There is no network catalog and nothing downloads silently.'}</p> : <div className="mt-3 grid gap-3 lg:grid-cols-2">{(state.records ?? []).map((record) => <article key={record.packageId} className="border border-border bg-surface-raised p-3">
+          {(state.records ?? []).length === 0 ? <p className="mt-3 text-sm text-text-secondary">{zh ? '没有已安装包。目录不会自动下载；审阅也不会自动安装。' : 'No installed packages. The catalog never downloads automatically, and review never installs automatically.'}</p> : <div className="mt-3 grid gap-3 lg:grid-cols-2">{(state.records ?? []).map((record) => <article key={record.packageId} className="border border-border bg-surface-raised p-3">
             <div className="flex justify-between gap-3"><div><div className="font-semibold">{record.assetId}</div><div className="text-xs text-text-secondary">{record.packageId} · v{record.packageVersion}</div></div><span className={`border px-2 py-1 text-[10px] font-bold ${record.state === 'simulation_enabled' ? 'border-status-executed-edge text-status-executed-soft' : 'border-status-warning-edge text-status-warning'}`}>{record.state === 'simulation_enabled' ? 'SIMULATION ENABLED' : 'INSTALLED DISABLED'}</span></div>
             <div className="mt-2 text-xs text-text-secondary">{record.trustTier.toUpperCase()} · {record.publisherName}</div><div className="mt-1 truncate font-mono text-[10px] text-text-muted">{record.digestSha256}</div>
             {record.state === 'simulation_enabled' && <div role={workspaceBindings[record.packageId]?.ok === false ? 'alert' : undefined} className={`mt-2 border px-2 py-1.5 text-xs ${workspaceBindings[record.packageId]?.ok ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>

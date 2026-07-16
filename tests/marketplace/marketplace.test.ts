@@ -10,6 +10,7 @@ import {
   signMarketplaceCatalog,
   verifyMarketplaceCatalog,
   verifyMarketplaceCatalogPackage,
+  validateMarketplaceDistributionConfig,
   marketplaceWorkspaceReference,
   removeUnavailableMarketplaceWorkspaceDevices,
   marketplaceRuntimeManifest,
@@ -134,6 +135,36 @@ const trustStore: MarketplaceTrustEntry[] = [
     revoked: false
   }
 ];
+
+const productionDistribution = validateMarketplaceDistributionConfig({
+  schema: 'realitywarden.marketplace-distribution',
+  schema_version: 1,
+  catalog_url: 'https://marketplace.realitywarden.example/catalog.json',
+  catalog_key_id: 'realitywarden.official.v1',
+  bundled_trust: [trustStore[0]]
+}, { productionRequired: true });
+assert.equal(productionDistribution.ok, true, 'production distribution should accept a public official Ed25519 key and HTTPS catalog');
+assert.match(productionDistribution.fingerprints[0].fingerprintSha256, /^[a-f0-9]{64}$/);
+assert.equal(validateMarketplaceDistributionConfig({
+  schema: 'realitywarden.marketplace-distribution', schema_version: 1,
+  catalog_url: 'http://insecure.example/catalog.json', catalog_key_id: 'realitywarden.official.v1', bundled_trust: [trustStore[0]]
+}, { productionRequired: true }).ok, false, 'production distribution must refuse HTTP catalogs');
+assert.equal(validateMarketplaceDistributionConfig({
+  schema: 'realitywarden.marketplace-distribution', schema_version: 1,
+  catalog_url: 'https://marketplace.realitywarden.example/catalog.json', catalog_key_id: 'realitywarden.official.v1', bundled_trust: []
+}, { productionRequired: true }).ok, false, 'production distribution must refuse missing official trust instead of pretending the catalog is usable');
+assert.equal(validateMarketplaceDistributionConfig({
+  schema: 'realitywarden.marketplace-distribution', schema_version: 1,
+  catalog_url: 'https://marketplace.realitywarden.example/catalog.json', catalog_key_id: 'realitywarden.official.v1', bundled_trust: [{ ...trustStore[0], publicKeyPem: officialKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }]
+}, { productionRequired: true }).ok, false, 'distribution config must never accept private key material');
+assert.equal(validateMarketplaceDistributionConfig({
+  schema: 'realitywarden.marketplace-distribution', schema_version: 1,
+  catalog_url: 'https://marketplace.realitywarden.example/catalog.json', catalog_key_id: 'realitywarden.official.v1', bundled_trust: [trustStore[0], { ...trustStore[0], keyId: 'duplicate.fingerprint' }]
+}, { productionRequired: true }).ok, false, 'duplicate public key fingerprints must be refused');
+assert.equal(validateMarketplaceDistributionConfig({
+  schema: 'realitywarden.marketplace-distribution', schema_version: 1,
+  catalog_url: 'https://marketplace.realitywarden.example/catalog.json', catalog_key_id: 'community.fixture.v1', bundled_trust: [{ ...trustStore[1], trustTier: 'community' }]
+}, { productionRequired: true }).ok, false, 'bundled config cannot create community trust; community keys remain an explicit local workflow');
 
 function signedPackage(
   packageAsset: RealityAssetPackage = asset,
@@ -576,7 +607,7 @@ const duplicateRecords = { ...durableState, records: [importedEnabled.record, im
 assert.equal(restoreMarketplaceState(duplicateRecords, trustStore).ok, false,
   'duplicate persisted identities must reject atomically');
 
-console.log('Marketplace trust-boundary, signed catalog, and Virtual Lab binding tests passed (69 cases).');
+console.log('Marketplace trust-boundary, distribution, signed catalog, and Virtual Lab binding tests passed (76 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

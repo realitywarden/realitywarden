@@ -151,6 +151,8 @@ declare global {
       hardware?: HardwareBridge;
       marketplace?: {
         state: () => Promise<unknown>;
+        catalog: (useCache: boolean) => Promise<unknown>;
+        reviewCatalogPackage: (packageId: string, packageVersion: string, catalogDigestSha256: string) => Promise<unknown>;
         runtimeAssets: () => Promise<unknown>;
         browsePackage: () => Promise<unknown>;
         install: (rawPackage: unknown, confirmed: boolean) => Promise<unknown>;

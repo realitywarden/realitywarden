@@ -50,6 +50,9 @@ const api = {
   },
   marketplace: {
     state: () => ipcRenderer.invoke('marketplace:state'),
+    catalog: (useCache: boolean) => ipcRenderer.invoke('marketplace:catalog', { useCache }),
+    reviewCatalogPackage: (packageId: string, packageVersion: string, catalogDigestSha256: string) =>
+      ipcRenderer.invoke('marketplace:reviewCatalogPackage', { packageId, packageVersion, catalogDigestSha256 }),
     runtimeAssets: () => ipcRenderer.invoke('marketplace:runtimeAssets'),
     browsePackage: () => ipcRenderer.invoke('marketplace:browsePackage'),
     install: (rawPackage: unknown, confirmed: boolean) => ipcRenderer.invoke('marketplace:install', { rawPackage, confirmed }),
