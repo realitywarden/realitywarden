@@ -282,6 +282,7 @@ export function createNodeSerialPort(portPath: string, baudRate = 115200): Seria
     open(cb: (error?: Error | null) => void): void;
     close(cb: (error?: Error | null) => void): void;
     write(chunk: string, cb: (error?: Error | null) => void): void;
+    set(options: { dtr?: boolean; rts?: boolean }, cb: (error?: Error | null) => void): void;
     on(event: string, listener: (...args: unknown[]) => void): void;
     isOpen: boolean;
   };
@@ -310,7 +311,27 @@ export function createNodeSerialPort(portPath: string, baudRate = 115200): Seria
   return {
     open: () =>
       new Promise<void>((resolve, reject) => {
-        port.open((error) => (error ? reject(error) : resolve()));
+        port.open((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          // Release DTR/RTS after opening. node-serialport asserts both by
+          // default on Windows; on boards whose serial adapter is wired into
+          // the ESP32 auto-reset circuit (FTDI DTR->EN / RTS->IO0, and the
+          // native USB-Serial/JTAG port) that HOLDS the chip in reset or
+          // download mode for the whole session and every request times out.
+          // The Arduino serial monitor releases these lines the same way.
+          // The open itself still pulses a reset; callers already wait for
+          // the boot banner before talking.
+          port.set({ dtr: false, rts: false }, (setError) => {
+            if (setError) {
+              reject(new Error(`failed to release DTR/RTS after open: ${setError.message}`));
+              return;
+            }
+            resolve();
+          });
+        });
       }),
     close: () =>
       new Promise<void>((resolve, reject) => {
