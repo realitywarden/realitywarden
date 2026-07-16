@@ -136,13 +136,15 @@ async function main() {
 
   const scenario = argValue('--scenario') ?? 'all';
 
+  if (scenario === 'park') {
+    // Explicit parking step for the acceptance wizard: return the servo to 0°
+    // THROUGH THE SAME GATE (no bypass). Parking before every scenario makes
+    // the blocked scenarios meaningful: a gate failure would show up as a
+    // visible 0°->45° sweep instead of a trivially-still servo.
+    await runScenario('Park: return servo to 0° through the safety gate', 0);
+  }
   if (scenario === 'all' || scenario === '1') {
-    // Park at 0° first THROUGH THE SAME GATE (no bypass), so the following
-    // 45° command produces a visible sweep even when the servo already sat
-    // at 45° from a previous run. Both commands are gated and audited.
-    await runScenario('Scenario 1 (prep): park servo at 0° through the same safety gate', 0);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    await runScenario('Scenario 1: rotate servo to 45° (expect: executed, servo visibly sweeps from 0°)', 45);
+    await runScenario('Scenario 1: rotate servo to 45° (expect: executed, servo visibly moves)', 45);
   }
   if (scenario === 'all' || scenario === '2') {
     await runScenario('Scenario 2: rotate servo to 200° (expect: BLOCKED, servo must NOT move)', 200);

@@ -35,3 +35,4 @@ demo/
 .next-browser/
 .tmp-virtual-loopback-test/
 dist-electron-runtime/
+.tmp-acceptance-wizard/
