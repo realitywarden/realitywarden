@@ -13,6 +13,7 @@ import { HardwareExecutionGate } from '../../lib/hardware/HardwareExecutionGate'
 import { HardwareActionSequenceRunner } from '../../lib/hardware/HardwareActionSequenceRunner';
 import { hardwareCommandsFromTeachTaskDsl, waypointAfterJog } from '../../lib/hardware/TeachMode';
 import type { TaskDSL } from '../../types/taskDsl';
+import { visibleRealHardwareTelemetry } from '../../lib/hardware/RealHardwareTelemetry';
 import { DistanceSensorPollingService } from '../../lib/hardware/SensorPollingService';
 import type { SensorReadResult } from '../../lib/hardware/SensorPollingService';
 // Tests are a sanctioned importer of the gate-private ticket: they verify the
@@ -1474,6 +1475,14 @@ async function testBlockedJogIsNotRecordable() {
   assert(previous.join(',') === '45', 'waypoint handling must not mutate caller state');
 }
 
+async function testDisconnectedRealMirrorClearsStaleTelemetry() {
+  const disconnected = visibleRealHardwareTelemetry(false, 42.5, 90);
+  assert(disconnected.connected === false, 'disconnected mirror must report disconnected');
+  assert(disconnected.distanceCm === null && disconnected.lastCommandAngle === null, 'disconnected mirror must erase stale distance and command angle');
+  const invalid = visibleRealHardwareTelemetry(true, Number.NaN, Number.POSITIVE_INFINITY);
+  assert(invalid.distanceCm === null && invalid.lastCommandAngle === null, 'invalid connected telemetry must not appear as current state');
+}
+
 async function testTeachReplayStopsAfterBlockedStep() {
   const mapped = hardwareCommandsFromTeachTaskDsl({
     task_id: 'teach-replay-test',
@@ -1539,6 +1548,7 @@ async function main() {
     ['multi-step action stops with zero further frames when interlock changes', testSequenceStopsOnChangedInterlock],
     ['multi-step action stops with zero further frames when sensor polling fails', testSequenceStopsWhenPollingLosesSensor],
     ['jog-teach: blocked jog is not recordable', testBlockedJogIsNotRecordable],
+    ['REAL mirror: disconnect erases stale telemetry', testDisconnectedRealMirrorClearsStaleTelemetry],
     ['jog-teach replay: blocked step emits zero subsequent frames', testTeachReplayStopsAfterBlockedStep],
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['audit 1.1: raw transport send() refuses actuation frames', testRawSendRefusesActuationFrames],

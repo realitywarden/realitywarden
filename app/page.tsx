@@ -18,6 +18,7 @@ import type { OperatorNoticeAction, OperatorNoticeState } from '@/components/Ope
 import { enableManualImportForVirtualLab, restoreEnabledManualSimulationAsset, validateStoredManualImport, type ManualImportRecord } from '@/lib/manual-import/ManualProfileImport';
 import type { HardwareBridge } from '@/components/RealHardwarePanel';
 import { REAL_SERVO_TEACH_DEVICE_META, REAL_TEACH_BUILTIN_INTENT_IDS } from '@/lib/hardware/TeachMode';
+import type { RealHardwareTelemetry } from '@/types/realHardwareTelemetry';
 import type { UiLanguage } from '@/components/LabConfigurator';
 import { RealityAssetCatalog } from '@/components/RealityAssetCatalog';
 import { VirtualDeviceStage } from '@/components/VirtualDeviceStage';
@@ -1273,6 +1274,11 @@ export default function Home() {
   const [actionComposerOpen, setActionComposerOpen] = useState(false);
   const [manualImportOpen, setManualImportOpen] = useState(false);
   const [customActions, setCustomActions] = useState<ActionManifest[]>([]);
+  const [realHardwareTelemetry, setRealHardwareTelemetry] = useState<RealHardwareTelemetry>({
+    connected: false,
+    distanceCm: null,
+    lastCommandAngle: null
+  });
   const [manualImports, setManualImports] = useState<ManualImportRecord[]>([]);
   const [manualSimulationAssets, setManualSimulationAssets] = useState<DeviceAsset[]>([]);
   const [selectedWorkspaceDeviceId, setSelectedWorkspaceDeviceId] = useState<string | null>(defaultWorkspaceDevice.id);
@@ -2964,6 +2970,7 @@ export default function Home() {
               replaySnapshot={stageReplaySnapshot}
               currentActionFrame={stageActionFrame}
               scenarioPreview={scenarioPreview}
+              realHardwareTelemetry={realHardwareTelemetry}
               workspaceDevices={semanticWorkspaceDevices}
               selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
               runTargetWorkspaceDeviceId={currentRunTargetWorkspaceDeviceId}
@@ -3120,6 +3127,7 @@ export default function Home() {
               language={language}
               actions={customActions}
               onSaveAction={(manifest) => setCustomActions((current) => [...current, manifest])}
+              onTelemetryChange={setRealHardwareTelemetry}
             />
           )}
         />

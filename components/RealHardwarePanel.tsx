@@ -20,6 +20,8 @@ import { validateActionManifest } from '@/lib/action-manifest/ActionManifest';
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { adviceForFailure, interpretProbe } from '@/lib/hardware/SetupAdvisor';
 import type { FirmwareIdentity, SetupAdvice } from '@/lib/hardware/SetupAdvisor';
+import type { RealHardwareTelemetry } from '@/types/realHardwareTelemetry';
+import { visibleRealHardwareTelemetry } from '@/lib/hardware/RealHardwareTelemetry';
 import {
   REAL_SERVO_TEACH_DEVICE_META,
   REAL_TEACH_BUILTIN_INTENT_IDS,
@@ -104,11 +106,13 @@ type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
 export function RealHardwarePanel({
   language,
   actions,
-  onSaveAction
+  onSaveAction,
+  onTelemetryChange
 }: {
   language: 'zh' | 'en';
   actions: readonly ActionManifest[];
   onSaveAction: (manifest: ActionManifest) => void;
+  onTelemetryChange?: (telemetry: RealHardwareTelemetry) => void;
 }) {
   const zh = language === 'zh';
   const [expanded, setExpanded] = useState(false);
@@ -154,8 +158,13 @@ export function RealHardwarePanel({
       // leaving the device locked when navigation destroys this panel.
       const api = bridge();
       if (api) void api.disconnect().catch(() => undefined);
+      onTelemetryChange?.({ connected: false, distanceCm: null, lastCommandAngle: null });
     };
-  }, [stopPolling]);
+  }, [onTelemetryChange, stopPolling]);
+
+  useEffect(() => {
+    onTelemetryChange?.(visibleRealHardwareTelemetry(status === 'connected', distanceCm, lastCommandAngle));
+  }, [distanceCm, lastCommandAngle, onTelemetryChange, status]);
 
   const refreshPorts = useCallback(async () => {
     const api = bridge();
@@ -188,6 +197,9 @@ export function RealHardwarePanel({
     stopPolling();
     setDistanceCm(null);
     setStatus('disconnected');
+    setLastCommandAngle(null);
+    setLastRequestedAngle(null);
+    setExecOutcome(null);
     const api = bridge();
     if (api) {
       try {
@@ -249,6 +261,8 @@ export function RealHardwarePanel({
       if (lockApi) void lockApi().then((lock) => { if (mounted.current) setExecLock(lock); }).catch(() => undefined);
     } else {
       setStatus('disconnected');
+      setLastCommandAngle(null);
+      setLastRequestedAngle(null);
       setLastError(result.error ?? (zh ? '连接失败' : 'connect failed'));
     }
   }, [selectedPort, startPolling, zh]);

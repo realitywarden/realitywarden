@@ -57,3 +57,4 @@ export {
   waypointAfterJog
 } from './TeachMode';
 export type { TeachActionManifest, TeachExecutionEvidence } from './TeachMode';
+export { visibleRealHardwareTelemetry } from './RealHardwareTelemetry';

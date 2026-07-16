@@ -9,6 +9,7 @@ import { localizeDeviceType, localizeDisplayName, localizeStatus, t } from '@/li
 import type { DeviceType } from '@/types/deviceMeta';
 import type { TimelineStateSnapshot } from '@/lib/virtual-lab/LabReport';
 import type { ActionFrame } from '@/lib/action-runtime/ActionState';
+import type { RealHardwareTelemetry } from '@/types/realHardwareTelemetry';
 import { SemanticCameraSensor } from './devices/SemanticCameraSensor';
 import { SemanticConveyorBelt } from './devices/SemanticConveyorBelt';
 import { SemanticMobileRobot } from './devices/SemanticMobileRobot';
@@ -37,6 +38,7 @@ interface SemanticDeviceStageProps {
   selectedSnapshot?: TimelineStateSnapshot | null;
   currentActionFrame?: ActionFrame | null;
   scenarioPreview?: { target: [number, number, number]; path: [[number, number, number], [number, number, number]]; unsafe: boolean; passed?: boolean } | null;
+  realHardwareTelemetry?: RealHardwareTelemetry;
   workspaceDevices?: SemanticWorkspaceDevice[];
   selectedWorkspaceDeviceId?: string;
   runTargetWorkspaceDeviceId?: string;
@@ -429,6 +431,83 @@ function SelectedDeviceFootprint({ device, language }: { device?: SemanticWorksp
   );
 }
 
+/**
+ * Read-only Stage 1 digital twin. It deliberately has no pointer handlers,
+ * selection state, drag state, or command callback. The horn visual mirrors
+ * only the last acknowledged open-loop command; it is not measured position.
+ */
+function RealServoTwin({ telemetry, language }: { telemetry?: RealHardwareTelemetry; language: 'zh' | 'en' }) {
+  if (!telemetry?.connected) return null;
+  const commandRadians = telemetry.lastCommandAngle === null
+    ? 0
+    : THREE.MathUtils.degToRad(telemetry.lastCommandAngle - 90);
+  const stripes = [-0.6, -0.36, -0.12, 0.12, 0.36, 0.6];
+  return (
+    <group position={[2.5, 0.03, -1.7]}>
+      <mesh position={[0, 0.012, 0]}>
+        <boxGeometry args={[1.62, 0.035, 1.34]} />
+        <meshStandardMaterial color="#050505" roughness={0.92} />
+      </mesh>
+      {stripes.map((offset, index) => (
+        <group key={offset}>
+          <mesh position={[offset, 0.038, 0.64]}>
+            <boxGeometry args={[0.2, 0.025, 0.08]} />
+            <meshBasicMaterial color={index % 2 === 0 ? STATUS_COLORS.warning : '#050505'} />
+          </mesh>
+          <mesh position={[offset, 0.038, -0.64]}>
+            <boxGeometry args={[0.2, 0.025, 0.08]} />
+            <meshBasicMaterial color={index % 2 === 0 ? STATUS_COLORS.warning : '#050505'} />
+          </mesh>
+        </group>
+      ))}
+      <mesh position={[0.77, 0.038, 0]}>
+        <boxGeometry args={[0.08, 0.025, 1.2]} />
+        <meshBasicMaterial color={STATUS_COLORS.warning} />
+      </mesh>
+      <mesh position={[-0.77, 0.038, 0]}>
+        <boxGeometry args={[0.08, 0.025, 1.2]} />
+        <meshBasicMaterial color={STATUS_COLORS.warning} />
+      </mesh>
+      <mesh position={[0, 0.34, 0]} castShadow>
+        <boxGeometry args={[0.62, 0.58, 0.38]} />
+        <meshStandardMaterial color="#121418" roughness={0.55} metalness={0.18} />
+      </mesh>
+      <mesh position={[0, 0.65, 0]} castShadow>
+        <cylinderGeometry args={[0.12, 0.12, 0.12, 32]} />
+        <meshStandardMaterial color="#D1D5DB" roughness={0.35} metalness={0.55} />
+      </mesh>
+      <group position={[0, 0.73, 0]} rotation={[0, commandRadians, 0]}>
+        <mesh position={[0.34, 0, 0]} castShadow>
+          <boxGeometry args={[0.68, 0.07, 0.12]} />
+          <meshStandardMaterial color={STATUS_COLORS.warning} roughness={0.48} />
+        </mesh>
+        <mesh position={[0.67, 0, 0]}>
+          <sphereGeometry args={[0.085, 20, 12]} />
+          <meshStandardMaterial color="#050505" roughness={0.7} />
+        </mesh>
+      </group>
+      <Html center position={[0, 1.42, 0]} zIndexRange={worldLabelZIndexRange}>
+        <div className="pointer-events-none w-[218px] border-2 border-status-warning-edge bg-black/95 px-2 py-1.5 font-mono text-[9px] leading-4 text-status-warning [box-shadow:0_0_0_1px_#FACC15]">
+          <div className="flex items-center justify-between gap-2 border-b border-status-warning-edge pb-1 font-bold uppercase tracking-[0.18em]">
+            <span>REAL</span>
+            <span>{language === 'zh' ? '\u53ea\u8bfb\u56de\u663e' : 'READ-ONLY MIRROR'}</span>
+          </div>
+          <div className="mt-1 font-sans font-semibold text-[#FDE68A]">
+            {language === 'zh' ? '\u6700\u540e\u6307\u4ee4\u89d2\u5ea6\uff08\u5f00\u73af\uff0c\u672a\u5b9e\u6d4b\uff09' : 'Last command angle (open-loop, not measured)'}:
+            {' '}{telemetry.lastCommandAngle === null ? '\u2014' : `${telemetry.lastCommandAngle.toFixed(1)}\u00b0`}
+          </div>
+          <div className="font-sans text-[#FDE68A]">
+            {language === 'zh' ? '\u5b9e\u65f6\u8ddd\u79bb' : 'Live distance'}:
+            {' '}{telemetry.distanceCm === null
+              ? (language === 'zh' ? '\u5f53\u524d\u65e0\u8bfb\u6570' : 'no current reading')
+              : `${telemetry.distanceCm.toFixed(1)} cm`}
+          </div>
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 function CommandOutcomeGhost({
   deviceType,
   language,
@@ -673,6 +752,7 @@ export function SemanticDeviceStage({
   selectedSnapshot,
   currentActionFrame,
   scenarioPreview,
+  realHardwareTelemetry,
   workspaceDevices,
   selectedWorkspaceDeviceId,
   runTargetWorkspaceDeviceId,
@@ -724,6 +804,7 @@ export function SemanticDeviceStage({
           <meshBasicMaterial transparent opacity={0} />
         </mesh>
         <ScenarioPreviewOverlay preview={scenarioPreview} blocked={blocked} />
+        <RealServoTwin telemetry={realHardwareTelemetry} language={language} />
         <CommandOutcomeGhost
           deviceType={deviceType}
           language={language}

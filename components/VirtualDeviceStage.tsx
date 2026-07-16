@@ -11,6 +11,7 @@ import type { SemanticWorkspaceDevice } from './SemanticDeviceStage';
 import { SemanticDeviceStage } from './SemanticDeviceStage';
 import { StageErrorBoundary } from './StageErrorBoundary';
 import type { UiLanguage } from './LabConfigurator';
+import type { RealHardwareTelemetry } from '@/types/realHardwareTelemetry';
 
 // Structured reason codes first (safety layers emit `code:detail` strings);
 // keyword matching only as a legacy fallback. Unknown codes fall through to
@@ -51,6 +52,7 @@ export function VirtualDeviceStage({
   replaySnapshot,
   currentActionFrame,
   scenarioPreview,
+  realHardwareTelemetry,
   workspaceDevices,
   selectedWorkspaceDeviceId,
   runTargetWorkspaceDeviceId,
@@ -70,6 +72,7 @@ export function VirtualDeviceStage({
   replaySnapshot: TimelineStateSnapshot | null;
   currentActionFrame?: ActionFrame | null;
   scenarioPreview?: { target: [number, number, number]; path: [[number, number, number], [number, number, number]]; unsafe: boolean; passed?: boolean } | null;
+  realHardwareTelemetry?: RealHardwareTelemetry;
   workspaceDevices: SemanticWorkspaceDevice[];
   selectedWorkspaceDeviceId: string | null;
   runTargetWorkspaceDeviceId?: string | null;
@@ -129,8 +132,22 @@ export function VirtualDeviceStage({
             is a safety stamp matching the Runtime Governor boundary label. */}
         <div className="pointer-events-none absolute left-3 top-3 z-20 flex max-w-[42%] flex-col items-start gap-1">
           <div className="rounded-[3px] border border-[#FACC15]/20 bg-black/30 px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-status-warning/75 backdrop-blur-sm">
-            Airgapped · Simulation Only
+            {realHardwareTelemetry?.connected ? 'Simulation Workspace · REAL Mirror Read-only' : 'Airgapped · Simulation Only'}
           </div>
+          {realHardwareTelemetry?.connected && (
+            <div className="w-[min(280px,100%)] border-2 border-status-warning-edge bg-black/95 px-2 py-1.5 font-mono text-[10px] leading-4 text-status-warning [box-shadow:inset_0_0_0_1px_#FACC15]">
+              <div className="flex items-center justify-between gap-2 border-b border-status-warning-edge pb-1 font-bold uppercase tracking-[0.14em]">
+                <span>REAL</span>
+                <span>{language === 'zh' ? '\u53ea\u8bfb\u56de\u663e\u5b6a\u751f\u4f53' : 'READ-ONLY DIGITAL TWIN'}</span>
+              </div>
+              <div className="mt-1 normal-case tracking-normal text-[#FDE68A]">
+                {language === 'zh' ? '\u6700\u540e\u6307\u4ee4\u89d2\u5ea6\uff08\u5f00\u73af\uff0c\u672a\u5b9e\u6d4b\uff09' : 'Last command angle (open-loop, not measured)'}: {realHardwareTelemetry.lastCommandAngle === null ? '\u2014' : `${realHardwareTelemetry.lastCommandAngle.toFixed(1)}\u00b0`}
+              </div>
+              <div className="normal-case tracking-normal text-[#FDE68A]">
+                {language === 'zh' ? '\u5b9e\u65f6\u8ddd\u79bb' : 'Live distance'}: {realHardwareTelemetry.distanceCm === null ? (language === 'zh' ? '\u5f53\u524d\u65e0\u8bfb\u6570' : 'no current reading') : `${realHardwareTelemetry.distanceCm.toFixed(1)} cm`}
+              </div>
+            </div>
+          )}
           {!compactSingleDeviceView && (
             <div className="max-w-full truncate rounded-[3px] border border-white/5 bg-black/28 px-2 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md" title={t(language, 'workspace_drop_hint')}>
               <span className="font-semibold text-[#E6EAF0]">{language === 'zh' ? '\u5de5\u4f5c\u533a' : 'Workspace'}</span>
@@ -149,6 +166,7 @@ export function VirtualDeviceStage({
           selectedSnapshot={replaySnapshot}
           currentActionFrame={currentActionFrame ?? replaySnapshot?.action_frame}
           scenarioPreview={scenarioPreview}
+          realHardwareTelemetry={realHardwareTelemetry}
           workspaceDevices={workspaceDevices}
           selectedWorkspaceDeviceId={selectedWorkspaceDeviceId ?? undefined}
           runTargetWorkspaceDeviceId={runTargetWorkspaceDeviceId ?? undefined}
