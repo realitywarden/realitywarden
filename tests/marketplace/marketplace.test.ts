@@ -3,10 +3,15 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   enableMarketplaceSimulation,
+  createEmptyMarketplaceState,
   installMarketplacePackage,
   marketplaceRuntimeManifest,
   marketplaceSigningPayload,
+  restoreMarketplaceState,
+  revokeCommunityPublisher,
   signMarketplacePackage,
+  serializeMarketplaceState,
+  trustCommunityPublisher,
   uninstallMarketplacePackage,
   verifyMarketplacePackage,
   type MarketplaceInstallRecord,
@@ -95,7 +100,7 @@ assert.equal(installed.record.state, 'installed_disabled', 'marketplace installs
 assert.equal(installed.record.executionAuthorityGranted, false);
 assert.equal(installed.record.realAdapterEnabled, false);
 assert.equal(installed.audit.hardwareSignalSent, false, 'install audit must truthfully report no hardware signal');
-assert.equal(marketplaceRuntimeManifest(installed.record), null, 'disabled package must not enter runtime');
+assert.equal(marketplaceRuntimeManifest(installed.record, trustStore), null, 'disabled package must not enter runtime');
 
 const enableWithoutConfirm = enableMarketplaceSimulation({
   record: installed.record,
@@ -116,7 +121,7 @@ if (!enabled.ok) throw new Error(enabled.detail);
 assert.equal(enabled.ok, true, 'validated simulation-only asset should enable in simulation');
 if (!enabled.record) throw new Error('successful enablement omitted its record');
 assert.equal(enabled.record.state, 'simulation_enabled');
-assert.equal(marketplaceRuntimeManifest(enabled.record)?.deviceId, asset.deviceManifest.deviceId);
+assert.equal(marketplaceRuntimeManifest(enabled.record, trustStore)?.deviceId, asset.deviceManifest.deviceId);
 assert.equal(enabled.audit.hardwareSignalSent, false);
 
 const removed = uninstallMarketplacePackage({
@@ -194,7 +199,7 @@ if (!duplicate.ok) assert.match(duplicate.detail, /overwrite is refused/);
 assert.equal(installed.records.length, 1, 'duplicate refusal must be atomic');
 
 const tamperedRecord = { ...installed.record, executionAuthorityGranted: true } as unknown as MarketplaceInstallRecord;
-assert.equal(marketplaceRuntimeManifest(tamperedRecord), null, 'stored-record tampering cannot grant execution authority');
+assert.equal(marketplaceRuntimeManifest(tamperedRecord, trustStore), null, 'stored-record tampering cannot grant execution authority');
 
 const community = signedPackage(asset, {
   key: communityKeys.privateKey,
@@ -206,7 +211,92 @@ const communityResult = verifyMarketplacePackage(community, trustStore);
 assert.equal(communityResult.ok, true);
 if (communityResult.ok) assert.equal(communityResult.verified.trustTier, 'community', 'community signature stays visibly community-tier');
 
-console.log('Marketplace trust-boundary tests passed (20 cases).');
+const communityProposal = {
+  schema: 'realitywarden.community-publisher-key',
+  schema_version: 1,
+  key_id: 'community.imported.v1',
+  display_name: 'Imported Community Publisher',
+  public_key_pem: unknownKeys.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+};
+assert.equal(trustCommunityPublisher({ raw: communityProposal, existingEntries: trustStore, confirmed: false }).ok, false,
+  'community trust import requires explicit confirmation');
+const importedTrust = trustCommunityPublisher({ raw: communityProposal, existingEntries: trustStore, confirmed: true });
+if (!importedTrust.ok) throw new Error(importedTrust.detail);
+assert.equal(importedTrust.entry.trustTier, 'community', 'an imported publisher can never self-promote above community');
+assert.match(importedTrust.fingerprintSha256, /^[a-f0-9]{64}$/);
+assert.equal(trustCommunityPublisher({
+  raw: { ...communityProposal, trust_tier: 'official' },
+  existingEntries: trustStore,
+  confirmed: true
+}).ok, false, 'unknown authority fields must be rejected');
+assert.equal(trustCommunityPublisher({ raw: communityProposal, existingEntries: importedTrust.entries, confirmed: true }).ok, false,
+  'duplicate publisher identities must be rejected');
+assert.equal(revokeCommunityPublisher({ keyId: importedTrust.entry.keyId, existingEntries: importedTrust.entries, confirmed: false }).ok, false,
+  'publisher revocation requires explicit confirmation');
+const revokedCommunity = revokeCommunityPublisher({ keyId: importedTrust.entry.keyId, existingEntries: importedTrust.entries, confirmed: true });
+if (!revokedCommunity.ok) throw new Error(revokedCommunity.detail);
+assert.equal(revokedCommunity.entries.find((entry) => entry.keyId === importedTrust.entry.keyId)?.revoked, true);
+assert.equal(revokeCommunityPublisher({ keyId: 'realitywarden.official.v1', existingEntries: trustStore, confirmed: true }).ok, false,
+  'local UI cannot revoke or replace bundled official trust');
+
+const importedCommunityPackage = signedPackage(asset, {
+  key: unknownKeys.privateKey,
+  keyId: 'community.imported.v1',
+  displayName: 'Imported Community Publisher',
+  packageId: 'fixture.imported-community-fan'
+});
+const importedInstalled = installMarketplacePackage({
+  rawPackage: importedCommunityPackage,
+  trustStore: importedTrust.entries,
+  existingRecords: [],
+  confirmed: true,
+  now: '2026-07-16T10:04:00.000Z'
+});
+if (!importedInstalled.ok || !importedInstalled.record) throw new Error(importedInstalled.ok ? 'missing record' : importedInstalled.detail);
+const importedEnabled = enableMarketplaceSimulation({
+  record: importedInstalled.record,
+  trustStore: importedTrust.entries,
+  existingRecords: importedInstalled.records,
+  confirmed: true,
+  now: '2026-07-16T10:05:00.000Z'
+});
+if (!importedEnabled.ok || !importedEnabled.record) throw new Error(importedEnabled.ok ? 'missing record' : importedEnabled.detail);
+assert.notEqual(marketplaceRuntimeManifest(importedEnabled.record, importedTrust.entries), null);
+assert.equal(marketplaceRuntimeManifest(importedEnabled.record, revokedCommunity.entries), null,
+  'revoking a community publisher must immediately remove its enabled assets from runtime visibility');
+
+const durableState = {
+  ...createEmptyMarketplaceState(),
+  communityTrustEntries: revokedCommunity.entries.filter((entry) => entry.keyId === 'community.imported.v1'),
+  records: [importedEnabled.record],
+  audit: [importedInstalled.audit, importedEnabled.audit]
+};
+const restoredState = restoreMarketplaceState(JSON.parse(serializeMarketplaceState(durableState)), trustStore);
+if (!restoredState.ok) throw new Error(restoredState.detail);
+assert.equal(restoredState.state.records.length, 1);
+assert.equal(marketplaceRuntimeManifest(restoredState.state.records[0], restoredState.trustStore), null,
+  'revoked publisher state may be retained for removal and audit but must restore inert');
+
+const metadataTamper = JSON.parse(JSON.stringify(durableState));
+metadataTamper.records[0].publisherName = 'Forged Review Board';
+assert.equal(restoreMarketplaceState(metadataTamper, trustStore).ok, false,
+  'persisted metadata tampering must reject the entire state');
+const packageTamper = JSON.parse(JSON.stringify(durableState));
+packageTamper.records[0].package.asset.description = 'changed on disk';
+assert.equal(restoreMarketplaceState(packageTamper, trustStore).ok, false,
+  'persisted signed-package tampering must reject the entire state');
+const authorityTamper = JSON.parse(JSON.stringify(durableState));
+authorityTamper.records[0].executionAuthorityGranted = true;
+assert.equal(restoreMarketplaceState(authorityTamper, trustStore).ok, false,
+  'persisted execution-authority escalation must reject the entire state');
+const unknownStateField = { ...durableState, silentlyRepairMe: true };
+assert.equal(restoreMarketplaceState(unknownStateField, trustStore).ok, false,
+  'unknown persisted state fields must fail closed rather than be stripped');
+const duplicateRecords = { ...durableState, records: [importedEnabled.record, importedEnabled.record] };
+assert.equal(restoreMarketplaceState(duplicateRecords, trustStore).ok, false,
+  'duplicate persisted identities must reject atomically');
+
+console.log('Marketplace trust-boundary tests passed (37 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

@@ -142,10 +142,23 @@ export function enableMarketplaceSimulation(input: {
   };
 }
 
-export function marketplaceRuntimeManifest(record: MarketplaceInstallRecord): DeviceManifest | null {
+export function marketplaceRuntimeManifest(
+  record: MarketplaceInstallRecord,
+  trustStore: readonly MarketplaceTrustEntry[]
+): DeviceManifest | null {
   if (record.state !== 'simulation_enabled') return null;
   if (record.executionAuthorityGranted !== false || record.realAdapterEnabled !== false) return null;
-  return toRuntimeDeviceManifest(record.package.asset);
+  const checked = verifyMarketplacePackage(record.package, trustStore);
+  if (!checked.ok) return null;
+  if (
+    checked.verified.digestSha256 !== record.digestSha256
+    || checked.verified.trustTier !== record.trustTier
+    || checked.verified.trustedPublisherName !== record.publisherName
+    || checked.verified.package.package_id !== record.packageId
+    || checked.verified.package.package_version !== record.packageVersion
+    || checked.verified.package.asset.assetId !== record.assetId
+  ) return null;
+  return toRuntimeDeviceManifest(checked.verified.package.asset);
 }
 
 export function uninstallMarketplacePackage(input: {
