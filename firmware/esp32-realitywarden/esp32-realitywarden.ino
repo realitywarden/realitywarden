@@ -1,5 +1,5 @@
 /*
- * RealityWarden ESP32 firmware - SG90 servo + HC-SR04 pulse-width sensor.
+ * RealityWarden ESP32 firmware - SG90 servo + distance sensor.
  * Host protocol: newline-delimited JSON over USB serial @ 115200.
  *   Host -> ESP32: {"id":"abc","cmd":"move_to_angle","args":{"angle":45}}
  *   Host -> ESP32: {"id":"def","cmd":"read_distance"}
@@ -16,19 +16,41 @@
  * - data.deviceMs (device-side monotonic clock, audit 2.2) lets the host judge
  *   freshness by the DEVICE clock and detect frozen firmware/sensors.
  *
- * Wiring: SG90=GPIO18, Trig=GPIO5, Echo=GPIO4.
- * ESP32-S3 GPIO is not 5V tolerant: use 3.3V sensor power for a direct test,
- * or a proper 5V-to-3.3V divider/level shifter on Echo when powered at 5V.
+ * ---------------------------------------------------------------------------
+ * DISTANCE SENSOR INTERFACE - pick ONE at compile time (no runtime guessing):
+ *   0 = HC-SR04 pulse-width. Wiring: Trig=GPIO5, Echo=GPIO4.
+ *       ESP32-S3 GPIO is not 5V tolerant: power the sensor at 3.3V for a
+ *       direct Echo connection, or use a 5V->3.3V divider on Echo at 5V.
+ *   1 = IOE-SR05 style serial TTL (many "wide voltage 3-5.5V HC-SR04" boards
+ *       are really this). Wiring: EN=GPIO5, sensor TXD -> GPIO4 (UART1 RX),
+ *       9600 8N1. EN LOW enables measurement; frames are FF, distH, distL,
+ *       SUM where SUM = (0xFF + distH + distL) & 0xFF, distance in mm.
+ *       Power at 3.3V and connect TXD directly; at 5V use a divider on TXD.
+ * ---------------------------------------------------------------------------
+ * Wiring (both variants): SG90=GPIO18.
  * Requires the "ESP32Servo" library (Library Manager) and ArduinoJson.
  */
+#define DISTANCE_SENSOR_SERIAL_TTL 0
+
 #include <ESP32Servo.h>
 #include <ArduinoJson.h>
 
+const char* FIRMWARE_VERSION = "0.1.5";
+const int PROTOCOL_VERSION = 4;
+
 const int SERVO_PIN = 18;
-const int TRIG_PIN = 5;
-const int ECHO_PIN = 4;
+const int TRIG_PIN = 5;   // serial_ttl variant: EN pin (LOW = enabled)
+const int ECHO_PIN = 4;   // serial_ttl variant: sensor TXD -> UART1 RX
 const unsigned long ECHO_TIMEOUT_US = 30000;
 const size_t MAX_REQUEST_LINE_BYTES = 512;
+
+#if DISTANCE_SENSOR_SERIAL_TTL
+const long SENSOR_BAUD = 9600;
+const unsigned long TTL_FRAME_TIMEOUT_MS = 150;
+HardwareSerial SensorSerial(1);
+unsigned long ttlChecksumErrors = 0;
+long ttlLastDistanceMm = -1;
+#endif
 
 Servo servo;
 String lineBuffer;
@@ -37,8 +59,13 @@ bool discardingOversizedLine = false;
 void setup() {
   Serial.begin(115200);
   pinMode(TRIG_PIN, OUTPUT);
+#if DISTANCE_SENSOR_SERIAL_TTL
+  digitalWrite(TRIG_PIN, HIGH); // EN high = sensor idle until a read runs
+  SensorSerial.begin(SENSOR_BAUD, SERIAL_8N1, ECHO_PIN, -1);
+#else
   pinMode(ECHO_PIN, INPUT);
   digitalWrite(TRIG_PIN, LOW);
+#endif
   servo.attach(SERVO_PIN, 500, 2400);
 }
 
@@ -71,6 +98,120 @@ void handleMoveToAngle(const char* id, JsonVariantConst args) {
   serializeJson(doc, Serial);
   Serial.println();
 }
+
+#if DISTANCE_SENSOR_SERIAL_TTL
+
+// Read one checksum-valid IOE-SR05 frame. Returns distance in mm, or -1.
+// Honesty rules: checksum failures are counted and reported, never "fixed";
+// no frame means no reading - the caller reports an explicit error.
+long readTtlDistanceMm() {
+  while (SensorSerial.available() > 0) SensorSerial.read(); // drop stale bytes
+  digitalWrite(TRIG_PIN, LOW); // EN low = start measuring/streaming
+  long distanceMm = -1;
+  const unsigned long startedMs = millis();
+  while (millis() - startedMs < TTL_FRAME_TIMEOUT_MS) {
+    if (SensorSerial.available() == 0) continue;
+    const int header = SensorSerial.read();
+    if (header != 0xFF) continue;
+    uint8_t frame[3];
+    int index = 0;
+    const unsigned long frameStartMs = millis();
+    while (index < 3 && millis() - frameStartMs < 30) {
+      if (SensorSerial.available() > 0) frame[index++] = (uint8_t)SensorSerial.read();
+    }
+    if (index < 3) continue; // incomplete frame: keep scanning until timeout
+    const uint8_t expectedSum = (uint8_t)((0xFF + frame[0] + frame[1]) & 0xFF);
+    if (expectedSum != frame[2]) {
+      ttlChecksumErrors += 1;
+      continue;
+    }
+    distanceMm = (long)frame[0] * 256 + (long)frame[1];
+    break;
+  }
+  digitalWrite(TRIG_PIN, HIGH); // EN high = sensor idle
+  if (distanceMm >= 0) ttlLastDistanceMm = distanceMm;
+  return distanceMm;
+}
+
+void handleReadDistance(const char* id) {
+  const unsigned long errorsBefore = ttlChecksumErrors;
+  const long distanceMm = readTtlDistanceMm();
+  if (distanceMm < 0) {
+    // Report failure honestly, never a fake reading; the host default-blocks.
+    sendError(id, ttlChecksumErrors > errorsBefore
+      ? "IOE-SR05 frame failed checksum (check TXD signal quality, shared ground, 9600 baud)"
+      : "no IOE-SR05 serial frame (EN->GPIO5 must be wired, TXD->GPIO4, 9600 8N1, sensor powered)");
+    return;
+  }
+  StaticJsonDocument<160> doc;
+  doc["id"] = id;
+  doc["ok"] = true;
+  doc["data"]["distanceCm"] = distanceMm / 10.0f;
+  doc["data"]["distanceMm"] = distanceMm;
+  doc["data"]["deviceMs"] = millis();
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+
+void handleDiagnoseHardware(const char* id) {
+  int successfulFrames = 0;
+  for (int sample = 0; sample < 3; sample += 1) {
+    if (readTtlDistanceMm() >= 0) successfulFrames += 1;
+    delay(60);
+  }
+  StaticJsonDocument<512> doc;
+  doc["id"] = id;
+  doc["ok"] = true;
+  doc["data"]["firmware"] = "realitywarden-esp32";
+  doc["data"]["firmwareVersion"] = FIRMWARE_VERSION;
+  doc["data"]["protocolVersion"] = PROTOCOL_VERSION;
+  doc["data"]["servoPin"] = SERVO_PIN;
+  doc["data"]["sensorModel"] = "IOE-SR05";
+  doc["data"]["sensorInterface"] = "serial_ttl";
+  doc["data"]["sensorBaud"] = SENSOR_BAUD;
+  doc["data"]["enablePin"] = TRIG_PIN;
+  doc["data"]["sensorRxPin"] = ECHO_PIN;
+  doc["data"]["successfulFrames"] = successfulFrames;
+  doc["data"]["checksumErrors"] = ttlChecksumErrors;
+  if (ttlLastDistanceMm >= 0) doc["data"]["lastDistanceMm"] = ttlLastDistanceMm;
+  doc["data"]["deviceMs"] = millis();
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+
+void handleDiagnoseGpioLoopback(const char* id) {
+  // Wiring self-test: temporarily reclaim GPIO4 from UART1 so the host can
+  // verify the GPIO5 -> GPIO4 jumper path. Disconnect the sensor TXD first,
+  // otherwise the sensor drives the line and the result is meaningless.
+  SensorSerial.end();
+  pinMode(ECHO_PIN, INPUT);
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(50);
+  const int echoWhileLow = digitalRead(ECHO_PIN);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(50);
+  const int echoWhileHigh = digitalRead(ECHO_PIN);
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(50);
+  const int echoAfterLow = digitalRead(ECHO_PIN);
+  digitalWrite(TRIG_PIN, HIGH); // restore EN idle
+  SensorSerial.begin(SENSOR_BAUD, SERIAL_8N1, ECHO_PIN, -1);
+  const bool passed = echoWhileLow == LOW && echoWhileHigh == HIGH && echoAfterLow == LOW;
+  StaticJsonDocument<256> doc;
+  doc["id"] = id;
+  doc["ok"] = true;
+  doc["data"]["loopbackPassed"] = passed;
+  doc["data"]["echoWhileLow"] = echoWhileLow;
+  doc["data"]["echoWhileHigh"] = echoWhileHigh;
+  doc["data"]["echoAfterLow"] = echoAfterLow;
+  doc["data"]["trigPin"] = TRIG_PIN;
+  doc["data"]["echoPin"] = ECHO_PIN;
+  doc["data"]["deviceMs"] = millis();
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+
+#else // pulse-width HC-SR04
 
 unsigned long measureEchoDuration() {
   digitalWrite(TRIG_PIN, LOW);
@@ -115,8 +256,8 @@ void handleDiagnoseHardware(const char* id) {
   doc["id"] = id;
   doc["ok"] = true;
   doc["data"]["firmware"] = "realitywarden-esp32";
-  doc["data"]["firmwareVersion"] = "0.1.4";
-  doc["data"]["protocolVersion"] = 4;
+  doc["data"]["firmwareVersion"] = FIRMWARE_VERSION;
+  doc["data"]["protocolVersion"] = PROTOCOL_VERSION;
   doc["data"]["servoPin"] = SERVO_PIN;
   doc["data"]["sensorModel"] = "HC-SR04-compatible";
   doc["data"]["sensorInterface"] = "pulse_width";
@@ -155,6 +296,8 @@ void handleDiagnoseGpioLoopback(const char* id) {
   serializeJson(doc, Serial);
   Serial.println();
 }
+
+#endif // DISTANCE_SENSOR_SERIAL_TTL
 
 void handleLine(const String& line) {
   StaticJsonDocument<256> doc;

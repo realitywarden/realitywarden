@@ -32,7 +32,14 @@ export interface SetupAdvice {
 }
 
 export const EXPECTED_FIRMWARE = 'realitywarden-esp32';
+/** The version the prebuilt one-click flash image ships (pulse-width HC-SR04). */
 export const EXPECTED_FIRMWARE_VERSION = '0.1.4';
+/**
+ * Every firmware version the current host accepts. 0.1.5 is the source build
+ * with the compile-time pulse_width / serial_ttl (IOE-SR05) sensor selection;
+ * it speaks the same protocol 4.
+ */
+export const EXPECTED_FIRMWARE_VERSIONS: readonly string[] = ['0.1.4', '0.1.5'];
 
 function advice(code: string, severity: AdviceSeverity, zh: string, en: string): SetupAdvice {
   return { code, severity, zh, en };
@@ -103,10 +110,10 @@ export function interpretProbe(input: {
         `The device speaks the protocol but is not RealityWarden firmware (reports: ${identity.firmware ?? 'unknown'}). Confirm you picked the right device.`));
       return { identity, advice: items };
     }
-    if (identity.firmwareVersion !== EXPECTED_FIRMWARE_VERSION) {
+    if (identity.firmwareVersion === null || !EXPECTED_FIRMWARE_VERSIONS.includes(identity.firmwareVersion)) {
       items.push(advice('firmware_outdated', 'warning',
-        `固件版本 ${identity.firmwareVersion ?? '未知'}，期望 ${EXPECTED_FIRMWARE_VERSION}。运行 npm run hardware:flash -- --port COMx 一键升级（或按 docs/REAL_HARDWARE_ESP32.md 用 Arduino IDE 重刷）。`,
-        `Firmware ${identity.firmwareVersion ?? 'unknown'}, expected ${EXPECTED_FIRMWARE_VERSION}. Run npm run hardware:flash -- --port COMx to upgrade (or reflash via Arduino IDE per docs/REAL_HARDWARE_ESP32.md).`));
+        `固件版本 ${identity.firmwareVersion ?? '未知'}，期望 ${EXPECTED_FIRMWARE_VERSIONS.join(' 或 ')}。运行 npm run hardware:flash -- --port COMx 一键升级（或按 docs/REAL_HARDWARE_ESP32.md 用 Arduino IDE 重刷）。`,
+        `Firmware ${identity.firmwareVersion ?? 'unknown'}, expected ${EXPECTED_FIRMWARE_VERSIONS.join(' or ')}. Run npm run hardware:flash -- --port COMx to upgrade (or reflash via Arduino IDE per docs/REAL_HARDWARE_ESP32.md).`));
     }
     if (!identity.reportsDeviceMs) {
       items.push(advice('no_device_clock', 'error',

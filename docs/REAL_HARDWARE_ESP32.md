@@ -189,6 +189,30 @@ npm run hardware:diagnose -- --port COM3 --loopback   # jumper GPIO5 → GPIO4 f
 A passing loopback proves both GPIOs and the breadboard path are alive, which
 isolates the fault to the sensor or its power.
 
+### "Wide voltage 3-5.5V HC-SR04" that never returns an echo (it is a serial IOE-SR05)
+
+Many modules sold as "HC-SR04 宽电压 3-5.5V" (multi-mode 2021 boards with pins
+labeled `Trig/Rx` and `Echo/Tx`) are factory-configured for **serial TTL
+output**, not pulse-width: they ignore Trig pulses entirely and instead stream
+4-byte frames (`0xFF, distH, distL, sum` where `sum = (0xFF+distH+distL) & 0xFF`,
+distance in mm) at 9600 8N1 on the Tx pin while EN is held LOW. Symptoms:
+`diagnose` shows the GPIO loopback passing but 0/3 echoes and "no echo pulse"
+forever, even with clean power and a target in front.
+
+Fix without soldering — build the firmware's serial variant:
+
+1. Open `firmware/esp32-realitywarden/esp32-realitywarden.ino` in the Arduino
+   IDE and change `#define DISTANCE_SENSOR_SERIAL_TTL 0` to `1`.
+2. Wiring stays the same as the direct 3.3V test: VCC->3V3, GND->GND,
+   Trig/EN->GPIO5, Echo/TXD->GPIO4 (at 5V power, put the 1k+2k divider on TXD).
+3. Upload, then re-run `npm run hardware:diagnose -- --port COMx` — it should
+   report `接口=TTL串口 9600 8N1` and real readings.
+
+The serial variant reports `sensorInterface: "serial_ttl"` and firmware
+version 0.1.5; protocol and all safety semantics are identical, and the
+`--loopback` self-test still works (unplug the sensor TXD first, since a
+streaming sensor drives the same line).
+
 ## Architecture (host side)
 
 ```

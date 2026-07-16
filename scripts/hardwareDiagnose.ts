@@ -3,10 +3,11 @@
  * (all commands here are read-only; the transport itself refuses actuation
  * frames outside the execution gate — audit 1.1).
  *
- * NOTE: the `serial_ttl` branch below targets an experimental IOE-SR05
- * firmware variant that is NOT checked into this repo (only the pulse_width
- * HC-SR04 firmware is). Keep the branch until that variant lands or is
- * abandoned; the checked-in firmware always reports `pulse_width`.
+ * The checked-in firmware (v0.1.5) selects its sensor interface at compile
+ * time: pulse_width (HC-SR04 Trig/Echo, the default and the prebuilt image)
+ * or serial_ttl (IOE-SR05-style 9600 8N1 frames, EN=GPIO5, TXD->GPIO4) via
+ * `#define DISTANCE_SENSOR_SERIAL_TTL 1`. Both report protocol 4 and are
+ * handled below.
  */
 import { writeFileSync } from 'node:fs';
 import { SerialEsp32Transport, createNodeSerialPort } from '../lib/hardware';

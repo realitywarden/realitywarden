@@ -680,6 +680,16 @@ async function testSetupAdvisorClassifications() {
     diagnoseData: { firmware: 'realitywarden-esp32', firmwareVersion: '0.1.4', sensorInterface: 'pulse_width', successfulEchoes: 0, deviceMs: 5 }
   });
   assert(deadEcho.advice.some((item) => item.code === 'sensor_no_echo'), 'zero echoes must surface sensor wiring advice');
+
+  // 0.1.5 source build with the serial TTL (IOE-SR05) sensor variant is a
+  // first-class accepted firmware: no outdated warning, ready when clocked.
+  const serialTtlReady = interpretProbe({
+    diagnoseOk: true,
+    diagnoseData: { firmware: 'realitywarden-esp32', firmwareVersion: '0.1.5', protocolVersion: 4, sensorInterface: 'serial_ttl', sensorModel: 'IOE-SR05', successfulFrames: 3, deviceMs: 42 }
+  });
+  assert(serialTtlReady.identity?.sensorInterface === 'serial_ttl', 'serial_ttl probe must yield its interface');
+  assert(!serialTtlReady.advice.some((item) => item.code === 'firmware_outdated'), '0.1.5 must not be flagged outdated');
+  assert(serialTtlReady.advice.length === 1 && serialTtlReady.advice[0].code === 'ready', 'clocked serial_ttl device must be ready');
 }
 
 async function testSerialTransportRejectsDuplicatePendingIds() {

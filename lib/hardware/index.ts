@@ -38,7 +38,7 @@ export type {
   HardwareActionSequenceStepResult,
   SensorEvidencePoller
 } from './HardwareActionSequenceRunner';
-export { adviceForFailure, interpretProbe, EXPECTED_FIRMWARE, EXPECTED_FIRMWARE_VERSION } from './SetupAdvisor';
+export { adviceForFailure, interpretProbe, EXPECTED_FIRMWARE, EXPECTED_FIRMWARE_VERSION, EXPECTED_FIRMWARE_VERSIONS } from './SetupAdvisor';
 export type { FirmwareIdentity, SetupAdvice, AdviceSeverity } from './SetupAdvisor';
 export {
   MedianFilter,
