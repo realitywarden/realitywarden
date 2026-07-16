@@ -1,5 +1,12 @@
 # STATUS
 
+## 真机四场景验收通过（2026-07-16）✅
+
+- **P0 四场景验收 4/4 通过**，证据入库 `docs/acceptance/evidence/2026-07-16-scenario-{1..4}.json`，真机执行证据锁解锁（每次执行仍需 UI 显式勾选）。判定采用严格协议：每场景先经安全门归零到 0°，被拦场景舵机必须全程钉在 0°；证据仅在"审计结果 + 操作者人工观察"双通过时写入（`npm run hardware:acceptance` 向导，eeab441/abc3375）。
+- 实测亮点：场景 4 归零时因场景 3 的手未移开被 `min_safe_distance_violation` 拦截（迟滞抬阈至 12cm 生效）——安全门对归零指令一视同仁。
+- 硬件定案：传感器为标准脉宽型 HC-SR04（宽压款），完好；此前"无回波"根因 = 5Vin 虚焊 + 不共地 + 跨半接线 + host 未释放 DTR/RTS（详见 `F:\xy\传感器排障记录-2026-07-16.md`）。DTR/RTS 修复（a589572）对所有接自动复位电路的板子都是必要修复。
+- 附带产出：固件 v0.1.5 支持编译期选择 pulse_width / serial_ttl（IOE-SR05）传感器（9364417）；引导式验收向导 `npm run hardware:acceptance`（每场景归零 + 人工确认 + 诚实证据，--only 可补跑单场景）。
+
 ## 通用设备接入闭环收口（2026-07-15，本会话）
 
 - **依赖安全稳定化**：已在 `9e8d77b`/`cad7557` 完成（Node 24 / Next 16 / Electron 43 / serialport 13 / electron-builder 26，本机 npm audit 0 漏洞）。沙箱网络白名单禁止 audit 端点，无法复跑，属环境限制。
