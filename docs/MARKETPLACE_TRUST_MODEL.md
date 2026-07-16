@@ -141,6 +141,22 @@ orders cannot supply those fields. HTTP URLs, path escape, tampering, duplicate
 identities, wrong keys, invalid production config, and existing output files are
 refused. The private key is read only for signing and is never serialized.
 
+After the catalog and packages are hosted, verify the exact live distribution
+before creating the public release:
+
+```bash
+npm run marketplace:live:verify -- \
+  --distribution marketplace/distribution.json \
+  --out release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
+```
+
+This explicit network check accepts HTTPS only, refuses redirects, bounds every
+response, and performs no retry or cache fallback. It verifies the current
+catalog against the configured Official key and then verifies the exact bytes
+of every listed package against both catalog digests and package signatures.
+The output and companion `.sha256` are created exclusively and contain no key
+material. A failed or partial live snapshot is not release evidence.
+
 ## Publish-back submission drafts
 
 The desktop Marketplace can review an improved Reality Asset JSON and export a

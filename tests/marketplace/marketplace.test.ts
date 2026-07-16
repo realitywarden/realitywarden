@@ -12,6 +12,7 @@ import {
   signMarketplaceCatalog,
   verifyMarketplaceCatalog,
   verifyMarketplaceCatalogPackage,
+  verifyMarketplaceDistributionSnapshot,
   validateMarketplaceDistributionConfig,
   marketplaceWorkspaceReference,
   removeUnavailableMarketplaceWorkspaceDevices,
@@ -276,6 +277,56 @@ assert.equal(publishedCatalog.catalog.entries[0].asset_name, cameraPackage.asset
 assert.equal(publishedCatalog.catalog.entries[0].package_file_sha256, createHash('sha256').update(cameraPackageBytes).digest('hex'));
 assert.equal(verifyMarketplaceCatalog(publishedCatalog.catalog, trustStore, '2026-07-16T10:30:00.000Z').ok, true,
   'publisher output must verify under the same production trust policy');
+const liveSnapshot = verifyMarketplaceDistributionSnapshot({
+  rawDistribution: productionDistribution.config,
+  rawCatalog: publishedCatalog.catalog,
+  packageSnapshots: [{ url: catalogBuildOrder.packages[0].package_url, bytes: cameraPackageBytes }],
+  now: '2026-07-16T10:30:00.000Z'
+});
+assert.equal(liveSnapshot.ok, true, 'live distribution verification must bind the configured catalog and every exact package byte');
+assert.equal(verifyMarketplaceDistributionSnapshot({
+  rawDistribution: productionDistribution.config,
+  rawCatalog: publishedCatalog.catalog,
+  packageSnapshots: [],
+  now: '2026-07-16T10:30:00.000Z'
+}).ok, false, 'live verification must refuse a missing package rather than accept a partial snapshot');
+assert.equal(verifyMarketplaceDistributionSnapshot({
+  rawDistribution: productionDistribution.config,
+  rawCatalog: publishedCatalog.catalog,
+  packageSnapshots: [
+    { url: catalogBuildOrder.packages[0].package_url, bytes: cameraPackageBytes },
+    { url: 'https://marketplace.realitywarden.example/packages/unlisted.json', bytes: cameraPackageBytes }
+  ],
+  now: '2026-07-16T10:30:00.000Z'
+}).ok, false, 'live verification must refuse package bytes absent from the signed catalog');
+const liveTamperedBytes = Buffer.from(cameraPackageBytes);
+liveTamperedBytes[liveTamperedBytes.length - 2] ^= 1;
+assert.equal(verifyMarketplaceDistributionSnapshot({
+  rawDistribution: productionDistribution.config,
+  rawCatalog: publishedCatalog.catalog,
+  packageSnapshots: [{ url: catalogBuildOrder.packages[0].package_url, bytes: liveTamperedBytes }],
+  now: '2026-07-16T10:30:00.000Z'
+}).ok, false, 'live verification must refuse package bytes changed after catalog publication');
+const alternateCatalogDistribution = {
+  ...productionDistribution.config,
+  catalog_key_id: 'alternate.official.v1',
+  bundled_trust: [
+    ...productionDistribution.config.bundled_trust,
+    {
+      keyId: 'alternate.official.v1',
+      displayName: 'Alternate Official Catalog',
+      publicKeyPem: unknownKeys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      trustTier: 'official' as const,
+      revoked: false
+    }
+  ]
+};
+assert.equal(verifyMarketplaceDistributionSnapshot({
+  rawDistribution: alternateCatalogDistribution,
+  rawCatalog: publishedCatalog.catalog,
+  packageSnapshots: [{ url: catalogBuildOrder.packages[0].package_url, bytes: cameraPackageBytes }],
+  now: '2026-07-16T10:30:00.000Z'
+}).ok, false, 'a valid Official signature from a different bundled key must not satisfy the configured catalog key');
 assert.equal(publishMarketplaceCatalog({
   rawBuildOrder: { ...catalogBuildOrder, package_file_sha256: '0'.repeat(64) },
   rawDistribution: productionDistribution.config,
@@ -702,7 +753,7 @@ assert.throws(() => serializeMarketplaceSubmissionDraft({ ...submission.draft, a
 const originalSubmission = createMarketplaceSubmissionDraft({ rawAsset: { ...improvedAsset, assetId: 'original_submission_asset' }, source: { kind: 'new_asset' }, changeSummary: 'A new declarative asset can enter maintainer review.', confirmed: true });
 assert.equal(originalSubmission.ok, true, 'new declarative assets may be exported without inventing package provenance');
 
-console.log('Marketplace trust-boundary, distribution, submission, signed catalog, publisher, and Virtual Lab binding tests passed (91 cases).');
+console.log('Marketplace trust-boundary, distribution, submission, signed catalog, publisher, live snapshot, and Virtual Lab binding tests passed (96 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

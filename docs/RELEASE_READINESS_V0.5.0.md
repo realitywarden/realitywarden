@@ -55,6 +55,7 @@ node lib/conformance/runConformance.js
 npm run verify
 npm run desktop:pack
 npm run desktop:pack:production
+npm run marketplace:live:verify -- --distribution marketplace/distribution.json --out release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
 ```
 
 `desktop:pack` must fail unless the versioned NSIS installer, app asar, unpacked
@@ -95,6 +96,8 @@ release/RealityWarden-0.5.0-Release-Evidence.json.sha256
 # production mode only:
 release/RealityWarden-0.5.0-Authenticode-Evidence.json
 release/RealityWarden-0.5.0-Authenticode-Evidence.json.sha256
+release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
+release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json.sha256
 ```
 
 The schema-v5 release evidence manifest is emitted only after package
@@ -134,6 +137,7 @@ Verified local artifact record (2026-07-15):
 ## Manual release actions outside this report
 
 - owner-controlled Official Marketplace public key/catalog provisioning;
+- hosting followed by the no-redirect, no-retry live catalog/package evidence check;
 - owner-controlled Windows certificate issuance and signing identity;
 - manual tag and GitHub release creation;
 - installer upload and checksum publication;
