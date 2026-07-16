@@ -83,6 +83,21 @@ pass their normal safety path, and the full repository verify chain passes.
 - non-ready devices stay behind `Coming Soon`
 - build / verify / smoke tests stay green
 
+## Owner-reviewed additions (2026-07-16, post physical acceptance)
+
+- Real-device digital twin in the 3D workspace: a clearly REAL-marked mirror
+  that only ECHOES real state (current angle command, live distance). Pure
+  visualization; execution stays inside the REAL HARDWARE boundary. Invariant
+  6 intact.
+- UI-integrated governed flashing: a flash button that consumes firmware
+  write orders (sha256-paired reviewed images only). Never an arbitrary-code
+  IDE; that is the product's differentiator, not a limitation.
+- Teach mode (feedback hardware only): record = read-only sampling from
+  encoder/feedback servos, replay = every step through the safety gate.
+  Structurally impossible on open-loop SG90; requires feedback devices.
+- DONE 2026-07-16: auto-reconnect of the read-only panel after real
+  execution releases the port.
+
 ## Not In Scope Through v0.6
 
 - vendor-certified industrial safety claims

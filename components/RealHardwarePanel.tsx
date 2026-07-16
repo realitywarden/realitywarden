@@ -294,11 +294,15 @@ export function RealHardwarePanel({ language }: { language: 'zh' | 'en' }) {
     } finally {
       if (mounted.current) {
         setExecuting(false);
-        setStatus('disconnected'); // port was handed to the execution chain
+        // The execution chain held the port exclusively and has released it;
+        // reconnect the read-only panel automatically instead of leaving the
+        // operator to do it by hand. A reconnect failure stays visible.
+        setStatus('disconnected');
         setDistanceCm(null);
+        await connect(selectedPort);
       }
     }
-  }, [execAngle, execConfirmed, selectedPort, stopPolling]);
+  }, [connect, execAngle, execConfirmed, selectedPort, stopPolling]);
 
   // Advice shown to the operator: structured probe advice wins; otherwise the
   // last raw error is classified on the fly so no failure is ever unexplained.
