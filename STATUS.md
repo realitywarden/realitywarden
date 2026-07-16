@@ -18,6 +18,13 @@
 
 ## Release closure update (2026-07-15)
 
+- Third-party redistribution notices are now deterministic and packaged offline:
+  the npm production CycloneDX inventory is bound to `package-lock.json`, model
+  sources include the reviewed UR5e BSD-3-Clause and TurtleBot3 Apache-2.0
+  attributions/texts, and **Help → Third-Party Notices** opens an isolated local
+  page. Stale notices or missing installer resources fail release/package tests.
+  Product EULA/privacy terms and publisher legal identity remain owner/legal
+  inputs and are not invented by the software gate.
 - Offline support closure is implemented: the visible File menu and native Help
   menu open an installed support guide, export a local redacted diagnostic JSON,
   and show the exact app version plus Public Alpha/simulation/REAL HARDWARE

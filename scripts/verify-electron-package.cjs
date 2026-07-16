@@ -100,13 +100,15 @@ if (productionRelease && !fs.existsSync(sourceMarketplaceDistribution)) throw ne
 
 const executable = path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe');
 const supportDir = path.join(resourcesDir, 'support');
-for (const required of ['SUPPORT.md', 'SUPPORT.html', 'WINDOWS_TRIAL_GUIDE.md', 'EVALUATION_GUIDE.md', 'REAL_HARDWARE_ESP32.md']) {
+for (const required of ['SUPPORT.md', 'SUPPORT.html', 'WINDOWS_TRIAL_GUIDE.md', 'EVALUATION_GUIDE.md', 'REAL_HARDWARE_ESP32.md', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.html']) {
   assert(fs.existsSync(path.join(supportDir, required)), `packaged offline support resource missing: ${required}`);
 }
 const packagedSupport = fs.readFileSync(path.join(supportDir, 'SUPPORT.md'), 'utf8');
 assert(packagedSupport.includes('does not upload it') && packagedSupport.includes('REAL HARDWARE'), 'packaged support guide must retain privacy and hardware boundaries');
 const packagedSupportHtml = fs.readFileSync(path.join(supportDir, 'SUPPORT.html'), 'utf8');
 assert(packagedSupportHtml.includes('RealityWarden does not upload it') && packagedSupportHtml.includes('REAL HARDWARE boundary'), 'packaged in-app support page must retain privacy and hardware boundaries');
+const packagedNotices = fs.readFileSync(path.join(supportDir, 'THIRD_PARTY_NOTICES.html'), 'utf8');
+assert(packagedNotices.includes('CycloneDX') && packagedNotices.includes('UR5e derived GLB') && packagedNotices.includes('TurtleBot3 Burger derived GLB'), 'packaged notices must cover the production dependency inventory and redistributed model assets');
 
 assert(fs.existsSync(executable), 'branded RealityWarden executable is missing from win-unpacked');
 assert(fs.existsSync(path.join(root, packageJson.build.win.icon)), 'configured Windows icon is missing');

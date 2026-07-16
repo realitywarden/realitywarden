@@ -42,6 +42,12 @@ bounded, allowlisted, path/secret-redacted, local-only, and explicitly exclude
 project content, prompts, audit/hardware results, serial ports, environment
 variables, and credentials.
 
+The installer also includes deterministic Markdown and offline HTML third-party
+notices. They are generated from the npm production-dependency CycloneDX
+inventory, bound to `package-lock.json`, include the reviewed UR5e BSD-3-Clause
+and TurtleBot3 Apache-2.0 model sources, and are available from **Help →
+Third-Party Notices**. Package and release tests reject stale or missing notices.
+
 Required commands:
 
 ```powershell
@@ -161,6 +167,9 @@ Verified local artifact record (2026-07-15):
 - owner-controlled Official Marketplace public key/catalog provisioning;
 - hosting followed by the no-redirect, no-retry live catalog/package evidence check;
 - owner-controlled Windows certificate issuance and signing identity;
+- owner-approved product EULA/privacy terms, publisher legal identity, and legal
+  review for the target sales jurisdictions (third-party notices do not license
+  RealityWarden itself);
 - manual tag and GitHub release creation;
 - upload of exactly the files listed by the generated public-release manifest;
 - optional refreshed demo or physical reference-kit evidence.

@@ -61,6 +61,7 @@ export function createAppMenu(support: SupportActions) {
       label: 'Help',
       submenu: [
         { label: 'Open Support Guide', click: () => void support.openGuide() },
+        { label: 'Third-Party Notices', click: () => void support.openThirdPartyNotices() },
         { label: 'Export Local Diagnostic Bundle…', click: () => void support.exportDiagnostics() },
         { type: 'separator' },
         { label: 'About RealityWarden', click: () => void support.showAbout() }

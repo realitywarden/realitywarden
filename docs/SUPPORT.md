@@ -45,3 +45,5 @@ Review the JSON before sharing it. Support staff should request this bundle inst
 - Physical-device acceptance is optional evidence and is not required to use or evaluate the software paths.
 
 Additional packaged references: `WINDOWS_TRIAL_GUIDE.md`, `EVALUATION_GUIDE.md`, and `REAL_HARDWARE_ESP32.md`.
+
+Use **Help → Third-Party Notices** for the lockfile-bound production dependency inventory, redistributed model attributions, and included license texts. The page is packaged with the app and opens offline.

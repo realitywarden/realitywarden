@@ -6,16 +6,21 @@ import { buildDiagnosticBundle } from './diagnostics';
 
 export interface SupportActions {
   openGuide: () => Promise<{ ok: boolean; error?: string }>;
+  openThirdPartyNotices: () => Promise<{ ok: boolean; error?: string }>;
   exportDiagnostics: () => Promise<{ canceled: boolean; filePath?: string }>;
   showAbout: () => Promise<void>;
 }
 
 let supportWindow: BrowserWindow | null = null;
+let noticesWindow: BrowserWindow | null = null;
 
 export function createSupportActions(appRoot: string, getLogPath: () => string): SupportActions {
   const supportGuide = () => app.isPackaged
     ? path.join(process.resourcesPath, 'support', 'SUPPORT.html')
     : path.join(appRoot, 'docs', 'SUPPORT.html');
+  const thirdPartyNotices = () => app.isPackaged
+    ? path.join(process.resourcesPath, 'support', 'THIRD_PARTY_NOTICES.html')
+    : path.join(appRoot, 'docs', 'THIRD_PARTY_NOTICES.html');
 
   return {
     openGuide: async () => {
@@ -48,6 +53,41 @@ export function createSupportActions(appRoot: string, getLogPath: () => string):
           type: 'error',
           title: 'Support guide unavailable',
           message: 'RealityWarden could not open the packaged support guide.',
+          detail: message
+        });
+        return { ok: false, error: message };
+      }
+    },
+    openThirdPartyNotices: async () => {
+      const noticesPath = thirdPartyNotices();
+      try {
+        await fs.access(noticesPath);
+        if (noticesWindow && !noticesWindow.isDestroyed()) {
+          if (noticesWindow.isMinimized()) noticesWindow.restore();
+          noticesWindow.focus();
+          return { ok: true };
+        }
+        noticesWindow = new BrowserWindow({
+          title: 'RealityWarden Third-Party Notices',
+          width: 940,
+          height: 760,
+          minWidth: 640,
+          minHeight: 520,
+          show: false,
+          autoHideMenuBar: true,
+          backgroundColor: '#090A0C',
+          webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+        });
+        noticesWindow.once('ready-to-show', () => noticesWindow?.show());
+        noticesWindow.once('closed', () => { noticesWindow = null; });
+        await noticesWindow.loadFile(noticesPath);
+        return { ok: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await dialog.showMessageBox({
+          type: 'error',
+          title: 'Third-party notices unavailable',
+          message: 'RealityWarden could not open the packaged third-party notices.',
           detail: message
         });
         return { ok: false, error: message };
