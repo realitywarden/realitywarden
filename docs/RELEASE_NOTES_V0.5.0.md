@@ -56,7 +56,7 @@ recorded as `command_acknowledged_open_loop` with
 
 - all three TypeScript projects pass type checking;
 - Next.js production build passes;
-- real-hardware safety invariants: **43/43**;
+- real-hardware safety invariants: **46/46**;
 - virtual serial loopback acceptance: **5/5**;
 - malicious/manual-import, second-gate, and action-install coverage: **21/21**;
 - Desktop and Conformance source-contract checks pass;

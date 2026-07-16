@@ -24,7 +24,7 @@ evidence, not a development or release-engineering prerequisite.
 
 ### Safety and product evidence — pass
 
-- real-hardware invariant suite: **43/43**;
+- real-hardware invariant suite: **46/46**;
 - virtual-loopback scenarios: **5/5**;
 - manual-import malicious-input, second-gate, and explicit action-install suite: **21/21**;
 - blocked commands prove zero signal with `hardwareSignalSent:false` and

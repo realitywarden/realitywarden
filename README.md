@@ -59,7 +59,7 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
   conflict review before being copied into Action Composer, and generated
   assets can never enable a real adapter
 
-Real-hardware safety invariants — **43/43 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
+Real-hardware safety invariants — **46/46 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
 
 **Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 
