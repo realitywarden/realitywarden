@@ -158,3 +158,20 @@ reference rig is separately implemented behind an evidence lock,
 HardwareExecutionGate, sensor interlocks, and per-run human confirmation; asset
 metadata cannot select or expand that path. Any future real-device integration
 requires an equally explicit, separately reviewed safety boundary.
+
+## Marketplace signing boundary (v0.6 work)
+
+An accepted asset may be wrapped in the strict Marketplace package envelope
+and signed by a reviewed Ed25519 publisher key. Signing is not safety approval:
+the consumer still rejects executable metadata, re-runs the Reality Asset
+validator, derives the visible trust tier from its own local trust store, and
+installs the package disabled. See `docs/MARKETPLACE_TRUST_MODEL.md`.
+
+Maintainers sign only an already reviewed draft and never commit or package a
+private key:
+
+```bash
+npm run marketplace:sign -- --draft reviewed-package-draft.json \
+  --private-key publisher-ed25519-private.pem \
+  --out signed-marketplace-package.json
+```
