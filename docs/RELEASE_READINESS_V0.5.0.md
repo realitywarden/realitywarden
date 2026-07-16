@@ -56,6 +56,7 @@ npm run verify
 npm run desktop:pack
 npm run desktop:pack:production
 npm run marketplace:live:verify -- --distribution marketplace/distribution.json --out release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
+npm run release:prepare-public
 ```
 
 `desktop:pack` must fail unless the versioned NSIS installer, app asar, unpacked
@@ -98,6 +99,9 @@ release/RealityWarden-0.5.0-Authenticode-Evidence.json
 release/RealityWarden-0.5.0-Authenticode-Evidence.json.sha256
 release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
 release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json.sha256
+release/RealityWarden-0.5.0-Setup.exe.sha256
+release/RealityWarden-0.5.0-Public-Release-Manifest.json
+release/RealityWarden-0.5.0-Public-Release-Manifest.json.sha256
 ```
 
 The schema-v5 release evidence manifest is emitted only after package
@@ -114,6 +118,14 @@ as not assessed rather than inventing evidence. A publishable build must use
 `desktop:pack:production`, which additionally refuses to start unless the
 release has a production-valid Official signed-catalog configuration and a
 Windows code-signing certificate input.
+
+`release:prepare-public` is the final handoff gate before creating a tag or
+uploading files. It refuses internal-acceptance evidence, dirty or divergent
+source revisions, installer digest changes, an unpassed release gate, invalid
+or inconsistent Authenticode identities, stale/expired/wrong-key Marketplace
+live evidence, missing companion checksums, and existing outputs. Success emits
+an exclusive installer checksum and checksummed public-release manifest listing
+the exact upload set. It performs no tag, push, or upload itself.
 
 Verified local artifact record (2026-07-15):
 
@@ -140,7 +152,7 @@ Verified local artifact record (2026-07-15):
 - hosting followed by the no-redirect, no-retry live catalog/package evidence check;
 - owner-controlled Windows certificate issuance and signing identity;
 - manual tag and GitHub release creation;
-- installer upload and checksum publication;
+- upload of exactly the files listed by the generated public-release manifest;
 - optional refreshed demo or physical reference-kit evidence.
 
 None of these may weaken the automated safety gates or alter the truthful Public

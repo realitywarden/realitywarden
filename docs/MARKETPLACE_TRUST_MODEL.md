@@ -157,6 +157,12 @@ of every listed package against both catalog digests and package signatures.
 The output and companion `.sha256` are created exclusively and contain no key
 material. A failed or partial live snapshot is not release evidence.
 
+The final `npm run release:prepare-public` gate revalidates this evidence
+against the current production distribution and requires it to be no more than
+24 hours old and still inside the signed catalog validity interval. It also
+binds the catalog digest and package count into the final checksummed upload
+manifest; a checksum file alone cannot promote stale or wrong-key evidence.
+
 ## Publish-back submission drafts
 
 The desktop Marketplace can review an improved Reality Asset JSON and export a
