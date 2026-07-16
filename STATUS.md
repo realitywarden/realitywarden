@@ -46,6 +46,30 @@
   journey, offline degradation, reinstall, uninstall, and user-data preservation
   all passed; release evidence records a clean worktree.
 
+## Marketplace alpha foundation update (2026-07-16)
+
+- Signed declarative Marketplace packages now use canonical JSON plus Ed25519,
+  authoritative Reality Asset validation, local trust tiers, strict rejection
+  of executable/secret-bearing metadata, and a 37-case malicious/tamper suite.
+- Install is explicitly confirmed and always disabled. Simulation enablement is
+  a separate confirmation. Runtime lookup revalidates the signature, digest,
+  publisher metadata, and current revocation status; uninstall removes the
+  complete record. Every lifecycle audit records `hardwareSignalSent:false` and
+  `executionAuthorityGranted:false`.
+- Desktop persistence, community publisher import/revocation, corrupt-state
+  quarantine, explicit empty reset, and the in-app local package browser are
+  implemented through the compiled `dist-electron-runtime` authority. The
+  Electron main process still does not import `lib/` directly.
+- Packaged first-run smoke now requires both the Marketplace preload bridge and
+  visible entry point. The real Electron product-design matrix passes the
+  Marketplace modal at 1180x720 with bilingual layout, focus containment,
+  Escape close, and trigger-focus restoration.
+- This is not yet a commercial Marketplace claim. A network catalog, production
+  official publisher key, Windows code signing, publish-back workflow, and an
+  explicit non-fallback bridge from marketplace Reality Assets into the current
+  geometry/profile workspace remain open. Assets are not silently coerced into
+  the incompatible legacy `DeviceAsset` shape.
+
 ## ✅ 持续成品开发令 / CONTINUOUS PRODUCT DEVELOPMENT（2026-07-14，所有者置顶生效）
 
 **不再以真机四场景验收作为继续开发、功能解锁或成品交付的前置条件。** 按路线图持续开发到软件成品；真机验收仅作为可选的硬件证据，不得再次阻塞 UI、运行时、Action Manifest 或发布工程。

@@ -117,6 +117,8 @@ interface RendererSmokeSnapshot {
   simulationBoundary: boolean;
   realHardwareBoundary: boolean;
   preloadBridge: boolean;
+  marketplaceBridge: boolean;
+  marketplaceTrigger: boolean;
   offlineDegradation: boolean;
 }
 
@@ -138,9 +140,11 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         simulationBoundary: bodyText.includes('SIMULATION ONLY') || bodyText.includes('Simulation Only'),
         realHardwareBoundary: Boolean(document.querySelector('[data-real-hardware-boundary]')) && bodyText.includes('REAL HARDWARE'),
         preloadBridge: typeof window.openReality === 'object',
+        marketplaceBridge: typeof window.openReality?.marketplace === 'object',
+        marketplaceTrigger: Boolean(document.querySelector('[data-marketplace-trigger]')),
         offlineDegradation: allText.includes('rule compiler (LLM offline)') || allText.includes('规则编译器（LLM 离线）')
       };
-      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
     })()`, true) as RendererSmokeSnapshot;
     if (lastSnapshot.ready) return lastSnapshot;
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -326,6 +330,9 @@ async function runProductDesignAcceptance(window: BrowserWindow) {
     await waitForDomCondition(window, `document.querySelector('[data-file-action="import-manual"]')`);
     await window.webContents.executeJavaScript(`document.querySelector('[data-file-action="import-manual"]')?.click()`, true);
   }, '[data-manual-import-modal] > section', '[data-file-menu-trigger]'));
+  dialogs.push(await auditDesignDialog(window, 'marketplace', async () => {
+    await window.webContents.executeJavaScript(`document.querySelector('[data-marketplace-trigger]')?.click()`, true);
+  }, '[data-marketplace-modal] > section', '[data-marketplace-trigger]'));
 
   const debug = window.webContents.debugger;
   const attachedHere = !debug.isAttached();
