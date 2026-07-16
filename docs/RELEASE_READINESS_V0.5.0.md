@@ -56,6 +56,7 @@ npm run verify
 npm run desktop:pack
 npm run desktop:pack:production
 npm run marketplace:live:verify -- --distribution marketplace/distribution.json --out release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
+npm run release:supply-chain
 npm run release:prepare-public
 ```
 
@@ -99,6 +100,10 @@ release/RealityWarden-0.5.0-Authenticode-Evidence.json
 release/RealityWarden-0.5.0-Authenticode-Evidence.json.sha256
 release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
 release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json.sha256
+release/RealityWarden-0.5.0-SBOM.cdx.json
+release/RealityWarden-0.5.0-SBOM.cdx.json.sha256
+release/RealityWarden-0.5.0-Supply-Chain-Evidence.json
+release/RealityWarden-0.5.0-Supply-Chain-Evidence.json.sha256
 release/RealityWarden-0.5.0-Setup.exe.sha256
 release/RealityWarden-0.5.0-Public-Release-Manifest.json
 release/RealityWarden-0.5.0-Public-Release-Manifest.json.sha256
@@ -123,9 +128,14 @@ Windows code-signing certificate input.
 uploading files. It refuses internal-acceptance evidence, dirty or divergent
 source revisions, installer digest changes, an unpassed release gate, invalid
 or inconsistent Authenticode identities, stale/expired/wrong-key Marketplace
-live evidence, missing companion checksums, and existing outputs. Success emits
-an exclusive installer checksum and checksummed public-release manifest listing
-the exact upload set. It performs no tag, push, or upload itself.
+live evidence, stale/vulnerable/lockfile-divergent supply-chain evidence,
+missing companion checksums, and existing outputs. `release:supply-chain` is an
+explicit online release action: npm audit must complete with zero known records;
+there is no offline pass or cached fallback. It emits a package-lock-bound
+CycloneDX production-dependency SBOM and checksummed evidence. Success of the
+final gate emits an exclusive installer checksum and checksummed public-release
+manifest listing the exact upload set. It performs no tag, push, or upload
+itself.
 
 Verified local artifact record (2026-07-15):
 

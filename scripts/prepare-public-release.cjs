@@ -5,6 +5,7 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { validateAuthenticodeEvidence } = require('./windows-authenticode.cjs');
+const { validateSupplyChainEvidence } = require('./write-supply-chain-evidence.cjs');
 
 const SHA256 = /^[A-Fa-f0-9]{64}$/;
 const MAX_EVIDENCE_BYTES = 5 * 1024 * 1024;
@@ -142,6 +143,18 @@ function buildPublicReleaseManifest(root, options = {}) {
   const now = options.now ?? new Date().toISOString();
   const live = validateLiveMarketplaceEvidence(readJson(livePath, 'Marketplace live evidence'), distribution.config, now);
 
+  const supplyName = `RealityWarden-${version}-Supply-Chain-Evidence.json`;
+  const supplyPath = path.join(releaseDir, supplyName);
+  const supplySha256 = requireMatchingChecksum(supplyPath, 'supply-chain evidence');
+  const supply = readJson(supplyPath, 'supply-chain evidence');
+  const sbomName = `RealityWarden-${version}-SBOM.cdx.json`;
+  const sbomPath = path.join(releaseDir, sbomName);
+  const sbomSha256 = requireMatchingChecksum(sbomPath, 'CycloneDX SBOM');
+  const sbom = readJson(sbomPath, 'CycloneDX SBOM');
+  const packageLockSha256 = sha256File(path.join(root, 'package-lock.json'));
+  validateSupplyChainEvidence(supply, { version, packageLockSha256, sbomFile: sbomName, sbomSha256, now });
+  if (sbom.bomFormat !== 'CycloneDX' || sbom.metadata?.component?.name !== packageJson.name || sbom.metadata?.component?.version !== version || !Array.isArray(sbom.components) || sbom.components.length !== supply.sbom.component_count || !Array.isArray(sbom.dependencies) || sbom.dependencies.length !== supply.sbom.dependency_node_count) throw new Error('CycloneDX SBOM content does not match supply-chain evidence or package identity');
+
   const referenced = [
     { file: installerName, role: 'windows_installer', sha256: installerSha256, size_bytes: fs.statSync(installerPath).size },
     { file: releaseEvidenceName, role: 'release_evidence', sha256: releaseEvidenceSha256, size_bytes: fs.statSync(releaseEvidencePath).size },
@@ -149,7 +162,11 @@ function buildPublicReleaseManifest(root, options = {}) {
     { file: authName, role: 'authenticode_evidence', sha256: authSha256, size_bytes: fs.statSync(authPath).size },
     { file: `${authName}.sha256`, role: 'authenticode_evidence_checksum' },
     { file: liveName, role: 'marketplace_live_evidence', sha256: liveSha256, size_bytes: fs.statSync(livePath).size },
-    { file: `${liveName}.sha256`, role: 'marketplace_live_evidence_checksum' }
+    { file: `${liveName}.sha256`, role: 'marketplace_live_evidence_checksum' },
+    { file: supplyName, role: 'supply_chain_evidence', sha256: supplySha256, size_bytes: fs.statSync(supplyPath).size },
+    { file: `${supplyName}.sha256`, role: 'supply_chain_evidence_checksum' },
+    { file: sbomName, role: 'cyclonedx_sbom', sha256: sbomSha256, size_bytes: fs.statSync(sbomPath).size },
+    { file: `${sbomName}.sha256`, role: 'cyclonedx_sbom_checksum' }
   ];
   for (const field of ['install_lifecycle', 'product_design_acceptance', 'startup_design_acceptance']) {
     const record = releaseEvidence[field];
@@ -179,6 +196,7 @@ function buildPublicReleaseManifest(root, options = {}) {
     source: { commit: source.commit, worktree: 'clean' },
     upload_ready: true,
     marketplace: { catalog_url: live.catalogUrl, catalog_key_id: live.catalogKeyId, catalog_digest_sha256: live.catalogDigestSha256, checked_at: live.checked_at, expires_at: live.expiresAt, package_count: live.packages.length },
+    supply_chain: { package_lock_sha256: supply.package_lock.sha256, audit_total_vulnerabilities: supply.audit.vulnerabilities.total, audited_at: supply.generated_at, sbom_sha256: supply.sbom.sha256, production_component_count: supply.sbom.component_count },
     authenticode: { signer_thumbprint: [...signerThumbprints][0], artifact_count: auth.artifacts.length },
     files: referenced,
     not_claimed: { industrial_safety_certification: false, general_purpose_hardware_control: false, physical_outcome_verified: false }

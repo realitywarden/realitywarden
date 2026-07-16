@@ -10,7 +10,7 @@
 
 ## 🔴 红线(违反 = 事故,无例外)
 
-六条安全不变量,有 43 条真机安全测试 + 5 条虚拟回环场景守着,**只能收紧不能放宽**:
+六条安全不变量,有 46 条真机安全测试 + 5 条虚拟回环场景守着,**只能收紧不能放宽**:
 
 1. **单一受控通路**:actuation 帧只能经 `HardwareExecutionGate` 走 ticket 路径(`lib/hardware/internal/actuation.ts` 是 gate 私有,ESLint 禁止外部 import;`SerialEsp32Transport.send()` 会拒绝 actuation 命令)。任何地方都不许手搓 `move_to_angle` 帧。
 2. **默认拦截**:传感器数据缺失/过期/非法/冻结/缺设备时钟 ⇒ 拦截执行。互锁要求权威地长在 `ESP32_SERVO_RIG_CAPABILITIES` 里,调用方不能绕过。
@@ -27,7 +27,7 @@
 npx tsc -p tsconfig.json --noEmit        # 根项目
 npx tsc -p tsconfig.next.json --noEmit   # app + components
 npx tsc -p electron/tsconfig.json --noEmit
-npm run test:real-hardware               # 43 条安全不变量,必须全绿
+npm run test:real-hardware               # 46 条安全不变量,必须全绿
 npm run test:virtual-loopback            # 全链路 e2e(5 场景)
 node lib/desktop/runDesktopTests.js      # 含 IPC 契约断言
 node lib/conformance/runConformance.js   # 产品契约(断言源码字符串,改 UI 前先查)
