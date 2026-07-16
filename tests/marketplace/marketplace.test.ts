@@ -5,6 +5,8 @@ import {
   enableMarketplaceSimulation,
   createEmptyMarketplaceState,
   installMarketplacePackage,
+  bindMarketplaceAssetToVirtualLab,
+  marketplaceRuntimeAsset,
   marketplaceRuntimeManifest,
   marketplaceSigningPayload,
   restoreMarketplaceState,
@@ -16,14 +18,98 @@ import {
   verifyMarketplacePackage,
   type MarketplaceInstallRecord,
   type MarketplacePackage,
-  type MarketplaceTrustEntry
+  type MarketplaceTrustEntry,
+  type VerifiedMarketplaceRuntimeAsset
 } from '../../lib/marketplace';
+import type { DeviceAsset } from '../../lib/assets/DeviceAsset';
 import type { RealityAssetPackage } from '../../lib/reality-assets';
 
 const asset = JSON.parse(readFileSync('examples/reality-assets/desktop_fan.asset.json', 'utf8').replace(/^\uFEFF/, '')) as RealityAssetPackage;
 const officialKeys = generateKeyPairSync('ed25519');
 const communityKeys = generateKeyPairSync('ed25519');
 const unknownKeys = generateKeyPairSync('ed25519');
+
+function cameraMarketplaceAsset(): RealityAssetPackage {
+  const capabilityIds = ['capture_frame', 'read_sensor', 'scan_area'];
+  const contracts = capabilityIds.map((id) => ({
+    ...asset.capabilityContracts[0],
+    id,
+    name: id,
+    category: id === 'read_sensor' || id === 'capture_frame' ? 'observation' : 'actuation',
+    executionPermission: id === 'read_sensor' ? 'read_only' : 'simulation_only',
+    riskLevel: 'low'
+  }));
+  return {
+    ...asset,
+    assetId: 'signed_marketplace_camera',
+    name: 'Signed Marketplace Camera',
+    deviceType: 'camera_sensor',
+    deviceManifest: {
+      ...asset.deviceManifest,
+      deviceId: 'signed_marketplace_camera',
+      displayName: 'Signed Marketplace Camera',
+      capabilities: contracts.map((contract) => ({ ...contract })),
+      workspace: { allowedZones: ['camera_view'], forbiddenZones: ['privacy_zone'] },
+      adapter: { ...asset.deviceManifest.adapter, realAdapterEnabled: false }
+    },
+    capabilityContracts: contracts,
+    worldModelAssumptions: {
+      ...asset.worldModelAssumptions,
+      objects: [{ id: 'signed_camera', type: 'camera_sensor', zone: 'camera_view', movable: false }],
+      zones: [
+        { id: 'camera_view', label: 'Camera view', safe: true },
+        { id: 'privacy_zone', label: 'Privacy zone', safe: false }
+      ]
+    }
+  } as RealityAssetPackage;
+}
+
+function cameraTemplate(): DeviceAsset {
+  return {
+    manifest: {
+      asset_id: 'trusted-camera-template', display_name: 'Trusted camera template', category: 'vision',
+      device_type: 'camera_sensor', license: 'project-owned-generic', brand: 'generic', source: 'test-fixture',
+      visual_model: { type: 'procedural_fallback', path: null }, allowed_use: ['simulation'], simulator_fidelity: 'semantic', risk_class: 'low'
+    },
+    deviceMeta: {
+      profile_id: 'trusted-camera-template', profile_version: '1.0.0', manufacturer: 'RealityWarden', model: 'Trusted camera template',
+      device_id: 'trusted-camera-template', device_type: 'camera_sensor', simulator_profile: 'camera_sensor_semantic_v1',
+      supported_adapters: ['simulator'], risk_class: 'low', display_name: 'Trusted camera template',
+      capabilities: ['capture_frame', 'read_sensor', 'scan_area'],
+      constraints: {
+        workspace: { x_min: -2, x_max: 2, y_min: 0, y_max: 2, z_min: -2, z_max: 2 },
+        max_speed: 'normal', force_limit: 'low', forbidden_zones: ['privacy_zone'], known_targets: ['camera_view', 'privacy_zone']
+      },
+      safety_profile: {
+        allow_throwing: false, allow_high_force: false, allow_outside_workspace: false,
+        require_logging: true, require_human_confirmation_for_risky_actions: false
+      },
+      runtime_state: { status: 'idle', current_position: 'camera_view' }
+    },
+    geometry: {
+      table: { width: 2.2, depth: 1.6, height: 0.05 },
+      robot: { base_position: [0, 0, 0], arm_segments: [0.3, 0.3], gripper_size: 0.1 },
+      objects: {
+        red_cube: { position: [-0.55, 0.1, 0], size: 0.15 }, blue_cube: { position: [0.55, 0.1, 0], size: 0.15 },
+        glass_cup: { position: [0, 0.1, 0.45], radius: 0.05, height: 0.15 }
+      },
+      zones: {
+        camera_view: { position: [0, 0.04, 0], size: [1.2, 0.8] },
+        privacy_zone: { position: [0.75, 0.04, 0.45], size: [0.55, 0.45] }
+      },
+      workspace: { x_min: -2, x_max: 2, y_min: 0, y_max: 2, z_min: -2, z_max: 2 },
+      camera: { position: [1.7, 1.8, 1.6], target: [0, 0, 0] }, stage: { layout: 'camera_sensor' }
+    },
+    adapterManifest: {
+      adapter_id: 'simulator-trusted-camera-template', adapter_type: 'simulator', interface: 'AdapterInterface',
+      supported_commands: ['capture_frame', 'read_sensor', 'scan_area'], transport: 'virtual-device-runtime', real_device_enabled: false
+    },
+    scenarios: {
+      safe: { id: 'camera-safe', device_profile: 'trusted-camera-template', initial_state: {}, prompt: 'Capture.', expected_task_type: 'safe_validation', unsafe_actions: [], expected_safety_result: 'pass', expected_state_after: {} },
+      unsafe: { id: 'camera-unsafe', device_profile: 'trusted-camera-template', initial_state: {}, prompt: 'Capture privacy zone.', expected_task_type: 'unsafe_validation', unsafe_actions: ['privacy_zone'], expected_safety_result: 'blocked', expected_state_after: {} }
+    }
+  };
+}
 
 const trustStore: MarketplaceTrustEntry[] = [
   {
@@ -124,6 +210,87 @@ assert.equal(enabled.record.state, 'simulation_enabled');
 assert.equal(marketplaceRuntimeManifest(enabled.record, trustStore)?.deviceId, asset.deviceManifest.deviceId);
 assert.equal(enabled.audit.hardwareSignalSent, false);
 
+const cameraPackage = signedPackage(cameraMarketplaceAsset(), { packageId: 'fixture.signed-camera' });
+const cameraInstalled = installMarketplacePackage({
+  rawPackage: cameraPackage,
+  trustStore,
+  existingRecords: [],
+  confirmed: true,
+  now: '2026-07-16T10:02:10.000Z'
+});
+if (!cameraInstalled.ok || !cameraInstalled.record) throw new Error(cameraInstalled.ok ? 'missing camera record' : cameraInstalled.detail);
+const cameraEnabled = enableMarketplaceSimulation({
+  record: cameraInstalled.record,
+  trustStore,
+  existingRecords: cameraInstalled.records,
+  confirmed: true,
+  now: '2026-07-16T10:02:20.000Z'
+});
+if (!cameraEnabled.ok || !cameraEnabled.record) throw new Error(cameraEnabled.ok ? 'missing enabled camera record' : cameraEnabled.detail);
+const runtimeCameraAsset = marketplaceRuntimeAsset(cameraEnabled.record, trustStore);
+if (!runtimeCameraAsset) throw new Error('verified enabled camera asset was not runtime-visible');
+const runtimeCamera: VerifiedMarketplaceRuntimeAsset = {
+  packageId: cameraEnabled.record.packageId,
+  packageVersion: cameraEnabled.record.packageVersion,
+  digestSha256: cameraEnabled.record.digestSha256,
+  trustTier: cameraEnabled.record.trustTier,
+  publisherName: cameraEnabled.record.publisherName,
+  asset: runtimeCameraAsset,
+  executionAuthorityGranted: false,
+  realAdapterEnabled: false
+};
+const boundCamera = bindMarketplaceAssetToVirtualLab({ runtimeAsset: runtimeCamera, templateAsset: cameraTemplate() });
+assert.equal(boundCamera.ok, true, 'exact signed semantic capabilities should bind to a trusted simulation geometry template');
+assert.deepEqual(boundCamera.asset.deviceMeta.capabilities, ['capture_frame', 'read_sensor', 'scan_area'],
+  'binding must preserve the exact signed capability set and order');
+assert.equal(boundCamera.asset.adapterManifest.real_device_enabled, false);
+assert.deepEqual(boundCamera.asset.deviceMeta.supported_adapters, ['simulator']);
+assert.match(boundCamera.asset.deviceMeta.simulator_fidelity?.limitations[0] ?? '', /not vendor CAD or physical proof/,
+  'template geometry limitations must remain explicit');
+
+const unsupportedDeviceBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset }, templateAsset: cameraTemplate() });
+assert.equal(unsupportedDeviceBinding.ok, false, 'unknown device types must be refused instead of coerced into a template');
+if (!unsupportedDeviceBinding.ok) assert.equal(unsupportedDeviceBinding.code, 'device_type_unsupported');
+
+const aliasAsset = cameraMarketplaceAsset();
+aliasAsset.deviceManifest.capabilities[0].id = 'capture_image';
+aliasAsset.capabilityContracts[0].id = 'capture_image';
+const aliasBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset: aliasAsset }, templateAsset: cameraTemplate() });
+assert.equal(aliasBinding.ok, false, 'capability aliases must be refused, never translated');
+if (!aliasBinding.ok) assert.equal(aliasBinding.code, 'capability_unsupported');
+
+const narrowedTemplate = cameraTemplate();
+narrowedTemplate.adapterManifest.supported_commands = ['capture_frame', 'read_sensor'];
+const narrowingBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: runtimeCamera, templateAsset: narrowedTemplate });
+assert.equal(narrowingBinding.ok, false, 'unsupported signed capabilities must reject the whole asset, never be intersected away');
+if (!narrowingBinding.ok) assert.equal(narrowingBinding.code, 'template_capability_mismatch');
+
+const unknownZoneAsset = cameraMarketplaceAsset();
+unknownZoneAsset.deviceManifest.workspace.allowedZones = ['unreviewed_zone'];
+unknownZoneAsset.worldModelAssumptions.zones.push({ id: 'unreviewed_zone', label: 'Unreviewed', safe: true });
+const unknownZoneBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: { ...runtimeCamera, asset: unknownZoneAsset }, templateAsset: cameraTemplate() });
+assert.equal(unknownZoneBinding.ok, false, 'signed zones without trusted geometry must reject the complete binding');
+if (!unknownZoneBinding.ok) assert.equal(unknownZoneBinding.code, 'template_zone_mismatch');
+
+const wrongTemplate = cameraTemplate();
+wrongTemplate.manifest.device_type = 'sensor_box';
+const wrongTemplateBinding = bindMarketplaceAssetToVirtualLab({ runtimeAsset: runtimeCamera, templateAsset: wrongTemplate });
+assert.equal(wrongTemplateBinding.ok, false, 'a different device-type template must never be used as fallback');
+if (!wrongTemplateBinding.ok) assert.equal(wrongTemplateBinding.code, 'template_type_mismatch');
+
+const authorityBinding = bindMarketplaceAssetToVirtualLab({
+  runtimeAsset: { ...runtimeCamera, executionAuthorityGranted: true } as unknown as VerifiedMarketplaceRuntimeAsset,
+  templateAsset: cameraTemplate()
+});
+assert.equal(authorityBinding.ok, false, 'any runtime authority escalation must refuse workspace binding');
+if (!authorityBinding.ok) assert.equal(authorityBinding.code, 'authority_rejected');
+
+const malformedBinding = bindMarketplaceAssetToVirtualLab({
+  runtimeAsset: { ...runtimeCamera, asset: { ...runtimeCamera.asset, capabilityContracts: null } as unknown as RealityAssetPackage },
+  templateAsset: cameraTemplate()
+});
+assert.equal(malformedBinding.ok, false, 'malformed nested runtime input must fail closed without throwing');
+
 const removed = uninstallMarketplacePackage({
   packageId: enabled.record.packageId,
   existingRecords: enabled.records,
@@ -161,6 +328,8 @@ const revokedStore = trustStore.map((entry) => ({ ...entry, revoked: entry.keyId
 const revokedResult = verifyMarketplacePackage(valid, revokedStore);
 assert.equal(revokedResult.ok, false, 'revoked publisher keys must be rejected');
 if (!revokedResult.ok) assert.equal(revokedResult.code, 'publisher_revoked');
+assert.equal(marketplaceRuntimeAsset(cameraEnabled.record, revokedStore), null,
+  'publisher revocation must remove the raw asset from runtime visibility as well as its runtime manifest');
 
 const executableAsset = { ...asset, postinstall: 'powershell -enc ...' } as RealityAssetPackage;
 const executableEnvelope = { ...valid, package_id: 'fixture.executable', asset: executableAsset };
@@ -296,7 +465,7 @@ const duplicateRecords = { ...durableState, records: [importedEnabled.record, im
 assert.equal(restoreMarketplaceState(duplicateRecords, trustStore).ok, false,
   'duplicate persisted identities must reject atomically');
 
-console.log('Marketplace trust-boundary tests passed (37 cases).');
+console.log('Marketplace trust-boundary and Virtual Lab binding tests passed (49 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

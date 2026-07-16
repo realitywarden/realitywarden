@@ -1,6 +1,7 @@
 import { getBuiltinRealityAssets } from '../reality-assets/assetRegistry';
 import { toRuntimeDeviceManifest } from '../reality-assets/runtimeBridge';
 import type { DeviceManifest } from '../open-reality-runtime/types';
+import type { RealityAssetPackage } from '../reality-assets/types';
 import {
   verifyMarketplacePackage,
   type MarketplacePackage,
@@ -159,6 +160,15 @@ export function marketplaceRuntimeManifest(
     || checked.verified.package.asset.assetId !== record.assetId
   ) return null;
   return toRuntimeDeviceManifest(checked.verified.package.asset);
+}
+
+export function marketplaceRuntimeAsset(
+  record: MarketplaceInstallRecord,
+  trustStore: readonly MarketplaceTrustEntry[]
+): RealityAssetPackage | null {
+  if (!marketplaceRuntimeManifest(record, trustStore)) return null;
+  const checked = verifyMarketplacePackage(record.package, trustStore);
+  return checked.ok ? checked.verified.package.asset : null;
 }
 
 export function uninstallMarketplacePackage(input: {
