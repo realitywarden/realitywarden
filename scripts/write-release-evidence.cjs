@@ -5,6 +5,7 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { validateLifecycleEvidence } = require('./verify-windows-install-lifecycle.cjs');
+const { validateAuthenticodeEvidence } = require('./windows-authenticode.cjs');
 
 function sha256File(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex').toUpperCase();
@@ -35,7 +36,7 @@ function validateDesignEvidence(evidence) {
   const scales = new Set((Array.isArray(evidence.scaling) ? evidence.scaling : []).map((item) => item?.requestedScale));
   if (!scales.has(1.25) || !scales.has(1.5)) throw new Error('Product-design Windows scaling evidence is incomplete.');
   const dialogs = new Set((Array.isArray(evidence.dialogs) ? evidence.dialogs : []).filter((item) => item?.status === 'passed' && item?.focusRestored === true).map((item) => item.id));
-  for (const dialog of ['action-composer', 'asset-import', 'manual-import']) if (!dialogs.has(dialog)) throw new Error(`Product-design dialog evidence missing: ${dialog}`);
+  for (const dialog of ['action-composer', 'asset-import', 'manual-import', 'marketplace']) if (!dialogs.has(dialog)) throw new Error(`Product-design dialog evidence missing: ${dialog}`);
   if (evidence.contrast?.forcedColors !== true || evidence.contrast?.hardwareBorderStyle !== 'double') throw new Error('Product-design forced-colors evidence is incomplete.');
   return evidence;
 }
@@ -67,12 +68,14 @@ function readSourceRevision(root) {
   }
 }
 
-function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
+function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), options = {}) {
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const releaseDir = path.join(root, 'release');
   const installerName = `RealityWarden-${packageJson.version}-Setup.exe`;
   const installer = requireFile(path.join(releaseDir, installerName), 'NSIS installer');
   const executable = requireFile(path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe'), 'Packaged executable');
+  const installerSha256 = sha256File(installer);
+  const executableSha256 = sha256File(executable);
   const buildIdFile = requireFile(path.join(releaseDir, 'win-unpacked', 'resources', 'app.asar.unpacked', '.next-build', 'BUILD_ID'), 'Packaged Next BUILD_ID');
   const lifecycleName = `RealityWarden-${packageJson.version}-Install-Lifecycle.json`;
   const lifecycleFile = requireFile(path.join(releaseDir, lifecycleName), 'Windows install lifecycle evidence');
@@ -80,7 +83,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
   const lifecycleHash = sha256File(lifecycleFile);
   const recordedLifecycleHash = fs.readFileSync(lifecycleHashFile, 'utf8').trim().split(/\s+/)[0].toUpperCase();
   if (recordedLifecycleHash !== lifecycleHash) throw new Error(`Windows install lifecycle evidence checksum mismatch: ${lifecycleName}`);
-  const lifecycle = validateLifecycleEvidence(JSON.parse(fs.readFileSync(lifecycleFile, 'utf8')), packageJson.version, sha256File(installer));
+  const lifecycle = validateLifecycleEvidence(JSON.parse(fs.readFileSync(lifecycleFile, 'utf8')), packageJson.version, installerSha256);
   const designName = `RealityWarden-${packageJson.version}-Design-Acceptance.json`;
   const designFile = requireFile(path.join(releaseDir, designName), 'Product-design acceptance evidence');
   const designHash = requireMatchingChecksum(designFile, 'Product-design acceptance evidence');
@@ -89,22 +92,36 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
   const startupFile = requireFile(path.join(releaseDir, startupName), 'Startup-design acceptance evidence');
   const startupHash = requireMatchingChecksum(startupFile, 'Startup-design acceptance evidence');
   const startup = validateStartupEvidence(JSON.parse(fs.readFileSync(startupFile, 'utf8')));
+  const productionRelease = options.productionRelease === true;
+  let codeSigning = { status: 'not_assessed', evidence_file: null, evidence_sha256: null, artifacts: [] };
+  if (productionRelease) {
+    const signingName = `RealityWarden-${packageJson.version}-Authenticode-Evidence.json`;
+    const signingFile = requireFile(path.join(releaseDir, signingName), 'Windows Authenticode evidence');
+    const signingHash = requireMatchingChecksum(signingFile, 'Windows Authenticode evidence');
+    const signing = validateAuthenticodeEvidence(JSON.parse(fs.readFileSync(signingFile, 'utf8')), packageJson.version, {
+      'win-unpacked/RealityWarden.exe': executableSha256,
+      [installerName]: installerSha256
+    });
+    codeSigning = { status: 'passed', evidence_file: signingName, evidence_sha256: signingHash, artifacts: signing.artifacts };
+  }
 
   return {
     schema: 'realitywarden.release-evidence',
-    schema_version: 4,
+    schema_version: 5,
     product: 'RealityWarden',
     release_version: packageJson.version,
+    release_mode: productionRelease ? 'production' : 'internal_acceptance',
     generated_at: generatedAt,
     source: readSourceRevision(root),
     artifact: {
       file: installerName,
       size_bytes: fs.statSync(installer).size,
-      sha256: sha256File(installer)
+      sha256: installerSha256
     },
     packaged_app: {
       executable: 'win-unpacked/RealityWarden.exe',
       size_bytes: fs.statSync(executable).size,
+      sha256: executableSha256,
       next_build_id: fs.readFileSync(buildIdFile, 'utf8').trim()
     },
     install_lifecycle: {
@@ -122,6 +139,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
       sha256: startupHash,
       gates: startup.gates
     },
+    code_signing: codeSigning,
     gates: [
       {
         id: 'electron-package-contract',
@@ -147,18 +165,23 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString()) {
         id: 'startup-design-acceptance',
         status: 'passed',
         evidence: 'Neutral dark launch shell, bilingual responsive layouts, 125%/150% scale, escaped recovery details, reduced motion, and forced colors passed'
+      },
+      {
+        id: 'windows-authenticode',
+        status: productionRelease ? 'passed' : 'not_assessed',
+        evidence: productionRelease ? 'Both packaged RealityWarden.exe and the NSIS installer have Valid timestamped Authenticode signatures bound to exact artifact digests' : 'Internal acceptance package; Authenticode was not assessed'
       }
     ],
     not_claimed: {
-      code_signing: 'not assessed by this record',
+      ...(productionRelease ? {} : { code_signing: 'not assessed by this internal-acceptance record' }),
       physical_hardware_acceptance: 'optional evidence; not assessed by this record',
       physical_outcome: 'not inferred from packaged startup or command acknowledgement'
     }
   };
 }
 
-function writeReleaseEvidence(root, generatedAt) {
-  const evidence = buildReleaseEvidence(root, generatedAt);
+function writeReleaseEvidence(root, generatedAt, options) {
+  const evidence = buildReleaseEvidence(root, generatedAt, options);
   const releaseDir = path.join(root, 'release');
   const evidenceName = `RealityWarden-${evidence.release_version}-Release-Evidence.json`;
   const evidencePath = path.join(releaseDir, evidenceName);
@@ -171,11 +194,12 @@ function writeReleaseEvidence(root, generatedAt) {
 
 if (require.main === module) {
   const root = path.resolve(__dirname, '..');
-  const result = writeReleaseEvidence(root);
+  const result = writeReleaseEvidence(root, undefined, { productionRelease: process.argv.includes('--production-release') });
   console.log('Release evidence written.');
   console.log(`- Manifest: ${path.basename(result.evidencePath)}`);
   console.log(`- Installer SHA256: ${result.evidence.artifact.sha256}`);
   console.log(`- Manifest SHA256: ${result.digest}`);
+  console.log(`- Release mode: ${result.evidence.release_mode}; Authenticode: ${result.evidence.code_signing.status}`);
 }
 
 module.exports = { buildReleaseEvidence, sha256File, validateDesignEvidence, validateStartupEvidence, writeReleaseEvidence };

@@ -19,7 +19,7 @@
     "desktop:dev": "node scripts/build-electron.cjs && electron dist-electron/main.js",
     "desktop:build": "npm run build && node scripts/build-electron.cjs",
     "desktop:pack": "npm run desktop:build && node scripts/pack-electron.cjs",
-    "desktop:pack:production": "npm run desktop:build && node scripts/verify-marketplace-release-config.cjs && node scripts/pack-electron.cjs",
+    "desktop:pack:production": "npm run desktop:build && node scripts/verify-marketplace-release-config.cjs && node scripts/pack-electron.cjs --production-release",
     "desktop:prod": "npm run desktop:build && electron dist-electron/main.js --prod",
     "desktop:smoke": "npm run desktop:build && electron dist-electron/main.js --prod --smoke-test",
     "desktop:design-acceptance": "npm run desktop:build && node scripts/run-product-design-acceptance.cjs",

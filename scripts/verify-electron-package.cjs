@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const asar = require('@electron/asar');
+const { writeAuthenticodeEvidence } = require('./windows-authenticode.cjs');
 
 const root = path.resolve(__dirname, '..');
 const releaseDir = path.join(root, 'release');
@@ -12,6 +13,7 @@ const resourcesDir = path.join(releaseDir, 'win-unpacked', 'resources');
 const asarPath = path.join(resourcesDir, 'app.asar');
 const unpackedAppDir = path.join(resourcesDir, 'app.asar.unpacked');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const productionRelease = process.argv.includes('--production-release');
 
 function findFiles(directory, predicate) {
   if (!fs.existsSync(directory)) return [];
@@ -94,6 +96,7 @@ if (fs.existsSync(sourceMarketplaceDistribution)) {
     'packaged Marketplace distribution config must exactly match the release-provisioned input'
   );
 }
+if (productionRelease && !fs.existsSync(sourceMarketplaceDistribution)) throw new Error('production package verification requires the provisioned Marketplace distribution config');
 
 const executable = path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe');
 const supportDir = path.join(resourcesDir, 'support');
@@ -117,6 +120,9 @@ const installer = path.join(releaseDir, installerName);
 assert(fs.existsSync(installer), `NSIS installer missing: ${installerName}`);
 assert(fs.statSync(installer).size > 1024 * 1024, 'NSIS installer is unexpectedly small');
 
+let authenticodeEvidence = null;
+if (productionRelease) authenticodeEvidence = writeAuthenticodeEvidence(root, packageJson.version);
+
 console.log('Electron package verification passed.');
 console.log(`- Installer: ${installerName}`);
 console.log('- Compiled Electron + shared safety runtime + Next production output are present.');
@@ -126,3 +132,4 @@ console.log(`- Firmware image(s) with valid sha256: ${firmwareImages.length}`);
 console.log(`- Marketplace distribution config: ${fs.existsSync(sourceMarketplaceDistribution) ? 'present and byte-exact' : 'not provisioned (development package)'}`);
 console.log('- Offline support guide and recovery references are present.');
 console.log('- Branded executable, installer, and uninstaller icon configuration is present.');
+console.log(`- Authenticode: ${authenticodeEvidence ? `Valid for EXE and installer; evidence ${path.basename(authenticodeEvidence.evidencePath)}` : 'not assessed (internal acceptance package)'}`);

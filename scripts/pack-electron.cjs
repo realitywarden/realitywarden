@@ -2,6 +2,7 @@ const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
+const productionRelease = process.argv.includes('--production-release');
 
 let builderCli;
 
@@ -19,7 +20,7 @@ execFileSync(process.execPath, [builderCli, '--win', 'nsis'], {
   windowsHide: true
 });
 
-execFileSync(process.execPath, [path.join(__dirname, 'verify-electron-package.cjs')], {
+execFileSync(process.execPath, [path.join(__dirname, 'verify-electron-package.cjs'), ...(productionRelease ? ['--production-release'] : [])], {
   cwd: root,
   stdio: 'inherit',
   windowsHide: true
@@ -67,7 +68,7 @@ execFileSync(process.execPath, [path.join(__dirname, 'verify-windows-install-lif
   windowsHide: true
 });
 
-execFileSync(process.execPath, [path.join(__dirname, 'write-release-evidence.cjs')], {
+execFileSync(process.execPath, [path.join(__dirname, 'write-release-evidence.cjs'), ...(productionRelease ? ['--production-release'] : [])], {
   cwd: root,
   stdio: 'inherit',
   windowsHide: true

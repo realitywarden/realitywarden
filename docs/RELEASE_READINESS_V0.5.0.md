@@ -92,14 +92,19 @@ release/RealityWarden-0.5.0-Install-Lifecycle.json
 release/RealityWarden-0.5.0-Install-Lifecycle.json.sha256
 release/RealityWarden-0.5.0-Release-Evidence.json
 release/RealityWarden-0.5.0-Release-Evidence.json.sha256
+# production mode only:
+release/RealityWarden-0.5.0-Authenticode-Evidence.json
+release/RealityWarden-0.5.0-Authenticode-Evidence.json.sha256
 ```
 
-The schema-v4 release evidence manifest is emitted only after package
+The schema-v5 release evidence manifest is emitted only after package
 verification, first-run renderer smoke, packaged startup/product-design
 acceptance, and the Windows install lifecycle succeed. It records the exact
 installer SHA256 and size, packaged Next BUILD_ID, startup/design/lifecycle
 manifest digests, source commit, and clean/dirty worktree state. Companion
-checksums protect all evidence records.
+checksums protect all evidence records. Production mode additionally requires
+checksummed Authenticode evidence proving both the packaged executable and NSIS
+installer are `Valid` and timestamped, bound to their exact SHA256 digests.
 Historical internal-pack evidence deliberately marks code signing, migration
 from a different historical version, and optional physical-hardware acceptance
 as not assessed rather than inventing evidence. A publishable build must use

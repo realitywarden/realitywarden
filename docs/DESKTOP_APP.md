@@ -209,13 +209,20 @@ release/RealityWarden-<version>-Release-Evidence.json
 release/RealityWarden-<version>-Release-Evidence.json.sha256
 ```
 
-The schema-v4 machine-readable manifest records the exact installer SHA256/size,
+Production packaging additionally emits and verifies:
+
+```text
+release/RealityWarden-<version>-Authenticode-Evidence.json
+release/RealityWarden-<version>-Authenticode-Evidence.json.sha256
+```
+
+The schema-v5 machine-readable manifest records the release mode, exact installer and packaged executable SHA256/size,
 packaged executable size, Next BUILD_ID, source commit, clean/dirty worktree
 state, startup and product-design evidence, and the clean install/offline/
 reinstall/uninstall lifecycle evidence. The installed lifecycle includes a real
 renderer journey that proves one safe task reaches `completed`, one unsafe task
 reaches `blocked`, and Audit & Governor is selected with evidence after both.
-If Git metadata is unavailable it says
+For `desktop:pack:production`, a separate checksummed Authenticode evidence file must bind both exact binary digests to `Valid`, timestamped signatures before schema-v5 release evidence records `code_signing: passed`. Internal `desktop:pack` evidence says `not_assessed`. If Git metadata is unavailable it says
 so instead of guessing. The historical internal artifact below does not claim code-signing status,
 historical cross-version migration, physical hardware acceptance, or a verified
 physical outcome.
