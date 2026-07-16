@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   enableMarketplaceSimulation,
@@ -7,6 +7,9 @@ import {
   installMarketplacePackage,
   bindMarketplaceAssetToVirtualLab,
   marketplaceRuntimeAsset,
+  signMarketplaceCatalog,
+  verifyMarketplaceCatalog,
+  verifyMarketplaceCatalogPackage,
   marketplaceWorkspaceReference,
   removeUnavailableMarketplaceWorkspaceDevices,
   marketplaceRuntimeManifest,
@@ -215,6 +218,63 @@ assert.equal(marketplaceRuntimeManifest(enabled.record, trustStore)?.deviceId, a
 assert.equal(enabled.audit.hardwareSignalSent, false);
 
 const cameraPackage = signedPackage(cameraMarketplaceAsset(), { packageId: 'fixture.signed-camera' });
+const cameraPackageBytes = Buffer.from(`${JSON.stringify(cameraPackage, null, 2)}\n`, 'utf8');
+const unsignedCatalog = {
+  schema: 'realitywarden.marketplace-catalog',
+  schema_version: 1,
+  catalog_id: 'realitywarden.fixture.catalog',
+  generated_at: '2026-07-16T10:00:00.000Z',
+  expires_at: '2026-08-16T10:00:00.000Z',
+  publisher: { key_id: 'realitywarden.official.v1', display_name: 'RealityWarden Review Board' },
+  entries: [{
+    package_id: cameraPackage.package_id,
+    package_version: cameraPackage.package_version,
+    asset_id: cameraPackage.asset.assetId,
+    asset_name: cameraPackage.asset.name,
+    device_type: cameraPackage.asset.deviceType,
+    support_level: cameraPackage.asset.supportLevel,
+    package_url: 'https://marketplace.realitywarden.example/packages/fixture.signed-camera-1.0.0.json',
+    package_file_sha256: createHash('sha256').update(cameraPackageBytes).digest('hex'),
+    package_digest_sha256: verifyMarketplacePackage(cameraPackage, trustStore).ok
+      ? (verifyMarketplacePackage(cameraPackage, trustStore) as { ok: true; verified: { digestSha256: string } }).verified.digestSha256
+      : ''
+  }]
+};
+const signedCatalog = signMarketplaceCatalog(unsignedCatalog, officialKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString());
+if (!signedCatalog.ok) throw new Error(signedCatalog.detail);
+const verifiedCatalog = verifyMarketplaceCatalog(signedCatalog.catalog, trustStore, '2026-07-16T10:30:00.000Z');
+assert.equal(verifiedCatalog.ok, true, 'a current signed HTTPS catalog should verify');
+assert.equal(verifiedCatalog.verified.trustTier, 'official', 'catalog trust tier must come only from local trust policy');
+const catalogPackage = verifyMarketplaceCatalogPackage({ entry: verifiedCatalog.verified.catalog.entries[0], bytes: cameraPackageBytes, trustStore });
+assert.equal(catalogPackage.ok, true, 'catalog download must bind file bytes and signed package metadata');
+const tamperedCatalog = JSON.parse(JSON.stringify(signedCatalog.catalog));
+tamperedCatalog.entries[0].asset_name = 'Tampered listing';
+assert.equal(verifyMarketplaceCatalog(tamperedCatalog, trustStore, '2026-07-16T10:30:00.000Z').ok, false,
+  'post-signature catalog tampering must be rejected');
+const expiredCatalog = verifyMarketplaceCatalog(signedCatalog.catalog, trustStore, '2026-09-16T10:30:00.000Z');
+assert.equal(expiredCatalog.ok, false, 'expired catalogs must not appear current');
+if (!expiredCatalog.ok) assert.equal(expiredCatalog.code, 'catalog_expired');
+const futureCatalog = verifyMarketplaceCatalog(signedCatalog.catalog, trustStore, '2026-07-01T10:30:00.000Z');
+assert.equal(futureCatalog.ok, false, 'implausibly future catalogs must be rejected');
+if (!futureCatalog.ok) assert.equal(futureCatalog.code, 'catalog_not_yet_valid');
+assert.equal(signMarketplaceCatalog({ ...unsignedCatalog, entries: [{ ...unsignedCatalog.entries[0], package_url: 'http://insecure.example/package.json' }] }, officialKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()).ok, false,
+  'catalog signing must refuse non-HTTPS package locations');
+assert.equal(signMarketplaceCatalog({ ...unsignedCatalog, entries: [unsignedCatalog.entries[0], unsignedCatalog.entries[0]] }, officialKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()).ok, false,
+  'catalog signing must refuse duplicate package or asset identities');
+const changedBytes = Buffer.from(cameraPackageBytes);
+changedBytes[changedBytes.length - 2] ^= 1;
+const changedDownload = verifyMarketplaceCatalogPackage({ entry: verifiedCatalog.verified.catalog.entries[0], bytes: changedBytes, trustStore });
+assert.equal(changedDownload.ok, false, 'download byte tampering must be rejected before package parsing');
+if (!changedDownload.ok) assert.equal(changedDownload.code, 'package_file_digest_mismatch');
+const mismatchedListing = verifyMarketplaceCatalogPackage({
+  entry: { ...verifiedCatalog.verified.catalog.entries[0], asset_name: 'Different catalog identity' },
+  bytes: cameraPackageBytes,
+  trustStore
+});
+assert.equal(mismatchedListing.ok, false, 'catalog/package metadata divergence must be rejected rather than repaired');
+if (!mismatchedListing.ok) assert.equal(mismatchedListing.code, 'package_catalog_metadata_mismatch');
+assert.equal(verifyMarketplaceCatalog(signedCatalog.catalog, trustStore.map((entry) => ({ ...entry, revoked: true })), '2026-07-16T10:30:00.000Z').ok, false,
+  'revoked catalog publishers must immediately lose catalog authority');
 const cameraInstalled = installMarketplacePackage({
   rawPackage: cameraPackage,
   trustStore,
@@ -516,7 +576,7 @@ const duplicateRecords = { ...durableState, records: [importedEnabled.record, im
 assert.equal(restoreMarketplaceState(duplicateRecords, trustStore).ok, false,
   'duplicate persisted identities must reject atomically');
 
-console.log('Marketplace trust-boundary and Virtual Lab binding tests passed (58 cases).');
+console.log('Marketplace trust-boundary, signed catalog, and Virtual Lab binding tests passed (69 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

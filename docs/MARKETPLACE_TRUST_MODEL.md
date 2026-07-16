@@ -1,10 +1,11 @@
 # Marketplace trust model
 
-Status: v0.6 local Marketplace alpha foundation. The desktop app provides a
+Status: v0.6 Marketplace distribution foundation. The desktop app provides a
 local signed-package browser, durable install/trust state, disabled-by-default
-installation, separate simulation enablement, publisher revocation, and clean
-uninstall. There is no network catalog or provisioned production official key
-yet, so this document does not claim the commercial Marketplace is complete.
+installation, separate simulation enablement, publisher revocation, clean
+uninstall, and a shared signed-catalog verification kernel. Network acquisition,
+production official-key provisioning, and publish-back UI remain release work,
+so this document does not yet claim the commercial Marketplace is complete.
 
 Marketplace packages are declarative data. They never contain adapters,
 scripts, commands, hooks, endpoints, credentials, or post-install behavior.
@@ -54,6 +55,20 @@ does not prove that the package is safe and never grants execution authority.
   is no silent repair, downgrade, or retry.
 - The desktop browser accepts JSON package/key files through bounded main-
   process dialogs. The preload bridge exposes no filesystem access.
+
+## Signed catalog boundary
+
+- A catalog is strict versioned JSON signed with Ed25519 by a key already in
+  the consumer's local trust store. Catalog trust tiers are local policy.
+- Catalogs have mandatory generation and expiry timestamps. Expired or
+  implausibly future catalogs are rejected and are never presented as current.
+- Every package URL must use HTTPS. Catalog signing refuses HTTP listings.
+- Every entry binds both the exact downloaded file SHA-256 and the canonical
+  signed-package digest. Package id, version, asset id/name/type/support level,
+  signature, and current publisher trust must all match before review.
+- A valid catalog signature never substitutes for package signature or Reality
+  Asset validation. Any mismatch refuses the package; nothing is repaired,
+  narrowed, retried, or silently sourced elsewhere.
 
 ## Maintainer signing
 
