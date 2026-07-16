@@ -3,5 +3,6 @@ export * from './MarketplaceCatalog';
 export * from './MarketplaceDistribution';
 export * from './MarketplacePersistence';
 export * from './MarketplaceStore';
+export * from './MarketplaceSubmission';
 export * from './MarketplaceTrustStore';
 export * from './MarketplaceWorkspaceBridge';

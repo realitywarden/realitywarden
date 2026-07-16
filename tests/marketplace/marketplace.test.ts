@@ -3,6 +3,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   enableMarketplaceSimulation,
+  createMarketplaceSubmissionDraft,
   createEmptyMarketplaceState,
   installMarketplacePackage,
   bindMarketplaceAssetToVirtualLab,
@@ -19,6 +20,7 @@ import {
   revokeCommunityPublisher,
   signMarketplacePackage,
   serializeMarketplaceState,
+  serializeMarketplaceSubmissionDraft,
   trustCommunityPublisher,
   uninstallMarketplacePackage,
   verifyMarketplacePackage,
@@ -607,7 +609,41 @@ const duplicateRecords = { ...durableState, records: [importedEnabled.record, im
 assert.equal(restoreMarketplaceState(duplicateRecords, trustStore).ok, false,
   'duplicate persisted identities must reject atomically');
 
-console.log('Marketplace trust-boundary, distribution, signed catalog, and Virtual Lab binding tests passed (76 cases).');
+const verifiedSubmissionSource = verifyMarketplacePackage(valid, trustStore);
+if (!verifiedSubmissionSource.ok) throw new Error(verifiedSubmissionSource.detail);
+const submissionSource = {
+  kind: 'installed_marketplace_package' as const,
+  package_id: valid.package_id,
+  package_version: valid.package_version,
+  package_digest_sha256: verifiedSubmissionSource.verified.digestSha256,
+  asset_id: valid.asset.assetId,
+  asset_version: valid.asset.version,
+  publisher_name: verifiedSubmissionSource.verified.trustedPublisherName
+};
+const improvedAsset = { ...asset, version: '0.2.0', description: `${asset.description} Improved from governed device observations.` };
+assert.equal(createMarketplaceSubmissionDraft({ rawAsset: improvedAsset, source: submissionSource, changeSummary: 'Improved the profile from governed device observations.', confirmed: false }).ok, false,
+  'publish-back export must require an explicit confirmation');
+const submission = createMarketplaceSubmissionDraft({ rawAsset: improvedAsset, source: submissionSource, changeSummary: 'Improved the profile from governed device observations.', confirmed: true, now: '2026-07-16T11:00:00.000Z' });
+if (!submission.ok) throw new Error(submission.detail);
+assert.equal(submission.draft.execution_authority_granted, false);
+assert.equal(submission.draft.hardwareSignalSent, false);
+assert.equal(submission.draft.signature_present, false);
+assert.equal(submission.draft.trust_tier_granted, null);
+assert.doesNotThrow(() => serializeMarketplaceSubmissionDraft(submission.draft));
+assert.equal(createMarketplaceSubmissionDraft({ rawAsset: asset, source: submissionSource, changeSummary: 'No version bump must be refused.', confirmed: true }).ok, false,
+  'an installed-source improvement must increase the asset version');
+assert.equal(createMarketplaceSubmissionDraft({ rawAsset: { ...improvedAsset, assetId: 'renamed_asset' }, source: submissionSource, changeSummary: 'Identity replacement must be refused.', confirmed: true }).ok, false,
+  'an installed-source improvement may not replace the source identity');
+assert.equal(createMarketplaceSubmissionDraft({ rawAsset: { ...improvedAsset, postinstall: 'powershell -enc ...' }, source: submissionSource, changeSummary: 'Executable metadata must be refused.', confirmed: true }).ok, false,
+  'submission drafts must reject executable fields before export');
+assert.equal(createMarketplaceSubmissionDraft({ rawAsset: unsafeAsset, source: { kind: 'new_asset' }, changeSummary: 'Real authority escalation must be refused.', confirmed: true }).ok, false,
+  'submission drafts may never carry real-adapter authority');
+assert.throws(() => serializeMarketplaceSubmissionDraft({ ...submission.draft, asset_digest_sha256: '0'.repeat(64) }), /asset digest mismatch/,
+  'submission draft serialization must revalidate the exact asset digest');
+const originalSubmission = createMarketplaceSubmissionDraft({ rawAsset: { ...improvedAsset, assetId: 'original_submission_asset' }, source: { kind: 'new_asset' }, changeSummary: 'A new declarative asset can enter maintainer review.', confirmed: true });
+assert.equal(originalSubmission.ok, true, 'new declarative assets may be exported without inventing package provenance');
+
+console.log('Marketplace trust-boundary, distribution, submission, signed catalog, and Virtual Lab binding tests passed (84 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

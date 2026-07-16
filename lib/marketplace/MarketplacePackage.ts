@@ -93,7 +93,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function validatedMarketplaceAsset(raw: unknown):
+export function validateMarketplaceDraftAsset(raw: unknown):
   | { ok: true; asset: RealityAssetPackage }
   | { ok: false; detail: string } {
   if (!isPlainRecord(raw)) return { ok: false, detail: 'asset must be a JSON object' };
@@ -167,7 +167,7 @@ export function signMarketplacePackage(
   }
   const declarativeIssue = assertDeclarativeJson(parsed.data.asset, '$.asset');
   if (declarativeIssue) return failure('non_declarative_content', declarativeIssue);
-  const assetCheck = validatedMarketplaceAsset(parsed.data.asset);
+  const assetCheck = validateMarketplaceDraftAsset(parsed.data.asset);
   if (!assetCheck.ok) return failure('asset_rejected', assetCheck.detail);
   try {
     const unsigned = JSON.parse(canonicalMarketplaceJson(parsed.data)) as Omit<MarketplacePackage, 'signature'>;
@@ -220,7 +220,7 @@ export function verifyMarketplacePackage(
   }
   if (!validSignature) return failure('signature_mismatch', 'package content does not match its publisher signature');
 
-  const assetCheck = validatedMarketplaceAsset(parsed.data.asset);
+  const assetCheck = validateMarketplaceDraftAsset(parsed.data.asset);
   if (!assetCheck.ok) return failure('asset_rejected', assetCheck.detail);
 
   const normalized = JSON.parse(canonicalMarketplaceJson(parsed.data)) as MarketplacePackage;

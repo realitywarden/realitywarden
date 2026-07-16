@@ -3,9 +3,10 @@
 Status: v0.6 Marketplace distribution foundation. The desktop app provides a
 local signed-package browser, durable install/trust state, disabled-by-default
 installation, separate simulation enablement, publisher revocation, clean
-uninstall, and a shared signed-catalog verification kernel. Network acquisition,
-production official-key provisioning, and publish-back UI remain release work,
-so this document does not yet claim the commercial Marketplace is complete.
+uninstall, governed signed-catalog acquisition, and local publish-back draft
+export. Owner-controlled production credentials and the hosted catalog/review
+service remain release work, so this document does not yet claim the commercial
+Marketplace is complete.
 
 Marketplace packages are declarative data. They never contain adapters,
 scripts, commands, hooks, endpoints, credentials, or post-install behavior.
@@ -103,3 +104,21 @@ The command refuses invalid assets and non-declarative content before signing,
 uses exclusive output creation to avoid overwriting an existing package, and
 does not serialize a trust tier. Consumer trust policy remains independent of
 publisher claims.
+
+## Publish-back submission drafts
+
+The desktop Marketplace can review an improved Reality Asset JSON and export a
+strict `realitywarden.marketplace-submission-draft` file. This is a local handoff
+to the independent maintainer review/signing process, not an upload channel.
+
+- The main process reuses the authoritative declarative Marketplace asset
+  validator before export.
+- If the user claims an installed Marketplace package as the source, its
+  current signature, digest, trust, asset identity, and version are rechecked.
+  The improved asset must retain the asset id and increase its semantic version;
+  mismatches are refused, never rewritten.
+- The file states `local_draft_unsubmitted`, `signature_present: false`, null
+  granted trust, `execution_authority_granted: false`,
+  `real_adapter_enabled: false`, and `hardwareSignalSent: false`.
+- Export requires an explicit checkbox and an OS save choice, creates a new
+  file exclusively, and never uploads, retries, signs, or installs anything.

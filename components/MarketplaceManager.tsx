@@ -11,9 +11,11 @@ interface Review { canceled?: boolean; ok?: boolean; error?: string; rawPackage?
 interface CatalogEntry { package_id: string; package_version: string; asset_id: string; asset_name: string; device_type: string; support_level: 'simulation_only' | 'read_only'; package_url: string; package_file_sha256: string; package_digest_sha256: string }
 interface CatalogView { catalogId: string; generatedAt: string; expiresAt: string; digestSha256: string; trustTier: string; publisherName: string; entries: CatalogEntry[] }
 interface CatalogResponse { ok: boolean; error?: string; code?: string; source?: 'network' | 'verified_cache'; catalog?: CatalogView }
+interface SubmissionReview { canceled?: boolean; ok?: boolean; error?: string; rawAsset?: unknown; summary?: { assetId: string; assetName: string; assetVersion: string; assetDigestSha256: string; executionAuthorityGranted: false; realAdapterEnabled: false; hardwareSignalSent: false } }
 interface Bridge {
   state(): Promise<StateView>; browsePackage(): Promise<Review>; install(raw: unknown, confirmed: boolean): Promise<StateView>;
   catalog(useCache: boolean): Promise<CatalogResponse>; reviewCatalogPackage(id: string, version: string, digest: string): Promise<Review>;
+  browseSubmissionAsset(): Promise<SubmissionReview>; exportSubmissionDraft(rawAsset: unknown, sourcePackageId: string | null, changeSummary: string, confirmed: boolean): Promise<{ ok?: boolean; canceled?: boolean; error?: string; filePath?: string; digestSha256?: string }>;
   enableSimulation(id: string, confirmed: boolean): Promise<StateView>; uninstall(id: string, confirmed: boolean): Promise<StateView>;
   browsePublisher(): Promise<Review>; trustPublisher(raw: unknown, confirmed: boolean): Promise<StateView>;
   revokePublisher(id: string, confirmed: boolean): Promise<StateView>; resetState(confirmed: boolean): Promise<StateView>;
@@ -38,6 +40,9 @@ export function MarketplaceManager({
   const [packageReview, setPackageReview] = useState<Review | null>(null);
   const [publisherReview, setPublisherReview] = useState<Review | null>(null);
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
+  const [submissionReview, setSubmissionReview] = useState<SubmissionReview | null>(null);
+  const [submissionSource, setSubmissionSource] = useState<string>('new_asset');
+  const [changeSummary, setChangeSummary] = useState('');
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -73,6 +78,33 @@ export function MarketplaceManager({
       const result = await api()!.reviewCatalogPackage(entry.package_id, entry.package_version, catalog.catalog.digestSha256);
       setPackageReview(result);
       if (!result.ok) setMessage(result.error ?? (zh ? '目录包被拒绝。' : 'Catalog package rejected.'));
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
+  const browseSubmissionAsset = async () => {
+    setBusy(true); setMessage(null); setSubmissionReview(null); setConfirmed((current) => ({ ...current, submission: false }));
+    try {
+      const result = await api()!.browseSubmissionAsset();
+      if (!result.canceled) {
+        setSubmissionReview(result);
+        const matching = result.summary ? (state.records ?? []).find((record) => record.assetId === result.summary!.assetId) : undefined;
+        setSubmissionSource(matching?.packageId ?? 'new_asset');
+        if (!result.ok) setMessage(result.error ?? (zh ? '提交资产被拒绝。' : 'Submission asset rejected.'));
+      }
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
+  const exportSubmissionDraft = async () => {
+    if (!submissionReview?.ok || !submissionReview.rawAsset) return;
+    setBusy(true); setMessage(null);
+    try {
+      const result = await api()!.exportSubmissionDraft(submissionReview.rawAsset, submissionSource === 'new_asset' ? null : submissionSource, changeSummary, confirmed.submission === true);
+      if (result.canceled) setMessage(zh ? '已取消导出；没有上传任何内容。' : 'Export canceled; nothing was uploaded.');
+      else if (!result.ok) setMessage(result.error ?? (zh ? '提交草稿导出被拒绝。' : 'Submission draft export rejected.'));
+      else {
+        setMessage(zh ? `未签名提交草稿已导出：${result.filePath}；没有自动上传。` : `Unsigned submission draft exported: ${result.filePath}. Nothing was uploaded automatically.`);
+        setSubmissionReview(null); setSubmissionSource('new_asset'); setChangeSummary(''); setConfirmed((current) => ({ ...current, submission: false }));
+      }
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
@@ -131,6 +163,20 @@ export function MarketplaceManager({
             {record.state === 'installed_disabled' && <><label className="mt-3 flex gap-2 text-xs text-text-secondary"><input type="checkbox" checked={!!confirmed[`enable:${record.packageId}`]} onChange={() => toggle(`enable:${record.packageId}`)} />{zh ? '我明确启用此资产用于仿真；真机权限仍为 false。' : 'I explicitly enable this asset for simulation; real authority stays false.'}</label><button disabled={!confirmed[`enable:${record.packageId}`] || busy} type="button" onClick={() => void run(() => api()!.enableSimulation(record.packageId, true), zh ? '仿真已启用；真机权限仍为 false。' : 'Simulation enabled; real authority remains false.')} className="mt-2 text-xs font-semibold text-status-executed-soft disabled:opacity-40">{zh ? '二次确认启用仿真' : 'Second-confirm simulation'}</button></>}
             <label className="mt-3 flex gap-2 text-xs text-text-secondary"><input type="checkbox" checked={!!confirmed[`uninstall:${record.packageId}`]} onChange={() => toggle(`uninstall:${record.packageId}`)} />{zh ? '我确认完整卸载并移除运行时可见性。' : 'I confirm complete uninstall and removal from runtime visibility.'}</label><button disabled={!confirmed[`uninstall:${record.packageId}`] || busy} type="button" onClick={() => void run(() => api()!.uninstall(record.packageId, true), zh ? '已完整卸载。' : 'Fully uninstalled.')} className="mt-2 text-xs font-semibold text-status-blocked-soft disabled:opacity-40">{zh ? '卸载' : 'Uninstall'}</button>
           </article>)}</div>}
+        </section>
+
+        <section className="mt-5 border border-border p-4" aria-labelledby="marketplace-publish-back-title">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 id="marketplace-publish-back-title" className="font-semibold">{zh ? '4. 导出改进资产提交草稿' : '4. Export improved-asset submission draft'}</h3><p className="mt-1 max-w-3xl text-xs text-text-secondary">{zh ? '选择一个已改进、版本已递增的声明式 Reality Asset。主进程重新验证后只导出本地未签名草稿；不会上传、签名、授予信任或授予真机权限。' : 'Choose an improved, version-bumped declarative Reality Asset. After main-process revalidation, this only exports a local unsigned draft; it never uploads, signs, grants trust, or grants real-hardware authority.'}</p></div><span className="border border-status-warning-edge px-2 py-1 text-[10px] font-bold text-status-warning">LOCAL DRAFT · NOT SUBMITTED</span></div>
+          <button disabled={!state.ok || busy} type="button" onClick={() => void browseSubmissionAsset()} className="mt-3 border border-border bg-surface-raised px-3 py-2 text-sm font-semibold disabled:opacity-40">{zh ? '浏览改进资产 JSON…' : 'Browse improved asset JSON…'}</button>
+          {submissionReview?.ok && submissionReview.summary && <div className="mt-3 border border-status-warning-edge bg-status-warning-surface p-3 text-sm">
+            <div className="font-semibold text-status-warning">{submissionReview.summary.assetName} · v{submissionReview.summary.assetVersion}</div>
+            <div className="mt-1 text-xs text-text-secondary">{submissionReview.summary.assetId}</div><div className="mt-1 break-all font-mono text-[10px] text-text-muted">ASSET SHA-256 {submissionReview.summary.assetDigestSha256}</div>
+            <label className="mt-3 block text-xs font-semibold text-text-secondary">{zh ? '来源关系' : 'Source relationship'}<select value={submissionSource} onChange={(event) => setSubmissionSource(event.target.value)} className="mt-1 h-9 w-full border border-border bg-surface px-2 text-sm text-text-primary"><option value="new_asset">{zh ? '新资产（不声明 Marketplace 来源）' : 'New asset (no Marketplace source claim)'}</option>{(state.records ?? []).map((record) => <option key={record.packageId} value={record.packageId}>{record.packageId} · {record.assetId} · v{record.packageVersion}</option>)}</select></label>
+            <label className="mt-3 block text-xs font-semibold text-text-secondary">{zh ? '改进说明（10–2000 字）' : 'Change summary (10–2000 characters)'}<textarea value={changeSummary} onChange={(event) => setChangeSummary(event.target.value)} rows={3} maxLength={2000} className="mt-1 w-full resize-y border border-border bg-surface p-2 text-sm text-text-primary" /></label>
+            <div className="mt-2 text-xs font-bold text-status-warning">UNSIGNED · UNTRUSTED · NO UPLOAD · REAL AUTHORITY FALSE · hardwareSignalSent FALSE</div>
+            <label className="mt-3 flex gap-2 text-sm"><input type="checkbox" checked={!!confirmed.submission} onChange={() => toggle('submission')} />{zh ? '我确认仅导出本地未签名草稿；仍需独立维护者审阅与签名，且不会自动上传。' : 'I confirm exporting only a local unsigned draft; independent maintainer review/signing is still required, and nothing uploads automatically.'}</label>
+            <button disabled={!confirmed.submission || changeSummary.trim().length < 10 || busy} type="button" onClick={() => void exportSubmissionDraft()} className="mt-3 border border-status-warning-edge px-3 py-2 font-semibold text-status-warning disabled:opacity-40">{zh ? '导出未签名提交草稿…' : 'Export unsigned submission draft…'}</button>
+          </div>}
         </section>
       </div>
     </section>

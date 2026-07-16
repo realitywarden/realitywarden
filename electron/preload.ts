@@ -55,6 +55,9 @@ const api = {
       ipcRenderer.invoke('marketplace:reviewCatalogPackage', { packageId, packageVersion, catalogDigestSha256 }),
     runtimeAssets: () => ipcRenderer.invoke('marketplace:runtimeAssets'),
     browsePackage: () => ipcRenderer.invoke('marketplace:browsePackage'),
+    browseSubmissionAsset: () => ipcRenderer.invoke('marketplace:browseSubmissionAsset'),
+    exportSubmissionDraft: (rawAsset: unknown, sourcePackageId: string | null, changeSummary: string, confirmed: boolean) =>
+      ipcRenderer.invoke('marketplace:exportSubmissionDraft', { rawAsset, sourcePackageId, changeSummary, confirmed }),
     install: (rawPackage: unknown, confirmed: boolean) => ipcRenderer.invoke('marketplace:install', { rawPackage, confirmed }),
     enableSimulation: (packageId: string, confirmed: boolean) => ipcRenderer.invoke('marketplace:enableSimulation', { packageId, confirmed }),
     uninstall: (packageId: string, confirmed: boolean) => ipcRenderer.invoke('marketplace:uninstall', { packageId, confirmed }),

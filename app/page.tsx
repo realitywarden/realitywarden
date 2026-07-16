@@ -155,6 +155,8 @@ declare global {
         reviewCatalogPackage: (packageId: string, packageVersion: string, catalogDigestSha256: string) => Promise<unknown>;
         runtimeAssets: () => Promise<unknown>;
         browsePackage: () => Promise<unknown>;
+        browseSubmissionAsset: () => Promise<unknown>;
+        exportSubmissionDraft: (rawAsset: unknown, sourcePackageId: string | null, changeSummary: string, confirmed: boolean) => Promise<unknown>;
         install: (rawPackage: unknown, confirmed: boolean) => Promise<unknown>;
         enableSimulation: (packageId: string, confirmed: boolean) => Promise<unknown>;
         uninstall: (packageId: string, confirmed: boolean) => Promise<unknown>;

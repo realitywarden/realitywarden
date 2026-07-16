@@ -62,6 +62,14 @@ interface VerifiedCatalog {
   trustedPublisherName: string;
 }
 
+interface MarketplaceSubmissionDraft {
+  asset: Record<string, unknown> & { assetId: string; name: string; version: string };
+  asset_digest_sha256: string;
+  execution_authority_granted: false;
+  real_adapter_enabled: false;
+  hardwareSignalSent: false;
+}
+
 interface MarketplaceRuntimeModule {
   createEmptyMarketplaceState(): PersistentState;
   restoreMarketplaceState(raw: unknown, bundled: readonly TrustEntry[]):
@@ -78,8 +86,12 @@ interface MarketplaceRuntimeModule {
     | { ok: true; package: unknown; digestSha256: string; fileSha256: string; trustTier: string; trustedPublisherName: string }
     | { ok: false; code: string; detail: string };
   verifyMarketplacePackage(raw: unknown, trustStore: readonly TrustEntry[]):
-    | { ok: true; verified: { package: Record<string, unknown> & { package_id: string; package_version: string; asset: Record<string, unknown> & { assetId: string; name: string } }; digestSha256: string; trustTier: string; trustedPublisherName: string } }
+    | { ok: true; verified: { package: Record<string, unknown> & { package_id: string; package_version: string; asset: Record<string, unknown> & { assetId: string; name: string; version: string } }; digestSha256: string; trustTier: string; trustedPublisherName: string } }
     | { ok: false; code: string; detail: string };
+  createMarketplaceSubmissionDraft(input: Record<string, unknown>):
+    | { ok: true; draft: MarketplaceSubmissionDraft; digestSha256: string }
+    | { ok: false; detail: string };
+  serializeMarketplaceSubmissionDraft(draft: MarketplaceSubmissionDraft): string;
   installMarketplacePackage(input: Record<string, unknown>): MutationResult;
   enableMarketplaceSimulation(input: Record<string, unknown>): MutationResult;
   marketplaceRuntimeAsset(record: PersistentState['records'][number], trustStore: readonly TrustEntry[]): unknown | null;
@@ -407,6 +419,59 @@ class MarketplaceDesktopStore {
     };
   }
 
+  reviewSubmissionAsset(rawAsset: unknown) {
+    const ready = this.ready();
+    if (!ready.ok) return ready;
+    const checked = ready.runtime.createMarketplaceSubmissionDraft({
+      rawAsset,
+      source: { kind: 'new_asset' },
+      changeSummary: 'Local review only; this text is not exported.',
+      confirmed: true
+    });
+    if (!checked.ok) return { ok: false, error: checked.detail };
+    return {
+      ok: true,
+      rawAsset: checked.draft.asset,
+      summary: {
+        assetId: checked.draft.asset.assetId,
+        assetName: checked.draft.asset.name,
+        assetVersion: checked.draft.asset.version,
+        assetDigestSha256: checked.draft.asset_digest_sha256,
+        executionAuthorityGranted: false,
+        realAdapterEnabled: false,
+        hardwareSignalSent: false
+      }
+    };
+  }
+
+  prepareSubmissionDraft(rawAsset: unknown, sourcePackageId: string | null, changeSummary: string, confirmed: boolean):
+    | { ok: true; draft: MarketplaceSubmissionDraft; digestSha256: string; serialized: string }
+    | { ok: false; error: string } {
+    const ready = this.ready();
+    if (!ready.ok) return ready;
+    let source: Record<string, unknown> = { kind: 'new_asset' };
+    if (sourcePackageId !== null) {
+      const record = ready.state.records.find((candidate) => candidate.packageId === sourcePackageId);
+      if (!record) return { ok: false, error: 'submission source package is not installed' };
+      const checked = ready.runtime.verifyMarketplacePackage(record.package, this.trustStore);
+      if (!checked.ok || checked.verified.digestSha256 !== record.digestSha256) {
+        return { ok: false, error: `submission source package failed current trust and digest verification: ${checked.ok ? 'digest mismatch' : `${checked.code}: ${checked.detail}`}` };
+      }
+      source = {
+        kind: 'installed_marketplace_package',
+        package_id: record.packageId,
+        package_version: record.packageVersion,
+        package_digest_sha256: record.digestSha256,
+        asset_id: record.assetId,
+        asset_version: checked.verified.package.asset.version,
+        publisher_name: record.publisherName
+      };
+    }
+    const result = ready.runtime.createMarketplaceSubmissionDraft({ rawAsset, source, changeSummary, confirmed });
+    if (!result.ok) return { ok: false, error: result.detail };
+    return { ok: true, draft: result.draft, digestSha256: result.digestSha256, serialized: ready.runtime.serializeMarketplaceSubmissionDraft(result.draft) };
+  }
+
   install(rawPackage: unknown, confirmed: boolean) {
     const ready = this.ready();
     if (!ready.ok) return ready;
@@ -501,6 +566,28 @@ export function registerMarketplaceIpc() {
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
     try { return { canceled: false, ...store.reviewPackage(readJsonFile(result.filePaths[0])) }; }
     catch (error) { return { canceled: false, ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle('marketplace:browseSubmissionAsset', async () => {
+    const result = await dialog.showOpenDialog({ title: 'Review improved Reality Asset for Marketplace submission', properties: ['openFile'], filters: [{ name: 'Reality Asset JSON', extensions: ['json'] }] });
+    if (result.canceled || !result.filePaths[0]) return { canceled: true };
+    try { return { canceled: false, ...store.reviewSubmissionAsset(readJsonFile(result.filePaths[0])) }; }
+    catch (error) { return { canceled: false, ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle('marketplace:exportSubmissionDraft', async (_event, payload: { rawAsset?: unknown; sourcePackageId?: unknown; changeSummary?: unknown; confirmed?: unknown }) => {
+    const sourcePackageId = payload?.sourcePackageId === null ? null : typeof payload?.sourcePackageId === 'string' ? payload.sourcePackageId : '';
+    const prepared = store.prepareSubmissionDraft(payload?.rawAsset, sourcePackageId, typeof payload?.changeSummary === 'string' ? payload.changeSummary : '', payload?.confirmed === true);
+    if (!prepared.ok) return prepared;
+    const assetId = prepared.draft.asset.assetId.replace(/[^a-zA-Z0-9._-]/g, '-');
+    const result = await dialog.showSaveDialog({ title: 'Export unsigned Marketplace submission draft', defaultPath: `${assetId}-${prepared.draft.asset.version}-marketplace-submission.json`, filters: [{ name: 'Marketplace submission draft', extensions: ['json'] }] });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    try {
+      const handle = fs.openSync(result.filePath, 'wx');
+      try { fs.writeFileSync(handle, prepared.serialized, 'utf8'); fs.fsyncSync(handle); }
+      finally { fs.closeSync(handle); }
+      return { ok: true, canceled: false, filePath: result.filePath, digestSha256: prepared.digestSha256, executionAuthorityGranted: false, realAdapterEnabled: false, hardwareSignalSent: false };
+    } catch (error) {
+      return { ok: false, canceled: false, error: `Submission draft export failed without upload or retry: ${error instanceof Error ? error.message : String(error)}` };
+    }
   });
   ipcMain.handle('marketplace:install', (_event, payload: { rawPackage?: unknown; confirmed?: unknown }) => store.install(payload?.rawPackage, payload?.confirmed === true));
   ipcMain.handle('marketplace:enableSimulation', (_event, payload: { packageId?: unknown; confirmed?: unknown }) => store.enable(typeof payload?.packageId === 'string' ? payload.packageId : '', payload?.confirmed === true));
