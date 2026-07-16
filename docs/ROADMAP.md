@@ -95,12 +95,21 @@ pass their normal safety path, and the full repository verify chain passes.
   any other. Forbidden zones and interlocks apply live during the drag (the
   twin refuses visibly). Invariant 6 is satisfied by distinct REAL marking
   and the confirmation ritual, not by banishing real devices from 3D.
-- UI-integrated governed flashing: a flash button that consumes firmware
-  write orders (sha256-paired reviewed images only). Never an arbitrary-code
-  IDE; that is the product's differentiator, not a limitation.
-- Teach mode (feedback hardware only): record = read-only sampling from
-  encoder/feedback servos, replay = every step through the safety gate.
-  Structurally impossible on open-loop SG90; requires feedback devices.
+- Built-in governed flasher (owner decision: users never touch the Arduino
+  IDE): embed esptool-js in the desktop app and flash ONLY reviewed prebuilt
+  images paired through firmware write orders (sha256 three-way match).
+  Firmware variants (pulse_width / serial_ttl) ship as prebuilt images
+  selected by the configuration draft - zero config, zero compile, zero IDE
+  for users. New firmware capability enters via the ecosystem review
+  pipeline, never via wrapping an arbitrary-code IDE.
+- Teach mode, two tiers (both REAL, differing only in input method):
+  Tier 1 jog-teach (works on the open-loop SG90 today): UI jog buttons move
+  the real servo in small GATED steps; the operator records waypoints of
+  commands (commands ARE positions on open-loop hardware) into an Action
+  Manifest; replay runs every step through the safety gate.
+  Tier 2 hand-guide teach (feedback hardware, e.g. bus servos): record =
+  read-only encoder sampling while physically moving the device, replay =
+  every step through the gate.
 - DONE 2026-07-16: auto-reconnect of the read-only panel after real
   execution releases the port.
 
