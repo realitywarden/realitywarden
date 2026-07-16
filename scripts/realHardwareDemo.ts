@@ -137,7 +137,12 @@ async function main() {
   const scenario = argValue('--scenario') ?? 'all';
 
   if (scenario === 'all' || scenario === '1') {
-    await runScenario('Scenario 1: rotate servo to 45° (expect: executed, servo moves)', 45);
+    // Park at 0° first THROUGH THE SAME GATE (no bypass), so the following
+    // 45° command produces a visible sweep even when the servo already sat
+    // at 45° from a previous run. Both commands are gated and audited.
+    await runScenario('Scenario 1 (prep): park servo at 0° through the same safety gate', 0);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await runScenario('Scenario 1: rotate servo to 45° (expect: executed, servo visibly sweeps from 0°)', 45);
   }
   if (scenario === 'all' || scenario === '2') {
     await runScenario('Scenario 2: rotate servo to 200° (expect: BLOCKED, servo must NOT move)', 200);

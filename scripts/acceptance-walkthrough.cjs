@@ -69,8 +69,12 @@ if (process.argv.includes('--selftest')) {
 const port = argValue('--port');
 if (!port) {
   console.error('缺少 --port，例如：npm run hardware:acceptance -- --port COM3');
+  console.error('只补跑部分场景：npm run hardware:acceptance -- --port COM3 --only 1');
   process.exit(1);
 }
+const onlyArg = argValue('--only');
+const selected = new Set((onlyArg ?? '1,2,3,4').split(',').map((v) => v.trim()));
+const wants = (n) => selected.has(String(n));
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (question) => new Promise((resolve) => rl.question(question, (answer) => resolve(answer.trim())));
@@ -130,6 +134,7 @@ async function main() {
   console.log('前置：固件为脉宽版且诊断 8/8 PASS；舵机橙线→GPIO18；传感器工作正常。');
 
   // ---------- 场景 1 + 2 ----------
+  if (wants(1) || wants(2)) {
   await pressEnter('【场景1+2】把书/硬板立在探头正前方 20~30cm 处（离开 10cm 安全线远一点）');
   const run12 = runDemo([]);
   if (!run12.audit) { console.error('未能解析审计日志，检查上面的输出。'); process.exit(1); }
@@ -147,8 +152,10 @@ async function main() {
   else console.log('场景1未同时满足审计+人工观察，未保存证据。');
   if (s2ok && servoStayedFor200) saveEvidence(2, 'move_to_angle 200 -> blocked angle_out_of_range, servo still', [s2], { servo_stayed_still: true });
   else console.log('场景2未同时满足审计+人工观察，未保存证据。');
+  }
 
   // ---------- 场景 3 ----------
+  if (wants(3)) {
   await pressEnter('【场景3】用手掌或书挡在探头正前方【不到 10cm】的位置，并保持不动');
   const run3 = runDemo(['--scenario', '3']);
   const s3 = findEntry(run3.audit, (e) => String(e?.message ?? '').includes('min_safe_distance'));
@@ -158,8 +165,10 @@ async function main() {
   if (s3ok && !servoStayed3) p0Abort('距离互锁被标记为拦截，但舵机动了');
   if (s3ok && servoStayed3) saveEvidence(3, 'obstacle <10cm -> blocked min_safe_distance_violation, servo still', [s3], { servo_stayed_still: true });
   else console.log('场景3未同时满足审计+人工观察，未保存证据。提示：手要保持在 10cm 以内不动，重跑本向导可重试。');
+  }
 
   // ---------- 场景 4 ----------
+  if (wants(4)) {
   await pressEnter('【场景4】拔掉传感器的 VCC 线（红色那根，从红色电源条上拔出即可）');
   const run4 = runDemo(['--scenario', '4']);
   const s4 = findEntry(run4.audit, (e) => String(e?.message ?? '').includes('sensor_missing'));
@@ -171,6 +180,7 @@ async function main() {
   else console.log('场景4未同时满足审计+人工观察，未保存证据。');
 
   console.log('\n>>> 把传感器 VCC 线插回红色电源条。');
+  }
 
   const count = fs.existsSync(EVIDENCE_DIR) ? fs.readdirSync(EVIDENCE_DIR).filter((n) => n.endsWith('.json')).length : 0;
   console.log(`\n=== 完成：证据 ${count}/4 ===`);
