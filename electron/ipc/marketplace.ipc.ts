@@ -19,7 +19,17 @@ interface PersistentState {
   schema: 'realitywarden.marketplace-state';
   schema_version: 1;
   communityTrustEntries: TrustEntry[];
-  records: Array<Record<string, unknown> & { packageId: string; assetId: string }>;
+  records: Array<Record<string, unknown> & {
+    packageId: string;
+    packageVersion: string;
+    assetId: string;
+    digestSha256: string;
+    trustTier: 'official' | 'verified' | 'community';
+    publisherName: string;
+    state: 'installed_disabled' | 'simulation_enabled';
+    executionAuthorityGranted: false;
+    realAdapterEnabled: false;
+  }>;
   audit: unknown[];
 }
 
@@ -34,6 +44,7 @@ interface MarketplaceRuntimeModule {
     | { ok: false; code: string; detail: string };
   installMarketplacePackage(input: Record<string, unknown>): MutationResult;
   enableMarketplaceSimulation(input: Record<string, unknown>): MutationResult;
+  marketplaceRuntimeAsset(record: PersistentState['records'][number], trustStore: readonly TrustEntry[]): unknown | null;
   uninstallMarketplacePackage(input: Record<string, unknown>): MutationResult;
   trustCommunityPublisher(input: Record<string, unknown>):
     | { ok: true; entries: TrustEntry[]; entry: TrustEntry; fingerprintSha256: string }
@@ -121,6 +132,35 @@ class MarketplaceDesktopStore {
       return { ok: false, error: this.blockedError ?? 'marketplace state unavailable', quarantinedPath: this.quarantinedPath, records: [], communityTrustEntries: [] };
     }
     return { ok: true, records: this.state.records, communityTrustEntries: this.state.communityTrustEntries, audit: this.state.audit };
+  }
+
+  runtimeAssets() {
+    const ready = this.ready();
+    if (!ready.ok) return ready;
+    const assets: Array<Record<string, unknown>> = [];
+    const rejected: Array<{ packageId: string; detail: string }> = [];
+    for (const record of ready.state.records) {
+      if (record.state !== 'simulation_enabled') continue;
+      const asset = ready.runtime.marketplaceRuntimeAsset(record, this.trustStore);
+      if (!asset) {
+        rejected.push({
+          packageId: record.packageId,
+          detail: 'Enabled package was refused by current signature, digest, trust, or stored-metadata policy.'
+        });
+        continue;
+      }
+      assets.push({
+        packageId: record.packageId,
+        packageVersion: record.packageVersion,
+        digestSha256: record.digestSha256,
+        trustTier: record.trustTier,
+        publisherName: record.publisherName,
+        asset,
+        executionAuthorityGranted: false,
+        realAdapterEnabled: false
+      });
+    }
+    return { ok: true, assets, rejected };
   }
 
   private ready() {
@@ -255,6 +295,7 @@ class MarketplaceDesktopStore {
 export function registerMarketplaceIpc() {
   const store = new MarketplaceDesktopStore();
   ipcMain.handle('marketplace:state', () => store.snapshot());
+  ipcMain.handle('marketplace:runtimeAssets', () => store.runtimeAssets());
   ipcMain.handle('marketplace:browsePackage', async () => {
     const result = await dialog.showOpenDialog({ title: 'Review signed RealityWarden package', properties: ['openFile'], filters: [{ name: 'Signed marketplace package', extensions: ['json'] }] });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };

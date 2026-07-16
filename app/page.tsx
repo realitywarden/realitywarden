@@ -143,6 +143,7 @@ declare global {
       hardware?: HardwareBridge;
       marketplace?: {
         state: () => Promise<unknown>;
+        runtimeAssets: () => Promise<unknown>;
         browsePackage: () => Promise<unknown>;
         install: (rawPackage: unknown, confirmed: boolean) => Promise<unknown>;
         enableSimulation: (packageId: string, confirmed: boolean) => Promise<unknown>;

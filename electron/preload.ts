@@ -50,6 +50,7 @@ const api = {
   },
   marketplace: {
     state: () => ipcRenderer.invoke('marketplace:state'),
+    runtimeAssets: () => ipcRenderer.invoke('marketplace:runtimeAssets'),
     browsePackage: () => ipcRenderer.invoke('marketplace:browsePackage'),
     install: (rawPackage: unknown, confirmed: boolean) => ipcRenderer.invoke('marketplace:install', { rawPackage, confirmed }),
     enableSimulation: (packageId: string, confirmed: boolean) => ipcRenderer.invoke('marketplace:enableSimulation', { packageId, confirmed }),
