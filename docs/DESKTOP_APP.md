@@ -177,7 +177,17 @@ Packaging entry point:
 npm run desktop:pack
 ```
 
-`desktop:pack` is the Windows installer path. It uses `electron-builder` with an `nsis` x64 target and writes artifacts to `release/`. The command packages the compiled shared hardware safety runtime, the Next production runtime, the SHA256-paired prebuilt firmware image, and rebuilt Windows `serialport` native bindings. Next runs from `app.asar.unpacked` because Windows child processes require a real working directory; Electron and the shared safety runtime remain loaded from the packaged application.
+`desktop:pack` is the internal Windows installer/acceptance path. It uses `electron-builder` with an `nsis` x64 target and writes artifacts to `release/`. It may be used without production Marketplace provisioning or a code-signing certificate, so its output must not be published as a production release.
+
+The publishable entry point is:
+
+```bash
+npm run desktop:pack:production
+```
+
+That command fails before packaging unless `marketplace/distribution.json` passes the compiled authoritative production validator, binds a fixed HTTPS catalog to a bundled non-revoked Official Ed25519 public key, and `WIN_CSC_LINK` or `CSC_LINK` supplies Windows code-signing input. `marketplace/distribution.json` is release-specific and ignored by Git. Generate it from public material with `npm run marketplace:provision`; private Marketplace signing keys must never enter the application or repository. The exact config is packaged as `resources/marketplace/distribution.json` and package verification requires a byte-for-byte match.
+
+Both paths package the compiled shared hardware safety runtime, the Next production runtime, the SHA256-paired prebuilt firmware image, and rebuilt Windows `serialport` native bindings. Next runs from `app.asar.unpacked` because Windows child processes require a real working directory; Electron and the shared safety runtime remain loaded from the packaged application.
 
 After electron-builder finishes, `scripts/verify-electron-package.cjs` fails the command unless all required asar/unpacked entries, native bindings, PDF/manual-import runtime, firmware checksums, branding metadata, and the versioned NSIS artifact are present. `desktop:pack` then runs a packaged first-run renderer smoke: a hidden, isolated Electron session starts the bundled Next server and must load the real AppHeader, Device Navigator, CommandDock, sole Run/Stop pair, simulation boundary, independent REAL HARDWARE boundary, and preload bridge. Any missing contract exits non-zero. The same smoke check can be repeated manually without installing:
 
@@ -206,7 +216,7 @@ reinstall/uninstall lifecycle evidence. The installed lifecycle includes a real
 renderer journey that proves one safe task reaches `completed`, one unsafe task
 reaches `blocked`, and Audit & Governor is selected with evidence after both.
 If Git metadata is unavailable it says
-so instead of guessing. It explicitly does not claim code-signing status,
+so instead of guessing. The historical internal artifact below does not claim code-signing status,
 historical cross-version migration, physical hardware acceptance, or a verified
 physical outcome.
 

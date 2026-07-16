@@ -54,6 +54,7 @@ node lib/desktop/runDesktopTests.js
 node lib/conformance/runConformance.js
 npm run verify
 npm run desktop:pack
+npm run desktop:pack:production
 ```
 
 `desktop:pack` must fail unless the versioned NSIS installer, app asar, unpacked
@@ -99,9 +100,12 @@ acceptance, and the Windows install lifecycle succeed. It records the exact
 installer SHA256 and size, packaged Next BUILD_ID, startup/design/lifecycle
 manifest digests, source commit, and clean/dirty worktree state. Companion
 checksums protect all evidence records.
-They deliberately mark code signing, migration from a different historical
-version, and optional physical-hardware acceptance as not assessed rather than
-inventing evidence.
+Historical internal-pack evidence deliberately marks code signing, migration
+from a different historical version, and optional physical-hardware acceptance
+as not assessed rather than inventing evidence. A publishable build must use
+`desktop:pack:production`, which additionally refuses to start unless the
+release has a production-valid Official signed-catalog configuration and a
+Windows code-signing certificate input.
 
 Verified local artifact record (2026-07-15):
 
@@ -124,7 +128,8 @@ Verified local artifact record (2026-07-15):
 
 ## Manual release actions outside this report
 
-- optional code signing and publisher identity;
+- owner-controlled Official Marketplace public key/catalog provisioning;
+- owner-controlled Windows certificate issuance and signing identity;
 - manual tag and GitHub release creation;
 - installer upload and checksum publication;
 - optional refreshed demo or physical reference-kit evidence.

@@ -84,6 +84,17 @@ for (const image of firmwareImages) {
   assert.equal(actual, expected, `packaged firmware integrity check failed: ${path.basename(image)}`);
 }
 
+const sourceMarketplaceDistribution = path.join(root, 'marketplace', 'distribution.json');
+if (fs.existsSync(sourceMarketplaceDistribution)) {
+  const packagedMarketplaceDistribution = path.join(resourcesDir, 'marketplace', 'distribution.json');
+  assert(fs.existsSync(packagedMarketplaceDistribution), 'provisioned Marketplace distribution config must be packaged as an external resource');
+  assert.deepEqual(
+    fs.readFileSync(packagedMarketplaceDistribution),
+    fs.readFileSync(sourceMarketplaceDistribution),
+    'packaged Marketplace distribution config must exactly match the release-provisioned input'
+  );
+}
+
 const executable = path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe');
 const supportDir = path.join(resourcesDir, 'support');
 for (const required of ['SUPPORT.md', 'SUPPORT.html', 'WINDOWS_TRIAL_GUIDE.md', 'EVALUATION_GUIDE.md', 'REAL_HARDWARE_ESP32.md']) {
@@ -112,5 +123,6 @@ console.log('- Compiled Electron + shared safety runtime + Next production outpu
 console.log('- Manual/PDF import UI and pinned pdfjs runtime are present.');
 console.log(`- serialport native binding(s): ${unpackedBindings.length}`);
 console.log(`- Firmware image(s) with valid sha256: ${firmwareImages.length}`);
+console.log(`- Marketplace distribution config: ${fs.existsSync(sourceMarketplaceDistribution) ? 'present and byte-exact' : 'not provisioned (development package)'}`);
 console.log('- Offline support guide and recovery references are present.');
 console.log('- Branded executable, installer, and uninstaller icon configuration is present.');

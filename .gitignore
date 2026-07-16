@@ -36,3 +36,4 @@ demo/
 .tmp-virtual-loopback-test/
 dist-electron-runtime/
 .tmp-acceptance-wizard/
+marketplace/distribution.json

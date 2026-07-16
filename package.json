@@ -19,6 +19,7 @@
     "desktop:dev": "node scripts/build-electron.cjs && electron dist-electron/main.js",
     "desktop:build": "npm run build && node scripts/build-electron.cjs",
     "desktop:pack": "npm run desktop:build && node scripts/pack-electron.cjs",
+    "desktop:pack:production": "npm run desktop:build && node scripts/verify-marketplace-release-config.cjs && node scripts/pack-electron.cjs",
     "desktop:prod": "npm run desktop:build && electron dist-electron/main.js --prod",
     "desktop:smoke": "npm run desktop:build && electron dist-electron/main.js --prod --smoke-test",
     "desktop:design-acceptance": "npm run desktop:build && node scripts/run-product-design-acceptance.cjs",
@@ -33,7 +34,7 @@
     "test:support": "node scripts/build-electron.cjs && node tests/support/runSupportTests.cjs",
     "test:accessibility": "node lib/ui/runAccessibilityTests.js",
     "test:assets": "node lib/assets/runAssetTests.js",
-    "test:release": "node lib/release/runReleaseTests.js",
+    "test:release": "node lib/release/runReleaseTests.js && node scripts/verify-marketplace-release-config.cjs --self-test",
     "test:launch-closure": "node lib/release/runLaunchClosureTests.js && npm run test:project-files",
     "test:project-files": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-project-file-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node ' + tmp + '/tests/project-files/projectFileContract.test.js', { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\"",
     "test:protocol": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-open-reality-protocol-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node tests/open-reality-protocol/runProtocolTests.js ' + tmp, { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\"",
@@ -100,6 +101,13 @@
         ]
       },
       {
+        "from": "marketplace",
+        "to": "marketplace",
+        "filter": [
+          "distribution.json"
+        ]
+      },
+      {
         "from": "next.config.mjs",
         "to": "app.asar.unpacked/next.config.mjs"
       },
@@ -121,7 +129,7 @@
     "win": {
       "icon": "assets/branding/realitywarden.ico",
       "executableName": "RealityWarden",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         {
           "target": "nsis",

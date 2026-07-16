@@ -69,6 +69,24 @@ does not prove that the package is safe and never grants execution authority.
 - A valid catalog signature never substitutes for package signature or Reality
   Asset validation. Any mismatch refuses the package; nothing is repaired,
   narrowed, retried, or silently sourced elsewhere.
+- Production builds accept the catalog URL and Official public key only from
+  the release-provisioned `resources/marketplace/distribution.json`. The
+  renderer/preload cannot supply a URL. Network refresh and verified-cache use
+  are separate explicit actions; network failure never triggers cache fallback.
+
+Provision a release config from public key material only:
+
+```bash
+npm run marketplace:provision -- --public-key publisher-ed25519-public.pem \
+  --key-id official-catalog-v1 --name "RealityWarden Official Catalog" \
+  --tier official --catalog-url https://catalog.example/v1/catalog.json \
+  --out marketplace/distribution.json
+```
+
+`npm run desktop:pack:production` refuses an absent/unprovisioned config or an
+absent Windows code-signing certificate before packaging. The developer
+`desktop:pack` path remains available for internal acceptance and is not a
+publishable production artifact.
 
 ## Maintainer signing
 
