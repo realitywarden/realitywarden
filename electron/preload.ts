@@ -48,6 +48,17 @@ const api = {
     execute: (portPath: string, angle: number, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, angle, confirm }),
     executeManifest: (portPath: string, manifest: unknown, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, manifest, confirm })
   },
+  marketplace: {
+    state: () => ipcRenderer.invoke('marketplace:state'),
+    browsePackage: () => ipcRenderer.invoke('marketplace:browsePackage'),
+    install: (rawPackage: unknown, confirmed: boolean) => ipcRenderer.invoke('marketplace:install', { rawPackage, confirmed }),
+    enableSimulation: (packageId: string, confirmed: boolean) => ipcRenderer.invoke('marketplace:enableSimulation', { packageId, confirmed }),
+    uninstall: (packageId: string, confirmed: boolean) => ipcRenderer.invoke('marketplace:uninstall', { packageId, confirmed }),
+    browsePublisher: () => ipcRenderer.invoke('marketplace:browsePublisher'),
+    trustPublisher: (rawPublisher: unknown, confirmed: boolean) => ipcRenderer.invoke('marketplace:trustPublisher', { rawPublisher, confirmed }),
+    revokePublisher: (keyId: string, confirmed: boolean) => ipcRenderer.invoke('marketplace:revokePublisher', { keyId, confirmed }),
+    resetState: (confirmed: boolean) => ipcRenderer.invoke('marketplace:resetState', { confirmed })
+  },
   onMenuAction: (callback: (action: MenuAction) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, action: MenuAction) => callback(action);
     ipcRenderer.on('menu:action', listener);

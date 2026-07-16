@@ -8,6 +8,7 @@ import path from 'node:path';
 import { registerExportIpc } from './ipc/export.ipc';
 import { registerFileIpc } from './ipc/file.ipc';
 import { registerHardwareIpc } from './ipc/hardware.ipc';
+import { registerMarketplaceIpc } from './ipc/marketplace.ipc';
 import { registerProjectIpc } from './ipc/project.ipc';
 import { registerSupportIpc } from './ipc/support.ipc';
 import { createAppMenu } from './menus/appMenu';
@@ -658,6 +659,7 @@ function shutdownServer() {
 registerProjectIpc();
 registerFileIpc();
 registerHardwareIpc();
+registerMarketplaceIpc();
 registerExportIpc();
 const supportActions = createSupportActions(appRoot, getServerLogPath);
 registerSupportIpc(supportActions);

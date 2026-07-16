@@ -12,6 +12,7 @@ import { LabConfigurator } from '@/components/LabConfigurator';
 import { RealHardwarePanel } from '@/components/RealHardwarePanel';
 import { EvidenceSidebar } from '@/components/EvidenceSidebar';
 import { AppHeader } from '@/components/AppHeader';
+import { MarketplaceManager } from '@/components/MarketplaceManager';
 import { ManualImportWizard } from '@/components/ManualImportWizard';
 import { OperatorNotice } from '@/components/OperatorNotice';
 import type { OperatorNoticeAction, OperatorNoticeState } from '@/components/OperatorNotice';
@@ -140,6 +141,17 @@ declare global {
       };
       onMenuAction: (callback: (action: OpenRealityMenuAction) => void) => () => void;
       hardware?: HardwareBridge;
+      marketplace?: {
+        state: () => Promise<unknown>;
+        browsePackage: () => Promise<unknown>;
+        install: (rawPackage: unknown, confirmed: boolean) => Promise<unknown>;
+        enableSimulation: (packageId: string, confirmed: boolean) => Promise<unknown>;
+        uninstall: (packageId: string, confirmed: boolean) => Promise<unknown>;
+        browsePublisher: () => Promise<unknown>;
+        trustPublisher: (rawPublisher: unknown, confirmed: boolean) => Promise<unknown>;
+        revokePublisher: (keyId: string, confirmed: boolean) => Promise<unknown>;
+        resetState: (confirmed: boolean) => Promise<unknown>;
+      };
     };
   }
 }
@@ -1273,6 +1285,7 @@ export default function Home() {
   const [assetImportOpen, setAssetImportOpen] = useState(false);
   const [actionComposerOpen, setActionComposerOpen] = useState(false);
   const [manualImportOpen, setManualImportOpen] = useState(false);
+  const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [customActions, setCustomActions] = useState<ActionManifest[]>([]);
   const [realHardwareTelemetry, setRealHardwareTelemetry] = useState<RealHardwareTelemetry>({
     connected: false,
@@ -1431,6 +1444,11 @@ export default function Home() {
   const closeManualImport = useCallback(() => {
     setManualImportOpen(false);
     window.setTimeout(() => document.querySelector<HTMLElement>('[data-file-menu-trigger]')?.focus(), 0);
+  }, []);
+
+  const closeMarketplace = useCallback(() => {
+    setMarketplaceOpen(false);
+    window.setTimeout(() => document.querySelector<HTMLElement>('[data-marketplace-trigger]')?.focus(), 0);
   }, []);
 
   const requestProjectFile = useCallback(() => {
@@ -2906,7 +2924,7 @@ export default function Home() {
   }, [effectiveSelectedProfile, labReport?.result, prompt, replayPlaying, runPreviewTask, selectedScenario.mode, selectedWorkspaceDeviceId, semanticWorkspaceDevices]);
 
   return (
-    <div className={`industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary ${assetImportOpen || actionComposerOpen || manualImportOpen ? 'modal-surface-active' : ''}`}>
+    <div className={`industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary ${assetImportOpen || actionComposerOpen || manualImportOpen || marketplaceOpen ? 'modal-surface-active' : ''}`}>
       <AppHeader
         language={language}
         projectName={projectName}
@@ -2927,6 +2945,7 @@ export default function Home() {
         onAbout={showDesktopAbout}
         onQuickStart={reopenFirstRunGuide}
         onActions={() => setActionComposerOpen(true)}
+        onMarketplace={() => setMarketplaceOpen(true)}
         onExportReport={() => void exportCurrentLabReport()}
         onExportAdapter={() => void exportDeploymentConfig()}
         onLanguageChange={handleLanguageChange}
@@ -3221,6 +3240,13 @@ export default function Home() {
           }}
             onClose={closeManualImport}
           />
+        </div>
+      )}
+      {marketplaceOpen && (
+        <div data-app-modal className="contents">
+          <AccessibleDialogBoundary label="RealityWarden Marketplace" onClose={closeMarketplace}>
+            <MarketplaceManager language={language} onClose={closeMarketplace} />
+          </AccessibleDialogBoundary>
         </div>
       )}
     </div>

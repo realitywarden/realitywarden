@@ -120,6 +120,7 @@ interface AppHeaderProps extends FileMenuProps {
   hasReport: boolean;
   onQuickStart: () => void;
   onActions: () => void;
+  onMarketplace: () => void;
   onExportReport: () => void;
   onExportAdapter: () => void;
   onLanguageChange: (language: UiLanguage) => void;
@@ -141,6 +142,7 @@ export function AppHeader(props: AppHeaderProps) {
           <FileMenu {...props} />
           <button type="button" onClick={props.onQuickStart} className="h-8 shrink-0 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>
           <button data-action-composer-trigger type="button" onClick={props.onActions} className="h-8 shrink-0 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
+          <button data-marketplace-trigger type="button" onClick={props.onMarketplace} className="h-8 shrink-0 whitespace-nowrap border border-status-warning-edge bg-status-warning-surface px-3 text-[13px] font-semibold text-status-warning">Marketplace</button>
         </nav>
         <div className="flex min-w-0 items-center gap-2 border-l border-border pl-3">
           <span className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${resultClass}`}>{resultText}</span>

@@ -1,8 +1,10 @@
 # Marketplace trust model
 
-Status: v0.6 trust-kernel implementation. The in-app catalog and durable UI
-workflow remain separate delivery work; this document does not claim the
-Marketplace alpha is complete.
+Status: v0.6 local Marketplace alpha foundation. The desktop app provides a
+local signed-package browser, durable install/trust state, disabled-by-default
+installation, separate simulation enablement, publisher revocation, and clean
+uninstall. There is no network catalog or provisioned production official key
+yet, so this document does not claim the commercial Marketplace is complete.
 
 Marketplace packages are declarative data. They never contain adapters,
 scripts, commands, hooks, endpoints, credentials, or post-install behavior.
@@ -31,10 +33,27 @@ does not prove that the package is safe and never grants execution authority.
 - A second explicit confirmation may enable a validated `simulation_only`
   asset. This does not create a real adapter or execution authority.
 - The stored signature and digest are revalidated at enablement time.
+- Runtime lookup revalidates the current signature, digest, publisher, and
+  trust-store status every time. Revocation therefore removes runtime
+  visibility immediately, including after restart.
 - Uninstall removes the complete package record; runtime lookup immediately
   returns no manifest afterward.
 - Install, simulation enablement, and uninstall emit audit events with
   `hardwareSignalSent: false` and `executionAuthorityGranted: false`.
+
+## Desktop persistence and recovery
+
+- Only public community publisher keys may be imported locally, and they are
+  always assigned the `community` tier. Local data cannot create or modify an
+  `official` or `verified` trust entry.
+- Marketplace state is written through an exclusive temporary file, flushed,
+  and atomically renamed. Restore rejects unknown fields, changed signed
+  bytes, changed metadata, duplicate identities, and authority escalation.
+- A rejected state file is quarantined as evidence. Marketplace mutations stay
+  blocked until the operator explicitly confirms an empty-state reset; there
+  is no silent repair, downgrade, or retry.
+- The desktop browser accepts JSON package/key files through bounded main-
+  process dialogs. The preload bridge exposes no filesystem access.
 
 ## Maintainer signing
 
