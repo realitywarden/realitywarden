@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const compiledRoot = process.argv[2]
@@ -98,6 +100,35 @@ assert.equal(validateFirmwareWriteOrder({ ...order.order, real_adapter_enabled: 
 assert.equal(validateFirmwareWriteOrder({ ...order.order, image: { ...order.order.image, file: 'firmware/prebuilt/other.bin' } }).ok, false, 'Order tampering cannot swap the authorized image.');
 assert.equal(validateFirmwareWriteOrder(order.order, { image_sha256: 'c'.repeat(64) }).ok, false, 'An on-disk digest mismatch must refuse the flash.');
 assert.equal(validateFirmwareWriteOrder(order.order, { image_sha256: imageSha }).ok, true, 'A matching on-disk digest passes.');
+
+const { resolveGovernedFirmwareImage, governedFirmwareAvailability } = requireFromCompiled('lib/device-onboarding/GovernedFirmwareImage.js');
+const flashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'realitywarden-governed-flash-'));
+try {
+  const fixtureImageFile = PREBUILT_FIRMWARE_IMAGES.esp32_s3_sg90_hc_sr04_v1.file;
+  const fixtureImagePath = path.join(flashFixtureRoot, fixtureImageFile);
+  fs.mkdirSync(path.dirname(fixtureImagePath), { recursive: true });
+  const fixtureBytes = Buffer.from('reviewed-test-image');
+  const fixtureSha = crypto.createHash('sha256').update(fixtureBytes).digest('hex');
+  fs.writeFileSync(fixtureImagePath, fixtureBytes);
+  fs.writeFileSync(`${fixtureImagePath}.sha256`, `${fixtureSha}  ${path.basename(fixtureImagePath)}\n`);
+
+  const prebuiltPlan = resolveGovernedFirmwareImage({ source: 'reviewed_prebuilt' }, flashFixtureRoot);
+  assert.equal(prebuiltPlan.ok, true, 'A registered image with its matching companion should produce a governed flash plan.');
+  assert.equal(prebuiltPlan.plan.sha256, fixtureSha, 'The governed plan reports the digest of the exact returned bytes.');
+  assert.equal(resolveGovernedFirmwareImage({ source: 'reviewed_prebuilt', imageFile: 'firmware/prebuilt/arbitrary.bin' }, flashFixtureRoot).ok, false, 'Built-in flash IPC authority must reject a non-registered image path.');
+
+  const fixtureOrder = createFirmwareWriteOrder({ draft: reviewedRig.draft, operator: 'test', write_review_confirmed: true, image_sha256: fixtureSha });
+  assert.equal(fixtureOrder.ok, true, 'Governed flash fixture order should validate.');
+  assert.equal(resolveGovernedFirmwareImage({ source: 'write_order', order: fixtureOrder.order }, flashFixtureRoot).ok, true, 'Order, companion, and image with the same sha should pass three-way validation.');
+
+  fs.writeFileSync(fixtureImagePath, Buffer.from('tampered-test-image'));
+  const tampered = resolveGovernedFirmwareImage({ source: 'write_order', order: fixtureOrder.order }, flashFixtureRoot);
+  assert.equal(tampered.ok, false, 'A tampered image must be rejected before flashing.');
+  assert.equal(tampered.code, 'image_sha256_mismatch', 'Tampered bytes must fail at the mandatory companion boundary.');
+  assert.equal(governedFirmwareAvailability('serial_ttl').available, false, 'serial_ttl must report no reviewed image instead of falling back to compilation.');
+} finally {
+  fs.rmSync(flashFixtureRoot, { recursive: true, force: true });
+}
 
 function diagnosticsReport(overrides = {}) {
   return {

@@ -48,6 +48,21 @@ function advice(code: string, severity: AdviceSeverity, zh: string, en: string):
 /** Classify a connect/open/probe failure string into actionable advice. */
 export function adviceForFailure(errorText: string): SetupAdvice {
   const text = errorText.toLowerCase();
+  if (text.includes('sha256') || text.includes('companion_rejected') || text.includes('paired_image_missing')) {
+    return advice('firmware_image_rejected', 'error',
+      '已审固件镜像或其 SHA-256 配对文件缺失/不一致。不要继续烧录；重新安装当前 RealityWarden 版本以恢复仓库随附镜像，然后重新核对摘要。',
+      'The reviewed firmware image or its SHA-256 companion is missing or inconsistent. Do not continue flashing; reinstall this RealityWarden release to restore its bundled image, then review the digest again.');
+  }
+  if (text.includes('target chip rejected')) {
+    return advice('firmware_wrong_chip', 'error',
+      '检测到的芯片不是已审镜像要求的 ESP32-S3。不要强刷或换用任意镜像；核对开发板型号与所选串口。',
+      'The detected chip is not the ESP32-S3 required by the reviewed image. Do not force the flash or substitute another image; verify the board model and selected port.');
+  }
+  if (text.includes('flash failed') || text.includes('automatic reconnect/diagnose failed') || text.includes('diagnose did not verify firmware')) {
+    return advice('firmware_flash_failed', 'error',
+      '烧录未得到完整验证，系统没有自动重试。保持设备静止，检查数据线与供电，确认选择的是板载 COM/UART 口；重新连接后核对 diagnose，再由操作者决定是否重新烧录。',
+      'The flash was not fully verified and was not retried. Keep the rig still, check the data cable and power, and confirm the board COM/UART port; reconnect and inspect diagnose before the operator decides whether to flash again.');
+  }
   if (text.includes('serialport_not_installed')) {
     return advice('serialport_missing', 'error',
       '缺少串口驱动包：在应用目录执行 npm install（会安装 serialport）后重启应用。',

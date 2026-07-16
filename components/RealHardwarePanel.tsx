@@ -34,6 +34,9 @@ export interface HardwareBridgeResult {
   error?: string;
   distanceCm?: number;
   ports?: Array<{ path: string; label?: string }>;
+  diagnoseOk?: boolean;
+  diagnoseData?: Record<string, unknown>;
+  diagnoseError?: string;
 }
 
 export interface HardwareProbeResult {
@@ -62,8 +65,32 @@ export interface HardwareBridge {
   autoDetect?: () => Promise<HardwareAutoDetectResult>;
   /** Real execution (product path): locked until acceptance evidence exists. */
   executionStatus?: () => Promise<HardwareExecutionLock>;
+  firmwarePlan?: (portPath: string, request: unknown) => Promise<HardwareFirmwarePlanResult>;
+  flashFirmware?: (portPath: string, request: unknown, expectedSha256: string, confirm: boolean) => Promise<HardwareFirmwareFlashResult>;
   execute?: (portPath: string, angle: number, confirm: boolean) => Promise<HardwareExecuteOutcome>;
   executeManifest?: (portPath: string, manifest: unknown, confirm: boolean) => Promise<HardwareExecuteOutcome>;
+}
+
+export interface HardwareFirmwarePlanResult {
+  ok: boolean;
+  error?: string;
+  unavailable?: boolean;
+  plan?: {
+    file: string;
+    sha256: string;
+    version: string;
+    sensorInterface: string;
+    address: number;
+    byteLength: number;
+  };
+}
+
+export interface HardwareFirmwareFlashResult extends HardwareBridgeResult {
+  flashed?: boolean;
+  reconnected?: boolean;
+  version?: string;
+  sha256?: string;
+  chip?: string;
 }
 
 export interface HardwareExecutionLock {
@@ -101,7 +128,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'flashing';
 
 export function RealHardwarePanel({
   language,
@@ -128,6 +155,13 @@ export function RealHardwarePanel({
   const [execLock, setExecLock] = useState<HardwareExecutionLock | null>(null);
   const [execAngle, setExecAngle] = useState('45');
   const [execConfirmed, setExecConfirmed] = useState(false);
+  const [firmwareRequest, setFirmwareRequest] = useState<unknown>({ source: 'reviewed_prebuilt' });
+  const [firmwareOrderName, setFirmwareOrderName] = useState<string | null>(null);
+  const [firmwarePlan, setFirmwarePlan] = useState<HardwareFirmwarePlanResult['plan'] | null>(null);
+  const [firmwareError, setFirmwareError] = useState<string | null>(null);
+  const [firmwareConfirmed, setFirmwareConfirmed] = useState(false);
+  const [flashing, setFlashing] = useState(false);
+  const [firmwareFeedback, setFirmwareFeedback] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
   const [execOutcome, setExecOutcome] = useState<HardwareExecuteOutcome | null>(null);
   const [lastRequestedAngle, setLastRequestedAngle] = useState<number | null>(null);
@@ -200,6 +234,9 @@ export function RealHardwarePanel({
     setLastCommandAngle(null);
     setLastRequestedAngle(null);
     setExecOutcome(null);
+    setIdentity(null);
+    setFirmwarePlan(null);
+    setFirmwareConfirmed(false);
     const api = bridge();
     if (api) {
       try {
@@ -256,6 +293,15 @@ export function RealHardwarePanel({
     if (result.ok) {
       setStatus('connected');
       if (typeof result.distanceCm === 'number') setDistanceCm(result.distanceCm);
+      const interpreted = interpretProbe({
+        diagnoseOk: result.diagnoseOk === true,
+        diagnoseData: result.diagnoseData,
+        diagnoseError: result.diagnoseError,
+        legacyReadOk: true,
+        legacyDeviceMs: typeof result.diagnoseData?.deviceMs === 'number'
+      });
+      setIdentity(interpreted.identity);
+      setAdvice(interpreted.advice);
       startPolling();
       const lockApi = bridge()?.executionStatus;
       if (lockApi) void lockApi().then((lock) => { if (mounted.current) setExecLock(lock); }).catch(() => undefined);
@@ -316,6 +362,111 @@ export function RealHardwarePanel({
       if (mounted.current) setDetecting(false);
     }
   }, [connect, zh]);
+
+  const loadFirmwarePlan = useCallback(async (request: unknown = firmwareRequest) => {
+    const api = bridge();
+    if (!api?.firmwarePlan || !selectedPort || status !== 'connected') {
+      setFirmwarePlan(null);
+      return;
+    }
+    setFirmwareError(null);
+    setFirmwareConfirmed(false);
+    try {
+      const result = await api.firmwarePlan(selectedPort, request);
+      if (!mounted.current) return;
+      if (result.ok && result.plan) {
+        setFirmwarePlan(result.plan);
+      } else {
+        setFirmwarePlan(null);
+        setFirmwareError(result.error ?? 'firmware plan unavailable');
+      }
+    } catch (error) {
+      if (mounted.current) {
+        setFirmwarePlan(null);
+        setFirmwareError(errorMessage(error));
+      }
+    }
+  }, [firmwareRequest, selectedPort, status]);
+
+  useEffect(() => {
+    if (status === 'connected') void loadFirmwarePlan();
+    else {
+      setFirmwarePlan(null);
+      setFirmwareConfirmed(false);
+    }
+  }, [loadFirmwarePlan, status]);
+
+  const selectWriteOrder = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const request = { source: 'write_order', order: parsed };
+      setFirmwareRequest(request);
+      setFirmwareOrderName(file.name);
+      await loadFirmwarePlan(request);
+    } catch (error) {
+      setFirmwarePlan(null);
+      setFirmwareOrderName(file.name);
+      setFirmwareError(`write order rejected: ${errorMessage(error)}`);
+    }
+  }, [loadFirmwarePlan]);
+
+  const useReviewedPrebuilt = useCallback(async () => {
+    const request = { source: 'reviewed_prebuilt' };
+    setFirmwareRequest(request);
+    setFirmwareOrderName(null);
+    await loadFirmwarePlan(request);
+  }, [loadFirmwarePlan]);
+
+  const flashFirmware = useCallback(async () => {
+    const api = bridge();
+    if (!api?.flashFirmware || !selectedPort || !firmwarePlan || !firmwareConfirmed) return;
+    setFlashing(true);
+    setFirmwareFeedback(null);
+    setFirmwareError(null);
+    stopPolling();
+    setDistanceCm(null);
+    setStatus('flashing');
+    try {
+      const result = await api.flashFirmware(selectedPort, firmwareRequest, firmwarePlan.sha256, firmwareConfirmed);
+      if (!mounted.current) return;
+      if (result.reconnected) {
+        setStatus('connected');
+        if (typeof result.distanceCm === 'number') setDistanceCm(result.distanceCm);
+        const interpreted = interpretProbe({ diagnoseOk: Boolean(result.diagnoseData), diagnoseData: result.diagnoseData });
+        setIdentity(interpreted.identity);
+        setAdvice(interpreted.advice);
+        startPolling();
+      } else {
+        setStatus('disconnected');
+        setIdentity(null);
+        setDistanceCm(null);
+        setLastCommandAngle(null);
+      }
+      if (result.ok) {
+        setFirmwareFeedback(zh
+          ? `烧录完成；已重连并由 diagnose 验证固件 v${result.version}。`
+          : `Flash complete; reconnected and diagnose verified firmware v${result.version}.`);
+      } else {
+        const detail = result.error ?? 'flash failed';
+        setFirmwareError(detail);
+        setAdvice([adviceForFailure(detail)]);
+      }
+    } catch (error) {
+      if (mounted.current) {
+        const detail = `flash failed without retry: ${errorMessage(error)}`;
+        setStatus('disconnected');
+        setIdentity(null);
+        setFirmwareError(detail);
+        setAdvice([adviceForFailure(detail)]);
+      }
+    } finally {
+      if (mounted.current) {
+        setFlashing(false);
+        setFirmwareConfirmed(false);
+      }
+    }
+  }, [firmwareConfirmed, firmwarePlan, firmwareRequest, selectedPort, startPolling, stopPolling, zh]);
 
 
 
@@ -451,12 +602,14 @@ export function RealHardwarePanel({
     ? (zh ? '不可用（仅桌面版）' : 'unavailable (desktop app only)')
     : status === 'connected'
       ? (zh ? `已连接 ${selectedPort}` : `connected ${selectedPort}`)
+      : status === 'flashing'
+        ? (zh ? `烧录中 · 串口已断开 ${selectedPort}` : `flashing · serial disconnected ${selectedPort}`)
       : status === 'connecting'
         ? (zh ? '连接中…' : 'connecting…')
         : (zh ? '未连接' : 'not connected');
   const dotClass = status === 'connected'
     ? 'bg-status-executed'
-    : status === 'connecting'
+    : status === 'connecting' || status === 'flashing'
       ? 'bg-status-warning'
       : 'bg-[#5F6670]';
 
@@ -478,7 +631,7 @@ export function RealHardwarePanel({
         <span className="text-[11px] font-bold text-text-secondary">{expanded ? 'v' : '^'}</span>
       </button>
       {expanded && (
-        <div className="flex flex-col gap-2 border-t border-[#3a2f1d] px-3 py-2 text-[12px]">
+        <div className="flex max-h-[calc(100vh-80px)] flex-col gap-2 overflow-y-auto border-t border-[#3a2f1d] px-3 py-2 text-[12px]">
           {!available ? (
             <div className="text-text-secondary">
               {zh
@@ -584,6 +737,89 @@ export function RealHardwarePanel({
                 </div>
               )}
             </>
+          )}
+          {(status === 'connected' || status === 'flashing') && bridge()?.firmwarePlan && (
+            <section
+              aria-label={zh ? '固件' : 'Firmware'}
+              className="flex flex-col gap-1.5 border-t border-status-warning-edge pt-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] font-bold text-status-warning">{zh ? '固件' : 'Firmware'}</span>
+                <span className="text-[10px] text-text-muted">
+                  {zh ? '仅限已审镜像 · 不接受任意 BIN/代码' : 'Reviewed images only · no arbitrary BIN/code'}
+                </span>
+              </div>
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 font-mono text-[11px]">
+                <span className="text-text-muted">{zh ? '当前版本' : 'current version'}</span>
+                <span className="text-text-primary">{identity?.firmwareVersion ?? (zh ? 'diagnose 未确认' : 'not confirmed by diagnose')}</span>
+                <span className="text-text-muted">{zh ? '当前接口' : 'current interface'}</span>
+                <span className="text-text-primary">{identity?.sensorInterface ?? (zh ? 'diagnose 未确认' : 'not confirmed by diagnose')}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void useReviewedPrebuilt()}
+                  disabled={flashing}
+                  className="h-7 rounded-[3px] border border-status-warning-edge px-2 text-[11px] font-semibold text-status-warning hover:bg-status-warning-surface disabled:opacity-40"
+                >
+                  {zh ? '使用仓库已审镜像' : 'Use reviewed prebuilt'}
+                </button>
+                <label className="flex h-7 cursor-pointer items-center rounded-[3px] border border-border-panel px-2 text-[11px] text-text-secondary hover:bg-[#232736]">
+                  {zh ? '载入写入令 JSON' : 'Load write-order JSON'}
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    disabled={flashing}
+                    className="sr-only"
+                    onChange={(event) => void selectWriteOrder(event.target.files?.[0])}
+                  />
+                </label>
+                {firmwareOrderName && <span className="max-w-40 truncate text-[10px] text-text-muted">{firmwareOrderName}</span>}
+              </div>
+              {firmwarePlan && (
+                <div className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-2 py-1.5 text-[11px] leading-4">
+                  <div><span className="text-text-muted">{zh ? '目标端口' : 'target port'}:</span> <span className="font-mono text-status-warning">{selectedPort}</span></div>
+                  <div><span className="text-text-muted">{zh ? '镜像版本/接口' : 'image version/interface'}:</span> <span className="font-mono text-text-primary">v{firmwarePlan.version} · {firmwarePlan.sensorInterface}</span></div>
+                  <div className="break-all"><span className="text-text-muted">sha256:</span> <span className="font-mono text-text-primary">{firmwarePlan.sha256}</span></div>
+                  <div className="text-text-muted">{(firmwarePlan.byteLength / 1024 / 1024).toFixed(2)} MiB · {zh ? '合并镜像地址' : 'merged image address'} 0x{firmwarePlan.address.toString(16)}</div>
+                </div>
+              )}
+              {firmwareError && (
+                <div role="alert" className="rounded-[3px] border border-status-blocked-edge bg-status-blocked-surface px-2 py-1 text-[11px] leading-4 text-status-blocked-soft">
+                  {firmwareError}
+                </div>
+              )}
+              {firmwareFeedback && <div role="status" className="text-[11px] text-status-executed-soft">{firmwareFeedback}</div>}
+              <label className="flex items-start gap-1.5 text-[11px] leading-4 text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={firmwareConfirmed}
+                  disabled={!firmwarePlan || flashing}
+                  onChange={(event) => setFirmwareConfirmed(event.target.checked)}
+                />
+                {zh
+                  ? '我已核对上方目标端口、镜像版本和 sha256，并确认现在可以断开串口连接进行烧录。'
+                  : 'I verified the target port, image version, and sha256 above, and confirm the serial connection may be closed for flashing.'}
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void flashFirmware()}
+                  disabled={!firmwarePlan || !firmwareConfirmed || flashing || !bridge()?.flashFirmware}
+                  className="h-7 rounded-[3px] border border-status-blocked-edge px-2 text-[11px] font-bold text-status-blocked-soft hover:bg-status-blocked-surface disabled:opacity-40"
+                >
+                  {flashing ? (zh ? '烧录中（不会静默重试）…' : 'Flashing (no silent retry)…') : (zh ? '烧录已审固件' : 'Flash reviewed firmware')}
+                </button>
+                <span className="text-[10px] text-text-muted">
+                  {zh ? '完成后自动重连并运行 diagnose' : 'Reconnects and runs diagnose after completion'}
+                </span>
+              </div>
+              {identity?.sensorInterface === 'serial_ttl' && (
+                <div className="text-[11px] font-semibold text-status-warning">
+                  {zh ? '该配置暂无已审镜像；不会回退到现场编译。' : 'No reviewed image is available for this configuration; there is no live-compile fallback.'}
+                </div>
+              )}
+            </section>
           )}
           {status === 'connected' && bridge()?.execute && (
             <div className="flex flex-col gap-1.5 border-t border-[#3a2f1d] pt-2">

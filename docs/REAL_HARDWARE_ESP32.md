@@ -215,6 +215,25 @@ streaming sensor drives the same line).
 
 ## Architecture (host side)
 
+### Built-in governed flasher (desktop app)
+
+The REAL HARDWARE panel can flash the reviewed pulse-width image without an
+IDE. It accepts only the repository image registered by
+`FirmwareWriteOrder.ts` with its mandatory `.sha256` companion, or a governed
+write-order JSON that names that same image and digest. The image bytes,
+companion digest, and write-order digest must agree; arbitrary `.bin` paths
+and source code are rejected.
+
+Before writing, the panel displays the target port, image version, and full
+SHA-256 and requires an explicit checkbox. It releases the panel's serial
+connection during the write, never silently retries a failed flash, then
+reconnects and runs `diagnose_hardware` once to verify the reported version.
+The `serial_ttl` variant currently has no reviewed prebuilt image, so the
+panel says so and does not fall back to an Arduino/onsite compile.
+
+The developer-only manual build instructions above remain useful for firmware
+development; they are not a fallback path in the built-in flasher.
+
 ```
 HardwareExecutionGate.run(command)
   └── SafetyMonitor.evaluateHardwareCommand   ← angle limits + sensor policy

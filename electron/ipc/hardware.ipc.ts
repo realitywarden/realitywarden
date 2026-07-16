@@ -1,6 +1,7 @@
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { flashWithEsptoolJs } from '../hardware/esptoolFlasher';
 
 /**
  * Real-hardware IPC (v0.3, connection + read-only distance).
@@ -60,6 +61,8 @@ class HardwareConnection {
   private requestSeq = 0;
   private readonly pending = new Map<string, PendingRequest>();
   private operationQueue: Promise<void> = Promise.resolve();
+  private connectedPortPath: string | null = null;
+  private diagnoseData: Record<string, unknown> | null = null;
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.operationQueue.then(operation, operation);
@@ -111,13 +114,30 @@ class HardwareConnection {
     // Opening the port toggles DTR and resets the ESP32; give the firmware
     // time to boot before the handshake instead of reporting a false timeout.
     await new Promise((resolve) => setTimeout(resolve, 1800));
+    const diagnose = await this.request('diagnose_hardware', 3000);
     const handshake = await this.request('read_distance', 3000);
-    if (!handshake.ok) {
+    if (!diagnose.ok && !handshake.ok) {
       await this.disconnectExclusive();
-      return { ok: false, error: `handshake failed: ${handshake.error ?? 'no valid response'}` };
+      return { ok: false, error: `handshake failed: diagnose=${diagnose.error ?? 'no response'}; read=${handshake.error ?? 'no response'}` };
     }
     const distance = handshake.data?.distanceCm;
-    return { ok: true, distanceCm: typeof distance === 'number' ? distance : undefined };
+    this.connectedPortPath = portPath;
+    this.diagnoseData = diagnose.ok && diagnose.data ? diagnose.data : null;
+    return {
+      ok: true,
+      distanceCm: typeof distance === 'number' ? distance : undefined,
+      diagnoseOk: diagnose.ok,
+      diagnoseData: diagnose.ok ? diagnose.data : undefined,
+      diagnoseError: diagnose.ok ? undefined : diagnose.error,
+      readError: handshake.ok ? undefined : handshake.error
+    };
+  }
+
+  connectedContext() {
+    return {
+      portPath: this.connectedPortPath,
+      diagnoseData: this.diagnoseData
+    };
   }
 
   async readDistance() {
@@ -215,6 +235,8 @@ class HardwareConnection {
     this.failAllPending('disconnected');
     const port = this.port;
     this.port = null;
+    this.connectedPortPath = null;
+    this.diagnoseData = null;
     this.buffer = '';
     if (port && port.isOpen) {
       await new Promise<void>((resolve) => {
@@ -313,7 +335,126 @@ class HardwareConnection {
  */
 const APP_ROOT = path.join(__dirname, '..', '..');
 const EVIDENCE_DIR = path.join(APP_ROOT, 'docs', 'acceptance', 'evidence');
-const RUNTIME_LIB = path.join(APP_ROOT, 'dist-electron-runtime', 'lib');
+const PACKAGED_APP_ROOT = app.isPackaged ? path.join(process.resourcesPath, 'app.asar') : APP_ROOT;
+const FIRMWARE_RESOURCE_ROOT = app.isPackaged ? process.resourcesPath : APP_ROOT;
+const RUNTIME_LIB = path.join(PACKAGED_APP_ROOT, 'dist-electron-runtime', 'lib');
+const ESPTOOL_RUNTIME_ROOT = path.join(PACKAGED_APP_ROOT, 'dist-electron-runtime');
+let firmwareFlashInProgress = false;
+
+interface RuntimeGovernedFirmwareModule {
+  governedFirmwareAvailability(sensorInterface: string | null | undefined):
+    { available: true } | { available: false; reason: string };
+  resolveGovernedFirmwareImage(raw: unknown, rootDir: string):
+    | { ok: true; plan: { file: string; sha256: string; version: string; sensorInterface: string; address: number; byteLength: number; bytes: Uint8Array } }
+    | { ok: false; code: string; detail: string };
+}
+
+function loadGovernedFirmware(): RuntimeGovernedFirmwareModule | { error: string } {
+  try {
+    // Electron consumes the compiled root authority; rootDir prevents a direct
+    // lib/ import and keeps checksum/order semantics in one implementation.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(path.join(RUNTIME_LIB, 'device-onboarding', 'GovernedFirmwareImage')) as RuntimeGovernedFirmwareModule;
+  } catch (error) {
+    return {
+      error: `firmware_authority_unavailable: rebuild the desktop runtime. Underlying: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+function connectedSensorInterface() {
+  const value = connection.connectedContext().diagnoseData?.sensorInterface;
+  return typeof value === 'string' ? value : null;
+}
+
+function firmwarePlan(payload: { portPath?: unknown; request?: unknown }) {
+  if (!payload || typeof payload !== 'object') return { ok: false, error: 'invalid_firmware_request: object payload required' };
+  const context = connection.connectedContext();
+  if (typeof payload.portPath !== 'string' || payload.portPath.length === 0 || context.portPath !== payload.portPath) {
+    return { ok: false, error: 'firmware_requires_connected_target: connect and diagnose the exact target port first' };
+  }
+  const runtime = loadGovernedFirmware();
+  if ('error' in runtime) return { ok: false, error: runtime.error };
+  const availability = runtime.governedFirmwareAvailability(connectedSensorInterface());
+  if (!availability.available) return { ok: false, unavailable: true, error: availability.reason };
+  const resolved = runtime.resolveGovernedFirmwareImage(payload.request, FIRMWARE_RESOURCE_ROOT);
+  if (!resolved.ok) return { ok: false, error: `${resolved.code}: ${resolved.detail}` };
+  const { bytes: _bytes, ...publicPlan } = resolved.plan;
+  return { ok: true, plan: publicPlan };
+}
+
+async function flashGovernedFirmware(payload: {
+  portPath?: unknown;
+  request?: unknown;
+  confirm?: unknown;
+  expectedSha256?: unknown;
+}) {
+  if (firmwareFlashInProgress) return { ok: false, error: 'firmware_flash_in_progress: wait for the current operation to finish' };
+  if (payload?.confirm !== true) return { ok: false, error: 'firmware_confirmation_required: explicitly confirm the displayed target, version, and sha256' };
+  const preview = firmwarePlan(payload);
+  if (!preview.ok || !('plan' in preview) || !preview.plan) return preview;
+  if (payload.expectedSha256 !== preview.plan.sha256) {
+    return { ok: false, error: 'firmware_plan_changed: displayed sha256 no longer matches; review the plan again' };
+  }
+  const runtime = loadGovernedFirmware();
+  if ('error' in runtime) return { ok: false, error: runtime.error };
+  const resolved = runtime.resolveGovernedFirmwareImage(payload.request, FIRMWARE_RESOURCE_ROOT);
+  if (!resolved.ok) return { ok: false, error: `${resolved.code}: ${resolved.detail}` };
+  if (resolved.plan.sha256 !== payload.expectedSha256) {
+    return { ok: false, error: 'firmware_plan_changed: verified image changed after preview; flashing refused' };
+  }
+
+  firmwareFlashInProgress = true;
+  const portPath = payload.portPath as string;
+  try {
+    await connection.disconnect();
+    const flashed = await flashWithEsptoolJs({
+      runtimeRoot: ESPTOOL_RUNTIME_ROOT,
+      portPath,
+      bytes: resolved.plan.bytes,
+      address: resolved.plan.address
+    });
+    const reconnected = await connection.connect(portPath);
+    if (!reconnected.ok) {
+      return {
+        ok: false,
+        flashed: true,
+        reconnected: false,
+        error: `flash completed, but automatic reconnect/diagnose failed: ${reconnected.error ?? 'unknown reconnect failure'}`
+      };
+    }
+    const diagnosedVersion = reconnected.diagnoseData?.firmwareVersion;
+    if (reconnected.diagnoseOk !== true || diagnosedVersion !== resolved.plan.version) {
+      return {
+        ok: false,
+        flashed: true,
+        reconnected: true,
+        diagnoseData: reconnected.diagnoseData,
+        error: `flash completed, but diagnose did not verify firmware v${resolved.plan.version}; reported ${typeof diagnosedVersion === 'string' ? diagnosedVersion : 'unknown'}`
+      };
+    }
+    return {
+      ok: true,
+      flashed: true,
+      reconnected: true,
+      chip: flashed.chip,
+      version: resolved.plan.version,
+      sha256: resolved.plan.sha256,
+      distanceCm: reconnected.distanceCm,
+      diagnoseData: reconnected.diagnoseData
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      flashCompleted: false,
+      hardwareState: 'unknown_or_incomplete_after_failed_flash',
+      reconnected: false,
+      error: `flash failed without retry: ${error instanceof Error ? error.message : String(error)}`
+    };
+  } finally {
+    firmwareFlashInProgress = false;
+  }
+}
 
 function evidenceCount(): number {
   try {
@@ -436,6 +577,7 @@ function loadRuntimeActionManifest(): RuntimeActionManifestModule | { error: str
 
 async function executeRealAngle(payload: { portPath?: string; angle?: number; manifest?: unknown; confirm?: boolean }) {
   if (!payload || typeof payload !== 'object') return { ok: false, error: 'invalid_execution_request: object payload required' };
+  if (firmwareFlashInProgress) return { ok: false, error: 'firmware_flash_in_progress: actuation is blocked while firmware is being written' };
   const lock = executionLock();
   if (lock.locked) return { ok: false, error: lock.reason };
   if (payload.confirm !== true) {
@@ -564,6 +706,10 @@ export function registerHardwareIpc() {
     connection.probe(payload.portPath));
   ipcMain.handle('hardware:autoDetect', () => connection.autoDetect());
   ipcMain.handle('hardware:executionStatus', () => executionLock());
+  ipcMain.handle('hardware:firmwarePlan', (_event, payload: { portPath?: unknown; request?: unknown }) =>
+    firmwarePlan(payload));
+  ipcMain.handle('hardware:flashFirmware', (_event, payload: { portPath?: unknown; request?: unknown; confirm?: unknown; expectedSha256?: unknown }) =>
+    flashGovernedFirmware(payload));
   ipcMain.handle('hardware:execute', (_event, payload: { portPath?: string; angle?: number; manifest?: unknown; confirm?: boolean }) =>
     executeRealAngle(payload));
 }

@@ -1,5 +1,6 @@
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { buildSync } = require('esbuild');
 
 const root = path.resolve(__dirname, '..');
 const tsc = path.join(root, 'node_modules', 'typescript', 'bin', 'tsc');
@@ -18,4 +19,18 @@ execFileSync(process.execPath, [tsc, '-p', 'tsconfig.json', '--outDir', 'dist-el
   cwd: root,
   stdio: 'inherit',
   windowsHide: true
+});
+
+// esptool-js 0.6 ships browser ESM without a Node package type marker. Bundle
+// that official implementation for the CommonJS Electron main process; this
+// is packaging only, not a copy or reimplementation of the flashing protocol.
+buildSync({
+  entryPoints: [path.join(root, 'node_modules', 'esptool-js', 'bundle.js')],
+  outfile: path.join(root, 'dist-electron-runtime', 'esptool-js.cjs'),
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  target: 'node22',
+  legalComments: 'eof',
+  logLevel: 'warning'
 });
