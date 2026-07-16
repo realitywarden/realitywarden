@@ -134,6 +134,9 @@ function validatePersistedImportedAsset(value: unknown, path: string): string | 
     const error = boundedString(value.manifest[field], `${path}.manifest.${field}`, field === 'display_name' ? 500 : 300);
     if (error) return error;
   }
+  if ((value.manifest.asset_id as string).startsWith('marketplace-') || (value.manifest.source as string).startsWith('marketplace:')) {
+    return `${path} cannot embed a Marketplace-derived asset; use a digest-bound marketplace_assets reference`;
+  }
   if (typeof value.manifest.device_type !== 'string' || !deviceTypes.has(value.manifest.device_type)) return `${path}.manifest.device_type is unsupported`;
   if (!Array.isArray(value.manifest.allowed_use) || !value.manifest.allowed_use.includes('simulation')) return `${path}.manifest.allowed_use must include simulation`;
   if (!record(value.manifest.visual_model)) return `${path}.manifest.visual_model must be an object`;
@@ -182,12 +185,26 @@ function validatePersistedImportedAsset(value: unknown, path: string): string | 
   return null;
 }
 
+function validateMarketplaceAssetReference(value: unknown, path: string): string | null {
+  if (!record(value)) return `${path} must be an object`;
+  const keys = exactKeys(value, ['package_id', 'package_version', 'digest_sha256', 'signed_asset_id', 'workspace_asset_id'], path);
+  if (keys) return keys;
+  for (const field of ['package_id', 'package_version', 'signed_asset_id', 'workspace_asset_id'] as const) {
+    const error = boundedString(value[field], `${path}.${field}`, 300);
+    if (error) return error;
+  }
+  if (!/^[a-f0-9]{64}$/.test(value.digest_sha256 as string)) return `${path}.digest_sha256 must be a lowercase sha256`;
+  const expectedWorkspaceId = `marketplace-${value.package_id}-${(value.digest_sha256 as string).slice(0, 12)}`;
+  if (value.workspace_asset_id !== expectedWorkspaceId) return `${path}.workspace_asset_id must be derived from package_id and digest_sha256`;
+  return null;
+}
+
 export function validateLabWorkspaceFile(value: unknown): ProjectContractResult<Record<string, unknown>> {
   if (!record(value)) return schemaFailure('workspace must be an object');
   if (value.file_type !== WORKSPACE_FILE_TYPE) return schemaFailure(`workspace.file_type must be ${WORKSPACE_FILE_TYPE}`);
-  if (value.version !== 1 && value.version !== 2) return schemaFailure('workspace.version must be 1 or 2');
+  if (value.version !== 1 && value.version !== 2 && value.version !== 3) return schemaFailure('workspace.version must be 1, 2, or 3');
   const workspaceKeys = ['file_type', 'version', 'saved_at', 'language', 'selected_profile_id', 'selected_scenario_id', 'selected_workspace_device_id', 'prompt', 'devices', 'custom_actions', 'manual_imports'];
-  const keyError = exactKeys(value, value.version === 2 ? [...workspaceKeys, 'imported_assets'] : workspaceKeys, 'workspace');
+  const keyError = exactKeys(value, value.version === 1 ? workspaceKeys : value.version === 2 ? [...workspaceKeys, 'imported_assets'] : [...workspaceKeys, 'imported_assets', 'marketplace_assets'], 'workspace');
   if (keyError) return schemaFailure(keyError);
   const savedAtError = timestamp(value.saved_at, 'workspace.saved_at');
   if (savedAtError) return schemaFailure(savedAtError);
@@ -212,7 +229,7 @@ export function validateLabWorkspaceFile(value: unknown): ProjectContractResult<
     deviceIds.add(id);
   }
   if (value.selected_workspace_device_id !== null && !deviceIds.has(value.selected_workspace_device_id as string)) return schemaFailure('workspace.selected_workspace_device_id does not reference a workspace device');
-  const importedAssets = value.version === 2 ? value.imported_assets : [];
+  const importedAssets = value.version === 1 ? [] : value.imported_assets;
   if (!Array.isArray(importedAssets) || importedAssets.length > 100) return schemaFailure('workspace.imported_assets must be an array of at most 100 assets');
   const importedAssetIds = new Set<string>();
   for (let index = 0; index < importedAssets.length; index += 1) {
@@ -228,7 +245,32 @@ export function validateLabWorkspaceFile(value: unknown): ProjectContractResult<
     const error = jsonValue(value[field], `workspace.${field}`);
     if (error) return schemaFailure(error);
   }
-  return { ok: true, value: { ...value, version: 2, imported_assets: importedAssets } };
+  const marketplaceAssets = value.version === 3 ? value.marketplace_assets : [];
+  if (!Array.isArray(marketplaceAssets) || marketplaceAssets.length > 100) return schemaFailure('workspace.marketplace_assets must be an array of at most 100 references');
+  const marketplacePackageIds = new Set<string>();
+  const marketplaceWorkspaceIds = new Set<string>();
+  for (let index = 0; index < marketplaceAssets.length; index += 1) {
+    const error = validateMarketplaceAssetReference(marketplaceAssets[index], `workspace.marketplace_assets[${index}]`);
+    if (error) return schemaFailure(error);
+    const reference = marketplaceAssets[index] as Record<string, string>;
+    if (marketplacePackageIds.has(reference.package_id) || marketplaceWorkspaceIds.has(reference.workspace_asset_id)) {
+      return schemaFailure('workspace.marketplace_assets contains duplicate package or workspace identities');
+    }
+    marketplacePackageIds.add(reference.package_id);
+    marketplaceWorkspaceIds.add(reference.workspace_asset_id);
+  }
+  const referencedMarketplaceDeviceIds = new Set(
+    (value.devices as Array<Record<string, unknown>>)
+      .map((device) => device.assetId)
+      .filter((assetId): assetId is string => typeof assetId === 'string' && assetId.startsWith('marketplace-'))
+  );
+  for (const assetId of Array.from(referencedMarketplaceDeviceIds)) {
+    if (!marketplaceWorkspaceIds.has(assetId)) return schemaFailure(`workspace device references Marketplace asset without a digest-bound reference: ${assetId}`);
+  }
+  for (const assetId of Array.from(marketplaceWorkspaceIds)) {
+    if (!referencedMarketplaceDeviceIds.has(assetId)) return schemaFailure(`workspace.marketplace_assets contains unused reference: ${assetId}`);
+  }
+  return { ok: true, value: { ...value, version: 3, imported_assets: importedAssets, marketplace_assets: marketplaceAssets } };
 }
 
 function validateScenario(value: unknown, path: string) {
@@ -262,7 +304,7 @@ export function validateOpenRealityProjectFile(value: unknown): ProjectContractR
   const nameError = boundedString(value.project.name, 'document.project.name', 200);
   if (nameError) return schemaFailure(nameError);
   if (value.project.file_type !== PROJECT_FILE_TYPE) return schemaFailure(`document.project.file_type must be ${PROJECT_FILE_TYPE}`);
-  if (value.project.version !== 1 && value.project.version !== 2) return schemaFailure('document.project.version must be 1 or 2');
+  if (value.project.version !== 1 && value.project.version !== 2 && value.project.version !== 3) return schemaFailure('document.project.version must be 1, 2, or 3');
   const workspace = validateLabWorkspaceFile(value.workspace);
   if (!workspace.ok) return workspace;
   if (!Array.isArray(value.devices) || value.devices.length > 500) return schemaFailure('document.devices must be an array of at most 500 devices');
@@ -291,7 +333,7 @@ export function validateOpenRealityProjectFile(value: unknown): ProjectContractR
   if (metadataTime) return schemaFailure(metadataTime);
   if (value.metadata.app !== 'RealityWarden Desktop') return schemaFailure('document.metadata.app must be RealityWarden Desktop');
   if (value.metadata.real_device_execution_enabled !== false) return schemaFailure('document.metadata.real_device_execution_enabled must remain false');
-  return { ok: true, value: { ...value, project: { ...value.project, version: 2 }, workspace: workspace.value } };
+  return { ok: true, value: { ...value, project: { ...value.project, version: 3 }, workspace: workspace.value } };
 }
 
 export function parseOpenRealityProjectText(text: string): ProjectContractResult<Record<string, unknown>> {

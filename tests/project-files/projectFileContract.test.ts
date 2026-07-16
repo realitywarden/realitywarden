@@ -36,12 +36,12 @@ function fixture() {
     config: { enabled: true, adapter_target_id: 'robot-arm-01', max_speed: 'slow', force_limit: 'low', forbidden_zones: ['restricted-zone'] }
   };
   const workspace = {
-    file_type: 'open_reality_lab_workspace', version: 2, saved_at: '2026-07-14T00:00:00.000Z', language: 'en',
+    file_type: 'open_reality_lab_workspace', version: 3, saved_at: '2026-07-14T00:00:00.000Z', language: 'en',
     selected_profile_id: 'virtual-robot-arm', selected_scenario_id: 'robot-arm-pick-place-safe', selected_workspace_device_id: device.id,
-    prompt: 'Move the cube.', devices: [device], imported_assets: [portableImportedAsset()], custom_actions: [], manual_imports: []
+    prompt: 'Move the cube.', devices: [device], imported_assets: [portableImportedAsset()], marketplace_assets: [], custom_actions: [], manual_imports: []
   };
   return {
-    project: { name: 'Contract fixture', file_type: 'open_reality_desktop_project', version: 2 }, devices: [device],
+    project: { name: 'Contract fixture', file_type: 'open_reality_desktop_project', version: 3 }, devices: [device],
     scenarios: [{ id: 'robot-arm-pick-place-safe', device_profile: 'virtual-robot-arm', prompt: 'Move the cube.', expected_safety_result: 'pass' }],
     profiles: [{ id: 'virtual-robot-arm', device_type: 'robot_arm', label: 'Robot Arm' }], workspace, lab_reports: [],
     metadata: { saved_at: '2026-07-14T00:00:00.000Z', app: 'RealityWarden Desktop', real_device_execution_enabled: false }
@@ -76,13 +76,22 @@ legacy.project.version = 1;
 legacy.workspace.version = 1;
 const legacyWorkspace = legacy.workspace as unknown as Record<string, unknown>;
 delete legacyWorkspace.imported_assets;
+delete legacyWorkspace.marketplace_assets;
 const migrated = validateOpenRealityProjectFile(legacy);
 assert.equal(migrated.ok, true, 'v1 projects must migrate explicitly');
 if (migrated.ok) {
-  assert.equal((migrated.value.project as { version: number }).version, 2);
-  assert.equal((migrated.value.workspace as { version: number }).version, 2);
+  assert.equal((migrated.value.project as { version: number }).version, 3);
+  assert.equal((migrated.value.workspace as { version: number }).version, 3);
   assert.deepEqual((migrated.value.workspace as { imported_assets: unknown[] }).imported_assets, []);
+  assert.deepEqual((migrated.value.workspace as { marketplace_assets: unknown[] }).marketplace_assets, []);
 }
+const legacyV2 = clone(original);
+legacyV2.project.version = 2;
+legacyV2.workspace.version = 2;
+delete (legacyV2.workspace as unknown as Record<string, unknown>).marketplace_assets;
+const migratedV2 = validateOpenRealityProjectFile(legacyV2);
+assert.equal(migratedV2.ok, true, 'v2 projects must migrate with no invented Marketplace authority');
+if (migratedV2.ok) assert.deepEqual((migratedV2.value.workspace as { marketplace_assets: unknown[] }).marketplace_assets, []);
 
 const invalidJson = parseOpenRealityProjectText('{');
 assert.equal(invalidJson.ok, false);
@@ -123,6 +132,41 @@ expectSchemaRejection(externalModel, /embedded base64 model/);
 const duplicateAsset = clone(original);
 duplicateAsset.workspace.imported_assets.push(clone(duplicateAsset.workspace.imported_assets[0]));
 expectSchemaRejection(duplicateAsset, /duplicate id/);
+const embeddedMarketplace = clone(original);
+(embeddedMarketplace.workspace.imported_assets[0].manifest as unknown as Record<string, unknown>).source = 'marketplace:forged.package:deadbeef';
+expectSchemaRejection(embeddedMarketplace, /cannot embed a Marketplace-derived asset/);
+const marketplaceProject = clone(original);
+const digest = 'a'.repeat(64);
+const marketplaceAssetId = `marketplace-fixture.camera-${digest.slice(0, 12)}`;
+type MarketplaceReference = { package_id: string; package_version: string; digest_sha256: string; signed_asset_id: string; workspace_asset_id: string };
+const marketplaceWorkspace = marketplaceProject.workspace as unknown as {
+  devices: Array<(typeof marketplaceProject.workspace.devices[number]) & { assetId?: string }>;
+  marketplace_assets: MarketplaceReference[];
+};
+marketplaceWorkspace.devices[0].assetId = marketplaceAssetId;
+marketplaceWorkspace.devices[0].profileId = marketplaceAssetId;
+marketplaceProject.devices = marketplaceProject.workspace.devices;
+marketplaceWorkspace.marketplace_assets = [{
+  package_id: 'fixture.camera', package_version: '1.0.0', digest_sha256: digest,
+  signed_asset_id: 'signed_marketplace_camera', workspace_asset_id: marketplaceAssetId
+}];
+assert.equal(validateOpenRealityProjectFile(marketplaceProject).ok, true,
+  'v3 projects may persist only digest-bound Marketplace identity references');
+const missingMarketplaceReference = clone(marketplaceProject);
+(missingMarketplaceReference.workspace as unknown as { marketplace_assets: MarketplaceReference[] }).marketplace_assets = [];
+expectSchemaRejection(missingMarketplaceReference, /without a digest-bound reference/);
+const mismatchedMarketplaceDigest = clone(marketplaceProject);
+(mismatchedMarketplaceDigest.workspace as unknown as { marketplace_assets: MarketplaceReference[] }).marketplace_assets[0].digest_sha256 = 'b'.repeat(64);
+expectSchemaRejection(mismatchedMarketplaceDigest, /must be derived/);
+const unusedMarketplaceReference = clone(marketplaceProject);
+delete (unusedMarketplaceReference.workspace.devices[0] as (typeof unusedMarketplaceReference.workspace.devices[number]) & { assetId?: string }).assetId;
+unusedMarketplaceReference.workspace.devices[0].profileId = 'virtual-robot-arm';
+unusedMarketplaceReference.devices = unusedMarketplaceReference.workspace.devices;
+expectSchemaRejection(unusedMarketplaceReference, /unused reference/);
+const duplicateMarketplaceReference = clone(marketplaceProject);
+const duplicateMarketplaceWorkspace = duplicateMarketplaceReference.workspace as unknown as { marketplace_assets: MarketplaceReference[] };
+duplicateMarketplaceWorkspace.marketplace_assets.push(clone(duplicateMarketplaceWorkspace.marketplace_assets[0]));
+expectSchemaRejection(duplicateMarketplaceReference, /duplicate package or workspace identities/);
 assert.doesNotThrow(() => createImportedAsset(importFileFixture()), 'valid simulator-only imported assets must pass the authoritative importer');
 const realImport = importFileFixture();
 realImport.adapter_manifest.real_device_enabled = true;
@@ -172,8 +216,8 @@ async function runAutosaveTests() {
 }
 
 runAutosaveTests().then(() => {
-  console.log('Project file contract tests passed (28 cases).');
-  console.log('- v2 files preserve imported assets exactly; v1 files migrate explicitly to v2.');
+  console.log('Project file contract tests passed (35 cases).');
+  console.log('- v3 files preserve imported assets and digest-bound Marketplace references; v1/v2 migrate without invented authority.');
   console.log('- Unknown, divergent, oversized, unsafe, non-portable, duplicate, and prototype-polluting input is rejected without repair.');
 }).catch((error) => {
   console.error(error);

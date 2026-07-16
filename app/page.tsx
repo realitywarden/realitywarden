@@ -73,7 +73,7 @@ interface WorkspaceDeviceRecord {
 
 interface LabWorkspaceFile {
   file_type: 'open_reality_lab_workspace';
-  version: 2;
+  version: 3;
   saved_at: string;
   language: UiLanguage;
   selected_profile_id: string;
@@ -82,6 +82,7 @@ interface LabWorkspaceFile {
   prompt: string;
   devices: WorkspaceDeviceRecord[];
   imported_assets: DeviceAsset[];
+  marketplace_assets: Array<{ package_id: string; package_version: string; digest_sha256: string; signed_asset_id: string; workspace_asset_id: string }>;
   /** v0.4 custom actions (untrusted on load; revalidated per manifest). */
   custom_actions?: unknown[];
   /** v0.5 reviewed, simulation-only manual import proposals. */
@@ -92,7 +93,7 @@ interface OpenRealityProjectFile {
   project: {
     name: string;
     file_type: 'open_reality_desktop_project';
-    version: 2;
+    version: 3;
   };
   devices: WorkspaceDeviceRecord[];
   scenarios: Array<{ id: string; device_profile: string; prompt: string; expected_safety_result: string }>;
@@ -1572,7 +1573,7 @@ export default function Home() {
 
   const buildWorkspaceFile = useCallback((): LabWorkspaceFile => ({
     file_type: 'open_reality_lab_workspace',
-    version: 2,
+    version: 3,
     saved_at: new Date().toISOString(),
     language,
     selected_profile_id: selectedProfile.id,
@@ -1581,6 +1582,7 @@ export default function Home() {
     prompt,
     devices: workspaceDevices,
     imported_assets: importedAssets,
+    marketplace_assets: [],
     custom_actions: customActions,
     manual_imports: manualImports
   }), [customActions, importedAssets, language, manualImports, prompt, selectedProfile.id, selectedScenario.id, selectedWorkspaceDeviceId, workspaceDevices]);
@@ -1589,7 +1591,7 @@ export default function Home() {
     project: {
       name: projectName,
       file_type: 'open_reality_desktop_project',
-      version: 2
+      version: 3
     },
     devices: workspaceDevices,
     scenarios: deviceScenarios.map((scenario) => ({
