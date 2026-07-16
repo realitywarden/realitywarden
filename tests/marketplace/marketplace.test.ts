@@ -8,6 +8,7 @@ import {
   installMarketplacePackage,
   bindMarketplaceAssetToVirtualLab,
   marketplaceRuntimeAsset,
+  publishMarketplaceCatalog,
   signMarketplaceCatalog,
   verifyMarketplaceCatalog,
   verifyMarketplaceCatalogPackage,
@@ -252,6 +253,64 @@ assert.equal(enabled.audit.hardwareSignalSent, false);
 
 const cameraPackage = signedPackage(cameraMarketplaceAsset(), { packageId: 'fixture.signed-camera' });
 const cameraPackageBytes = Buffer.from(`${JSON.stringify(cameraPackage, null, 2)}\n`, 'utf8');
+const catalogBuildOrder = {
+  schema: 'realitywarden.marketplace-catalog-build-order',
+  schema_version: 1,
+  catalog_id: 'realitywarden.fixture.catalog',
+  generated_at: '2026-07-16T10:00:00.000Z',
+  expires_at: '2026-08-16T10:00:00.000Z',
+  packages: [{
+    package_file: 'packages/fixture.signed-camera-1.0.0.json',
+    package_url: 'https://marketplace.realitywarden.example/packages/fixture.signed-camera-1.0.0.json'
+  }]
+};
+const catalogPrivateKeyPem = officialKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+const publishedCatalog = publishMarketplaceCatalog({
+  rawBuildOrder: catalogBuildOrder,
+  rawDistribution: productionDistribution.config,
+  packageSources: [{ packageFile: catalogBuildOrder.packages[0].package_file, bytes: cameraPackageBytes }],
+  catalogPrivateKeyPem
+});
+assert.equal(publishedCatalog.ok, true, 'offline publisher should derive a signed catalog from exact verified package bytes');
+assert.equal(publishedCatalog.catalog.entries[0].asset_name, cameraPackage.asset.name, 'catalog metadata must be derived from the signed package');
+assert.equal(publishedCatalog.catalog.entries[0].package_file_sha256, createHash('sha256').update(cameraPackageBytes).digest('hex'));
+assert.equal(verifyMarketplaceCatalog(publishedCatalog.catalog, trustStore, '2026-07-16T10:30:00.000Z').ok, true,
+  'publisher output must verify under the same production trust policy');
+assert.equal(publishMarketplaceCatalog({
+  rawBuildOrder: { ...catalogBuildOrder, package_file_sha256: '0'.repeat(64) },
+  rawDistribution: productionDistribution.config,
+  packageSources: [{ packageFile: catalogBuildOrder.packages[0].package_file, bytes: cameraPackageBytes }],
+  catalogPrivateKeyPem
+}).ok, false, 'build orders must reject hand-entered digest or metadata fields');
+assert.equal(publishMarketplaceCatalog({
+  rawBuildOrder: { ...catalogBuildOrder, packages: [{ ...catalogBuildOrder.packages[0], package_url: 'http://insecure.example/package.json' }] },
+  rawDistribution: productionDistribution.config,
+  packageSources: [{ packageFile: catalogBuildOrder.packages[0].package_file, bytes: cameraPackageBytes }],
+  catalogPrivateKeyPem
+}).ok, false, 'offline publisher must refuse HTTP package URLs');
+assert.equal(publishMarketplaceCatalog({
+  rawBuildOrder: catalogBuildOrder,
+  rawDistribution: productionDistribution.config,
+  packageSources: [{ packageFile: catalogBuildOrder.packages[0].package_file, bytes: cameraPackageBytes }],
+  catalogPrivateKeyPem: unknownKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+}).ok, false, 'catalog signing key must match the configured production Official key');
+const publisherTamperedPackage = JSON.parse(cameraPackageBytes.toString('utf8'));
+publisherTamperedPackage.asset.name = 'Tampered before catalog publication';
+assert.equal(publishMarketplaceCatalog({
+  rawBuildOrder: catalogBuildOrder,
+  rawDistribution: productionDistribution.config,
+  packageSources: [{ packageFile: catalogBuildOrder.packages[0].package_file, bytes: Buffer.from(JSON.stringify(publisherTamperedPackage), 'utf8') }],
+  catalogPrivateKeyPem
+}).ok, false, 'catalog publication must refuse package bytes that no longer match their package signature');
+assert.equal(publishMarketplaceCatalog({
+  rawBuildOrder: { ...catalogBuildOrder, packages: [catalogBuildOrder.packages[0], { ...catalogBuildOrder.packages[0], package_file: 'packages/copy.json' }] },
+  rawDistribution: productionDistribution.config,
+  packageSources: [
+    { packageFile: catalogBuildOrder.packages[0].package_file, bytes: cameraPackageBytes },
+    { packageFile: 'packages/copy.json', bytes: cameraPackageBytes }
+  ],
+  catalogPrivateKeyPem
+}).ok, false, 'catalog publication must refuse duplicate signed package and asset identities');
 const unsignedCatalog = {
   schema: 'realitywarden.marketplace-catalog',
   schema_version: 1,
@@ -643,7 +702,7 @@ assert.throws(() => serializeMarketplaceSubmissionDraft({ ...submission.draft, a
 const originalSubmission = createMarketplaceSubmissionDraft({ rawAsset: { ...improvedAsset, assetId: 'original_submission_asset' }, source: { kind: 'new_asset' }, changeSummary: 'A new declarative asset can enter maintainer review.', confirmed: true });
 assert.equal(originalSubmission.ok, true, 'new declarative assets may be exported without inventing package provenance');
 
-console.log('Marketplace trust-boundary, distribution, submission, signed catalog, and Virtual Lab binding tests passed (84 cases).');
+console.log('Marketplace trust-boundary, distribution, submission, signed catalog, publisher, and Virtual Lab binding tests passed (91 cases).');
 console.log('- Signature provenance never overrides declarative safety validation.');
 console.log('- Trust tiers are local policy, installs default disabled, and simulation requires a second confirmation.');
 console.log('- Uninstall removes the package record and runtime visibility with honest zero-signal audit.');

@@ -105,6 +105,42 @@ uses exclusive output creation to avoid overwriting an existing package, and
 does not serialize a trust tier. Consumer trust policy remains independent of
 publisher claims.
 
+## Offline catalog publication
+
+The production catalog is also an offline maintainer artifact. Prepare a strict
+build order beside the signed package files; it contains only catalog timing,
+relative package filenames, and their final HTTPS download URLs:
+
+```json
+{
+  "schema": "realitywarden.marketplace-catalog-build-order",
+  "schema_version": 1,
+  "catalog_id": "realitywarden.production.v1",
+  "generated_at": "2026-07-16T10:00:00.000Z",
+  "expires_at": "2026-08-16T10:00:00.000Z",
+  "packages": [{
+    "package_file": "packages/reviewed-device-1.0.0.json",
+    "package_url": "https://catalog.example/v1/packages/reviewed-device-1.0.0.json"
+  }]
+}
+```
+
+```bash
+npm run marketplace:catalog:publish -- --order catalog-build-order.json \
+  --distribution marketplace/distribution.json \
+  --private-key official-catalog-ed25519-private.pem \
+  --out catalog.json
+```
+
+The command requires the private key to match the non-revoked Official catalog
+public key in the production distribution config. It loads bounded package
+files relative to the build order, verifies every package signature and Reality
+Asset under that same bundled trust policy, and derives all listing metadata,
+the exact file SHA-256, and canonical package digest from those bytes. Build
+orders cannot supply those fields. HTTP URLs, path escape, tampering, duplicate
+identities, wrong keys, invalid production config, and existing output files are
+refused. The private key is read only for signing and is never serialized.
+
 ## Publish-back submission drafts
 
 The desktop Marketplace can review an improved Reality Asset JSON and export a

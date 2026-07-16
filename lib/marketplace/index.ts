@@ -1,5 +1,6 @@
 export * from './MarketplacePackage';
 export * from './MarketplaceCatalog';
+export * from './MarketplaceCatalogPublisher';
 export * from './MarketplaceDistribution';
 export * from './MarketplacePersistence';
 export * from './MarketplaceStore';
