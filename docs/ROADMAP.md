@@ -85,10 +85,16 @@ pass their normal safety path, and the full repository verify chain passes.
 
 ## Owner-reviewed additions (2026-07-16, post physical acceptance)
 
-- Real-device digital twin in the 3D workspace: a clearly REAL-marked mirror
-  that only ECHOES real state (current angle command, live distance). Pure
-  visualization; execution stays inside the REAL HARDWARE boundary. Invariant
-  6 intact.
+- Real-device digital twin in the 3D workspace (owner vision, staged):
+  Stage 1 - a clearly REAL-marked mirror that ECHOES real state (current
+  angle command, live distance). Stage 2 - drag-to-propose: dragging the
+  REAL-marked twin is an INTENT INPUT on par with natural language; it
+  generates a proposal that runs the same pipeline (validate -> simulate ->
+  safety gate -> explicit confirm) before the real device follows. Dragging
+  never drives hardware directly - the mouse is an untrusted proposer like
+  any other. Forbidden zones and interlocks apply live during the drag (the
+  twin refuses visibly). Invariant 6 is satisfied by distinct REAL marking
+  and the confirmation ritual, not by banishing real devices from 3D.
 - UI-integrated governed flashing: a flash button that consumes firmware
   write orders (sha256-paired reviewed images only). Never an arbitrary-code
   IDE; that is the product's differentiator, not a limitation.
