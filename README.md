@@ -8,11 +8,13 @@
 
 > Plain English moves a real servo — through a rule parser, an operator confirmation, and a safety gate. Unplug the sensor or put a hand too close and it refuses, with an honest audit either way.
 
-### Quick Start
+### Try it in 2 minutes (Windows)
 
-1. `npm install`
-2. `npm run build`, then `npm run desktop:start` (Windows installer available under Releases)
-3. Drag a virtual device into the workspace and type a goal like *"pick up the red cube"* — everything runs simulation-first. Real hardware stays locked behind acceptance evidence plus per-run operator confirmation.
+1. Download the installer from the [latest release](https://github.com/realitywarden/realitywarden/releases/latest) and run it.
+2. Drag a virtual device into the workspace and type a goal like *"pick up the red cube"* — everything runs simulation-first. No hardware required.
+3. Real hardware stays locked behind acceptance evidence plus per-run operator confirmation.
+
+To build from source instead, see [Quick Start](#quick-start) below.
 
 Many robots, machines, sensors, smart devices, lab instruments, and factory systems already have chips, controllers, motors, sensors, or hardware interfaces.
 
@@ -71,7 +73,7 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
 
 Real-hardware safety invariants — **48/48 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
 
-**Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
+**Demo video:** see the 45-second demo (plain English → real servo, then blocked by an unplugged sensor and a too-close hand) on the [v0.5.0 release page](https://github.com/realitywarden/realitywarden/releases/tag/v0.5.0).
 
 ## Runtime Architecture
 
@@ -208,8 +210,8 @@ This is the ecosystem direction:
 Clone and install:
 
 ```bash
-git clone https://github.com/ZqiEE/open-reality-studio.git
-cd open-reality-studio
+git clone https://github.com/realitywarden/realitywarden.git
+cd realitywarden
 npm install
 ```
 
