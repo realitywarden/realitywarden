@@ -4,6 +4,16 @@
 
 **RealityWarden is the audited gate between AI and the physical world — a safety runtime between AI agents and real hardware.**
 
+![RealityWarden demo: plain English moves a real servo through a safety gate; an unplugged sensor and a too-close hand both block execution](./docs/media/demo.gif)
+
+> Plain English moves a real servo — through a rule parser, an operator confirmation, and a safety gate. Unplug the sensor or put a hand too close and it refuses, with an honest audit either way.
+
+### Quick Start
+
+1. `npm install`
+2. `npm run build`, then `npm run desktop:start` (Windows installer available under Releases)
+3. Drag a virtual device into the workspace and type a goal like *"pick up the red cube"* — everything runs simulation-first. Real hardware stays locked behind acceptance evidence plus per-run operator confirmation.
+
 Many robots, machines, sensors, smart devices, lab instruments, and factory systems already have chips, controllers, motors, sensors, or hardware interfaces.
 
 But they are not automatically AI-controllable.
@@ -59,7 +69,7 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
   conflict review before being copied into Action Composer, and generated
   assets can never enable a real adapter
 
-Real-hardware safety invariants — **46/46 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
+Real-hardware safety invariants — **48/48 passing**, plus **5/5** virtual-loopback scenarios. The current suite includes fresh per-primitive sensor polling and proves that an interlock change or lost sensor stops a multi-step action with zero further actuation frames. Run `npm run verify` to reproduce the complete automated gate; physical reference-kit checks remain optional field evidence.
 
 **Demo video:** [Robot Arm Golden Path demo](https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4)
 
