@@ -30,7 +30,7 @@
  * Wiring (both variants): SG90=GPIO18.
  * Requires the "ESP32Servo" library (Library Manager) and ArduinoJson.
  */
-#define DISTANCE_SENSOR_SERIAL_TTL 0
+#define DISTANCE_SENSOR_SERIAL_TTL 1
 
 #include <ESP32Servo.h>
 #include <ArduinoJson.h>
