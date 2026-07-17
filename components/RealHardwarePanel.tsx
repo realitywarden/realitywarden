@@ -15,7 +15,7 @@
  * handshake says so, and "connected" appears only after the device answered
  * a read_distance request.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { validateActionManifest } from '@/lib/action-manifest/ActionManifest';
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { adviceForFailure, interpretProbe } from '@/lib/hardware/SetupAdvisor';
@@ -28,6 +28,7 @@ import {
   buildTeachManifest,
   waypointAfterJog
 } from '@/lib/hardware/TeachMode';
+import { parseRealNaturalCommand } from '@/lib/hardware/RealCommandParser';
 
 export interface HardwareBridgeResult {
   ok: boolean;
@@ -164,6 +165,8 @@ export function RealHardwarePanel({
   const [firmwareFeedback, setFirmwareFeedback] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
   const [execOutcome, setExecOutcome] = useState<HardwareExecuteOutcome | null>(null);
+  const [nlText, setNlText] = useState('');
+  const [nlFeedback, setNlFeedback] = useState<string | null>(null);
   const [lastRequestedAngle, setLastRequestedAngle] = useState<number | null>(null);
   const [lastCommandAngle, setLastCommandAngle] = useState<number | null>(null);
   const [waypoints, setWaypoints] = useState<number[]>([]);
@@ -586,6 +589,38 @@ export function RealHardwarePanel({
     }
   }, [connect, execConfirmed, selectedPort, stopPolling]);
 
+  /**
+   * Promote-to-Real natural-language path. The parse result is derived state:
+   * editing the text immediately re-parses, so a stale sequence can never be
+   * submitted. The manifest built here is an UNTRUSTED proposal; the main
+   * process revalidates it with the authoritative Action Manifest validator
+   * and runs every primitive through HardwareActionSequenceRunner (new sensor
+   * generation + HardwareExecutionGate per step, zero frames after a block).
+   */
+  const nlParse = useMemo(
+    () => (nlText.trim().length > 0 ? parseRealNaturalCommand(nlText) : null),
+    [nlText]
+  );
+
+  const executeNaturalCommand = useCallback(async () => {
+    setNlFeedback(null);
+    if (!nlParse || !nlParse.ok) return;
+    const displayName = nlText.trim().slice(0, 60) || 'real nl command';
+    const checked = validateActionManifest(
+      buildTeachManifest('real_nl_command', displayName, nlParse.angles),
+      REAL_SERVO_TEACH_DEVICE_META,
+      REAL_TEACH_BUILTIN_INTENT_IDS
+    );
+    if (!checked.ok) {
+      // Honest rejection from the same authoritative validator the main
+      // process uses (e.g. an explicit 200 degrees is out of [0,180]):
+      // reject, never clamp, never edit the operator's sequence.
+      setNlFeedback(`${checked.code}: ${checked.detail}`);
+      return;
+    }
+    await replayTeachAction(checked.manifest);
+  }, [nlParse, nlText, replayTeachAction]);
+
   // Advice shown to the operator: structured probe advice wins; otherwise the
   // last raw error is classified on the fly so no failure is ever unexplained.
   const shownAdvice: SetupAdvice[] = advice.length > 0
@@ -867,6 +902,53 @@ export function RealHardwarePanel({
                     {zh
                       ? '执行走完整安全链：传感器采样→中值→互锁→安全门。缺读数/过近/越界都会被拦截并如实审计。'
                       : 'Execution runs the full safety chain: sensor sampling, median, interlock, gate. Missing data / close obstacle / out-of-range all block, honestly audited.'}
+                  </div>
+                  <div className="mt-1 flex flex-col gap-1.5 border-t border-status-warning-edge pt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] font-bold text-status-warning">
+                        {zh ? '自然语言指令（REAL · 规则解析）' : 'Natural-language command (REAL · rule parser)'}
+                      </span>
+                      <span className="text-[10px] text-text-muted">
+                        {zh ? '每一步都过安全门' : 'Every step runs the gate'}
+                      </span>
+                    </div>
+                    <input
+                      value={nlText}
+                      onChange={(event) => setNlText(event.target.value)}
+                      placeholder={zh ? '例：转到45度，再归零' : 'e.g. turn to 45 degrees, then back to zero'}
+                      className="h-7 w-full rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 text-[12px] text-text-primary"
+                      aria-label={zh ? '自然语言真机指令' : 'Natural-language real command'}
+                    />
+                    {nlParse && (nlParse.ok ? (
+                      <div className="flex flex-wrap items-center gap-1" aria-label={zh ? '解析出的执行步骤' : 'Parsed execution steps'}>
+                        {nlParse.angles.map((angle, index) => (
+                          <span key={`${index}-${angle}`} className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-1.5 py-0.5 font-mono text-[11px] text-status-warning">
+                            {index + 1}. {angle}&deg;
+                          </span>
+                        ))}
+                        <span className="text-[10px] text-text-muted">
+                          {zh ? `共 ${nlParse.angles.length} 步` : `${nlParse.angles.length} step(s)`}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] leading-4 text-status-warning">
+                        {zh ? `无法解析：${nlParse.detail}` : `Cannot parse: ${nlParse.detail}`}
+                      </div>
+                    ))}
+                    {nlFeedback && <div className="text-[11px] leading-4 text-status-warning">{nlFeedback}</div>}
+                    <button
+                      type="button"
+                      onClick={() => void executeNaturalCommand()}
+                      disabled={executing || !execConfirmed || !nlParse || !nlParse.ok}
+                      className="h-7 self-start rounded-[3px] border border-status-blocked-edge px-2 text-[12px] font-semibold text-status-blocked-soft hover:bg-status-blocked-surface disabled:opacity-40"
+                    >
+                      {executing ? (zh ? '执行中…' : 'Executing…') : (zh ? '通过安全门执行解析序列' : 'Execute parsed sequence via gate')}
+                    </button>
+                    <div className="text-[10px] leading-4 text-text-muted">
+                      {zh
+                        ? '确定性规则解析（非 LLM）：只认显式角度（如 45°/45度/归零），解析不了即整条拒绝，绝不猜测；越界角度由验证器与安全门拒绝，绝不钳制。'
+                        : 'Deterministic rule parser (not an LLM): only explicit angles ("45", "45 degrees", "back to zero") count; unparseable text is rejected as a whole, never guessed. Out-of-range angles are rejected downstream, never clamped.'}
+                    </div>
                   </div>
                   <div className="mt-1 flex flex-col gap-2 border-t border-status-warning-edge pt-2">
                     <div className="flex items-center justify-between gap-2">

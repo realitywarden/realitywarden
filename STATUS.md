@@ -1,5 +1,11 @@
 # STATUS
 
+## REAL 面板自然语言指令（Promote-to-Real，2026-07-17）✅ 待本机 verify
+
+- REAL HARDWARE 面板真机执行区新增**自然语言指令（规则解析）**：确定性解析显式角度 token（`45°`/`45度`/`45 degrees`/`归零`），解析不了或含无法归类的数字即整条拒绝（绝不猜测）；解析结果为不可信提案，经 `buildTeachManifest` → 现有 `executeManifest` IPC → 主进程权威 `validateActionManifest`（越界如 200° 在此被拒，绝不钳制）→ `HardwareActionSequenceRunner` 每步新传感器 generation + `HardwareExecutionGate`，中途 blocked 零后续帧。零新 IPC、零新执行通道，逐次人工确认与证据锁不变。设计取舍：不从仿真会话 TaskDSL 派生（三维位姿无法诚实映射一维舵机）。
+- 新增 `lib/hardware/RealCommandParser.ts`（诚实契约注释）；real-hardware 套件 46→**48**（解析器显式性、越界下游拒绝）；desktop 套件新增 3 条面板断言。沙箱验证：real-hardware 48/48、虚拟回环 5/5、desktop、conformance、action-manifest 20/20、三处 typecheck 绿。**`npm run verify` 与真机冒烟待所有者本机执行后再提交。**
+- 运维：会话中 Edit 工具再次截断千行大文件（RealHardwarePanel.tsx），已按预案从 git HEAD 重建 + 沙箱侧脚本重放修改，`git hash-object` 双向核对一致——大文件修改一律走沙箱侧写入。
+
 ## 真机四场景验收通过（2026-07-16）✅
 
 - **P0 四场景验收 4/4 通过**，证据入库 `docs/acceptance/evidence/2026-07-16-scenario-{1..4}.json`，真机执行证据锁解锁（每次执行仍需 UI 显式勾选）。判定采用严格协议：每场景先经安全门归零到 0°，被拦场景舵机必须全程钉在 0°；证据仅在"审计结果 + 操作者人工观察"双通过时写入（`npm run hardware:acceptance` 向导，eeab441/abc3375）。

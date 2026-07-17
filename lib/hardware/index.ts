@@ -58,3 +58,5 @@ export {
 } from './TeachMode';
 export type { TeachActionManifest, TeachExecutionEvidence } from './TeachMode';
 export { visibleRealHardwareTelemetry } from './RealHardwareTelemetry';
+export { parseRealNaturalCommand, REAL_COMMAND_MAX_STEPS } from './RealCommandParser';
+export type { RealCommandParseResult, RealCommandRejectReason } from './RealCommandParser';

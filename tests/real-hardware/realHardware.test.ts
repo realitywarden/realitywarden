@@ -11,7 +11,9 @@
 import { Esp32DeviceAdapter, ESP32_SERVO_RIG_CAPABILITIES } from '../../lib/hardware/Esp32DeviceAdapter';
 import { HardwareExecutionGate } from '../../lib/hardware/HardwareExecutionGate';
 import { HardwareActionSequenceRunner } from '../../lib/hardware/HardwareActionSequenceRunner';
-import { hardwareCommandsFromTeachTaskDsl, waypointAfterJog } from '../../lib/hardware/TeachMode';
+import { REAL_SERVO_TEACH_DEVICE_META, REAL_TEACH_BUILTIN_INTENT_IDS, buildTeachManifest, hardwareCommandsFromTeachTaskDsl, waypointAfterJog } from '../../lib/hardware/TeachMode';
+import { parseRealNaturalCommand } from '../../lib/hardware/RealCommandParser';
+import { validateActionManifest } from '../../lib/action-manifest/ActionManifest';
 import type { TaskDSL } from '../../types/taskDsl';
 import { visibleRealHardwareTelemetry } from '../../lib/hardware/RealHardwareTelemetry';
 import { DistanceSensorPollingService } from '../../lib/hardware/SensorPollingService';
@@ -1516,6 +1518,34 @@ async function testTeachReplayStopsAfterBlockedStep() {
   assert(adapter.executeCalls === 1 && transport.sentFrames.length === 1, 'blocked teach replay must emit zero subsequent actuation frames');
 }
 
+async function testRealCommandParserExplicitOnlyNeverGuesses() {
+  const zhSeq = parseRealNaturalCommand('\u8f6c\u523045\u5ea6\uff0c\u518d\u56de\u523090\u00b0\uff0c\u7136\u540e\u5f52\u96f6');
+  assert(zhSeq.ok && zhSeq.angles.join(',') === '45,90,0', 'explicit zh angle tokens must parse in order');
+  const enSeq = parseRealNaturalCommand('turn to 12.5 degrees then back to zero');
+  assert(enSeq.ok && enSeq.angles.join(',') === '12.5,0', 'explicit en angle tokens must parse in order');
+  const bare = parseRealNaturalCommand('turn to 45');
+  assert(!bare.ok && bare.reason === 'no_explicit_angle', 'a bare number without a degree marker must be rejected, not guessed');
+  const ambiguous = parseRealNaturalCommand('wait 5 seconds then move to 45\u00b0');
+  assert(!ambiguous.ok && ambiguous.reason === 'ambiguous_number', 'a leftover non-angle number must reject the whole command');
+  const empty = parseRealNaturalCommand('   ');
+  assert(!empty.ok && empty.reason === 'empty_command', 'empty text must be rejected');
+  const intent = parseRealNaturalCommand('please dance');
+  assert(!intent.ok && intent.reason === 'no_explicit_angle', 'intent words without explicit angles must never be guessed into motion');
+  const many = parseRealNaturalCommand(Array.from({ length: 17 }, (_, i) => `${i}\u00b0`).join(' '));
+  assert(!many.ok && many.reason === 'too_many_steps', 'sequences beyond the governed limit must be rejected');
+}
+
+async function testRealCommandOutOfRangeRejectedDownstreamNeverClamped() {
+  const oob = parseRealNaturalCommand('turn to 200\u00b0');
+  assert(oob.ok && oob.angles.join(',') === '200', 'the parser must pass explicit out-of-range angles through unmodified (no clamping)');
+  const checked = validateActionManifest(
+    buildTeachManifest('real_nl_command', 'turn to 200 degrees', oob.angles),
+    REAL_SERVO_TEACH_DEVICE_META,
+    REAL_TEACH_BUILTIN_INTENT_IDS
+  );
+  assert(!checked.ok && checked.code === 'invalid_value', 'the authoritative validator must reject the out-of-range angle instead of clamping it');
+}
+
 async function main() {
   const tests: Array<[string, () => Promise<void>]> = [
     ['blocked command never reaches hardware', testBlockedNeverReachesHardware],
@@ -1550,6 +1580,8 @@ async function main() {
     ['jog-teach: blocked jog is not recordable', testBlockedJogIsNotRecordable],
     ['REAL mirror: disconnect erases stale telemetry', testDisconnectedRealMirrorClearsStaleTelemetry],
     ['jog-teach replay: blocked step emits zero subsequent frames', testTeachReplayStopsAfterBlockedStep],
+    ['real NL command: explicit tokens only, never guesses', testRealCommandParserExplicitOnlyNeverGuesses],
+    ['real NL command: out-of-range rejected downstream, never clamped', testRealCommandOutOfRangeRejectedDownstreamNeverClamped],
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['audit 1.1: raw transport send() refuses actuation frames', testRawSendRefusesActuationFrames],
     ['audit 1.1: adapter.execute requires the gate ticket', testAdapterExecuteRequiresGateTicket],
