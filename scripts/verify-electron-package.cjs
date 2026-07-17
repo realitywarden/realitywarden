@@ -56,7 +56,11 @@ assert.equal(packagedMetadata.version, packageJson.version, 'packaged app versio
 assert.equal(packagedMetadata.main, 'dist-electron/main.js', 'packaged app main entry must target the compiled Electron process');
 assert.equal(packagedMetadata.dependencies?.['pdfjs-dist'], '4.10.38', 'packaged app must retain the pinned PDF extraction runtime');
 
-const manualImportChunks = Array.from(entries).filter((entry) => /^\.next-build\/static\/chunks\/app\/page-[^/]+\.js$/.test(entry));
+// Next 16 (Turbopack) emits flat hash-named chunks under static/chunks/ rather
+// than the older app/page-[hash].js layout. Scan every top-level JS chunk so
+// the UI-presence assertions below stay valid across bundler output changes
+// (this is equal-or-stronger: it searches a superset of the old app chunk).
+const manualImportChunks = Array.from(entries).filter((entry) => /^\.next-build\/static\/chunks\/[^/]+\.js$/.test(entry));
 assert(manualImportChunks.length > 0, 'packaged Next output is missing the main application chunk');
 const mainApplicationBundle = manualImportChunks.map((entry) => readPackagedEntry(entry).toString('utf8')).join('\n');
 assert(mainApplicationBundle.includes('Import Device Manual'), 'packaged UI is missing the manual-import entry point');
